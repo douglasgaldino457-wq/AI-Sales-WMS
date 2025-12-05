@@ -1,0 +1,7 @@
+{
+  "name": "AISales WMS",
+  "description": "A comprehensive management dashboard for Inside Sales, Field Sales, and Managers, tailored to the specific branding of Serviços Automotivos.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
