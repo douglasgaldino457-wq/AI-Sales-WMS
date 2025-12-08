@@ -7,7 +7,7 @@ import {
   Target, ChevronDown, ChevronUp,
   Scale, ArrowDownRight, ArrowUpRight, Printer, Coins, CreditCard,
   Zap, Headphones, Star, Landmark, Download, Eye, FileText, Receipt,
-  Settings
+  Settings, AlertCircle, PieChart as PieChartIcon
 } from 'lucide-react';
 import { UserRole, SavedQuote } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -148,6 +148,13 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
     product: 'Full'
   });
   
+  // Force Quote Sub-Tab to TABLE if Product is Simple
+  useEffect(() => {
+      if (context.product === 'Simples') {
+          setQuoteSubTab('TABLE');
+      }
+  }, [context.product]);
+  
   // Range Selector State
   const [selectedRangeIndex, setSelectedRangeIndex] = useState<number>(2); // Default to 20-50k
 
@@ -233,6 +240,50 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
       }
   }, [context.potentialRevenue, context.product, rangeTableFull, rangeTableSimple]);
 
+  // --- AUTOMATIC CONCENTRATION LOOKUP ---
+  useEffect(() => {
+      const fetchClientData = () => {
+          if (context.identifier || context.fantasyName.length > 3) {
+              const clients = appStore.getClients();
+              const found = clients.find(c => 
+                  c.id === context.identifier || 
+                  c.nomeEc.toLowerCase().includes(context.fantasyName.toLowerCase())
+              );
+
+              if (found) {
+                  // Simulate fetching concentration profile from a database
+                  // In a real app, this would come from `found.concentrationProfile`
+                  const mockConcentration = {
+                      'Débito': 40,
+                      '1x': 20,
+                      '12x': 30,
+                      '6x': 10
+                  };
+                  
+                  // Merge with existing state, resetting others to 0 to avoid > 100%
+                  const newConcentrations: {[key: string]: number} = {};
+                  // Initialize all current keys to 0
+                  Object.keys(rates.concentrations).forEach(k => newConcentrations[k] = 0);
+                  // Apply found values
+                  Object.entries(mockConcentration).forEach(([k, v]) => newConcentrations[k] = v);
+
+                  setRates(prev => ({
+                      ...prev,
+                      concentrations: { ...prev.concentrations, ...newConcentrations }
+                  }));
+                  
+                  // Optional: Notify user
+                  setAiFeedback("Perfil de concentração do cliente carregado da base.");
+                  setTimeout(() => setAiFeedback(null), 3000);
+              }
+          }
+      };
+
+      const t = setTimeout(fetchClientData, 800); // Debounce
+      return () => clearTimeout(t);
+  }, [context.identifier, context.fantasyName]);
+
+
   // --- HELPERS ---
   const formatCurrencyValue = (val: number) => {
       if (!val && val !== 0) return '';
@@ -255,9 +306,14 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
       if (!context.identifier) return;
       setIsSearchingClient(true);
       setTimeout(() => {
-          setContext(prev => ({ ...prev, fantasyName: 'Estabelecimento Exemplo Ltda' }));
+          const found = appStore.getClients().find(c => c.id === context.identifier);
+          if (found) {
+              setContext(prev => ({ ...prev, fantasyName: found.nomeEc }));
+          } else {
+              setContext(prev => ({ ...prev, fantasyName: 'Cliente não encontrado (Novo)' }));
+          }
           setIsSearchingClient(false);
-      }, 1000);
+      }, 500);
   };
 
   const handleCreateDemand = () => {
@@ -314,6 +370,12 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                 Analise a imagem de uma Tabela de Taxas (concorrente).
                 Extraia os dados para preencher as taxas do CONCORRENTE.
                 
+                IMPORTANTE: 
+                Muitas tabelas mostram o "Fator Líquido" ou "Total a Receber" (ex: 0.98 ou 98,00 para 100,00). 
+                Se for esse o caso, converta para TAXA PERCENTUAL (100 - Fator). Ex: 0.98 vira 2.00.
+                Se a tabela mostrar a taxa direta (ex: 2.00%), use o valor direto.
+                Sempre retorne a taxa total acumulada por parcela.
+
                 JSON esperado:
                 {
                     "data": {
@@ -350,25 +412,25 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
         
         const text = response.text || "";
         const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const json = JSON.parse(cleanText);
+        const json = JSON.parse(cleanText) as any;
 
         if (json && json.data) {
-            let feedback = [];
+            let feedback: string[] = [];
             
             if (evidenceType === 'TABLE') {
                 if (json.data.debit || json.data.creditSight) {
                     setCompRates(prev => ({
                         ...prev,
-                        debit: json.data.debit || prev.debit,
-                        creditSight: json.data.creditSight || prev.creditSight,
-                        installments: { ...prev.installments, 12: json.data.credit12x || prev.installments[12] }
+                        debit: Number(json.data.debit) || prev.debit,
+                        creditSight: Number(json.data.creditSight) || prev.creditSight,
+                        installments: { ...prev.installments, 12: Number(json.data.credit12x) || prev.installments[12] }
                     }));
-                    feedback.push("Taxas do concorrente identificadas e preenchidas.");
+                    feedback.push("Taxas identificadas e convertidas.");
                 }
             } else {
                 if (json.data.amount) {
-                    setSimulation(prev => ({ ...prev, amount: json.data.amount }));
-                    feedback.push(`Valor de venda identificado: R$ ${json.data.amount.toLocaleString('pt-BR')}`);
+                    setSimulation(prev => ({ ...prev, amount: Number(json.data.amount) }));
+                    feedback.push(`Valor de venda identificado: R$ ${Number(json.data.amount).toLocaleString('pt-BR')}`);
                 }
             }
 
@@ -396,6 +458,9 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
       }
       return rows;
   };
+
+  // Calculate Concentration Total
+  const totalConcentration: number = Object.values(rates.concentrations).reduce<number>((acc, curr) => acc + (Number(curr) || 0), 0);
 
   // Helper to generate only simulation relevant rows (usually simplified or user preference, keeping consistent for now)
   const getSimulationRows = () => {
@@ -571,9 +636,8 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
           <div className="p-8 pb-4">
               {/* Logos */}
               <div className="flex justify-between items-start mb-6">
-                  <div>
-                      {/* Updated to use 'inverse' variant for logo on red background */}
-                      <Logo type="inverse" className="scale-75 origin-left" />
+                  <div className="bg-white p-2 px-3 rounded-lg shadow-sm">
+                      <Logo className="text-brand-gray-900 scale-75 origin-left" />
                   </div>
                   <div className="flex flex-col items-end text-white">
                       <h1 className="text-xl font-black uppercase tracking-wide">Proposta Comercial</h1>
@@ -811,45 +875,59 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                   <FileText className="w-4 h-4" />
                   Tabela de Taxas
               </button>
-              <button 
-                  onClick={() => setQuoteSubTab('SIMULATOR')}
-                  className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors flex items-center justify-center gap-2 ${quoteSubTab === 'SIMULATOR' ? 'border-brand-primary text-brand-primary bg-brand-primary/5' : 'border-transparent text-brand-gray-500 hover:text-brand-gray-700 hover:bg-gray-50'}`}
-              >
-                  <Coins className="w-4 h-4" />
-                  Simulador
-              </button>
+              {context.product !== 'Simples' && (
+                  <button 
+                      onClick={() => setQuoteSubTab('SIMULATOR')}
+                      className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors flex items-center justify-center gap-2 ${quoteSubTab === 'SIMULATOR' ? 'border-brand-primary text-brand-primary bg-brand-primary/5' : 'border-transparent text-brand-gray-500 hover:text-brand-gray-700 hover:bg-gray-50'}`}
+                  >
+                      <Coins className="w-4 h-4" />
+                      Simulador
+                  </button>
+              )}
           </div>
 
           <div className="flex-1 p-6">
               {quoteSubTab === 'TABLE' ? (
                   <div className="space-y-4">
-                      {/* FULL RATE TABLE VIEW */}
+                      {/* COMPACT & PRETTY RATE TABLE VIEW */}
                       <div className="flex justify-between items-center mb-2">
-                          <h3 className="font-bold text-brand-gray-900">Tabela de Taxas Completa</h3>
-                          <span className="text-xs bg-brand-gray-100 text-brand-gray-600 px-2 py-1 rounded font-bold">Produto: {context.product}</span>
+                          <h3 className="font-bold text-brand-gray-900 flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-brand-primary" />
+                              Tabela de Taxas
+                          </h3>
+                          <div className="flex items-center gap-3">
+                              <div className="bg-brand-gray-50 px-3 py-1 rounded-full text-xs font-bold text-brand-gray-600 border border-brand-gray-200">
+                                  Produto: <span className="text-brand-gray-900">{context.product}</span>
+                              </div>
+                          </div>
                       </div>
-                      <div className="overflow-x-auto">
+                      
+                      <div className="overflow-hidden rounded-xl border border-brand-gray-200 shadow-sm">
                           <table className="w-full text-sm text-left border-collapse">
-                              <thead className="bg-brand-gray-50 text-brand-gray-600 font-bold text-xs uppercase">
+                              <thead className="bg-brand-gray-50 text-brand-gray-600 font-bold text-xs uppercase tracking-wider">
                                   <tr>
-                                      <th className="px-4 py-3 border border-brand-gray-200">Parcela</th>
-                                      <th className="px-4 py-3 border border-brand-gray-200 text-center w-32">Taxa (%)</th>
-                                      <th className="px-4 py-3 border border-brand-gray-200 text-center w-32">Concentração (%)</th>
+                                      <th className="px-4 py-3 border-b border-r border-brand-gray-200 w-1/3">Parcela</th>
+                                      <th className="px-4 py-3 border-b border-r border-brand-gray-200 text-center w-1/3">Taxa (%)</th>
+                                      <th className="px-4 py-3 border-b border-brand-gray-200 text-center w-1/3 flex items-center justify-center gap-1">
+                                          <PieChartIcon className="w-3 h-3" />
+                                          Concentração (%)
+                                      </th>
                                   </tr>
                               </thead>
-                              <tbody>
+                              <tbody className="divide-y divide-brand-gray-100 bg-white">
                                   {getAllRows().map((row, i) => (
-                                      <tr key={i} className="hover:bg-brand-gray-50 transition-colors">
-                                          <td className="px-4 py-2 border border-brand-gray-200 font-bold text-brand-gray-800">{row.label}</td>
-                                          <td className="px-4 py-2 border border-brand-gray-200 text-center">
-                                              <div className="relative inline-block w-24">
+                                      <tr key={i} className="hover:bg-brand-gray-50/50 transition-colors group">
+                                          <td className="px-4 py-1.5 border-r border-brand-gray-100 font-semibold text-brand-gray-700 text-xs">
+                                              {row.label}
+                                          </td>
+                                          <td className="px-2 py-1 border-r border-brand-gray-100 text-center relative">
+                                              <div className="flex items-center justify-center">
                                                   <input 
                                                       type="number" 
                                                       step="0.01"
-                                                      className="w-full text-center font-bold bg-transparent border-b border-transparent hover:border-brand-gray-300 focus:border-brand-primary outline-none transition-all"
+                                                      className="w-20 text-center font-bold bg-transparent border border-transparent rounded hover:border-brand-gray-300 focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-brand-primary/10 outline-none transition-all text-brand-gray-900 text-xs py-1"
                                                       value={row.rate}
                                                       onChange={e => {
-                                                          // Update specific rate logic
                                                           const val = parseFloat(e.target.value);
                                                           if (row.label === 'Débito') setRates({...rates, debit: val});
                                                           else if (row.label === 'Crédito 1x') setRates({...rates, creditSight: val});
@@ -859,31 +937,52 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                                                           }
                                                       }}
                                                   />
-                                                  <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[10px] text-brand-gray-400">%</span>
+                                                  <span className="text-[10px] text-brand-gray-400 ml-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4">%</span>
                                               </div>
                                           </td>
-                                          <td className="px-4 py-2 border border-brand-gray-200 text-center">
-                                              <div className="relative inline-block w-24">
+                                          <td className="px-2 py-1 text-center relative">
+                                              <div className="flex items-center justify-center">
                                                   <input 
                                                       type="number"
                                                       step="1"
-                                                      className="w-full text-center bg-transparent border-b border-transparent hover:border-brand-gray-300 focus:border-brand-primary outline-none transition-all text-brand-gray-600"
-                                                      value={rates.concentrations[row.label.replace('Crédito ', '')] || 0} // Simplify key logic for demo
+                                                      className={`w-20 text-center font-medium bg-transparent border border-transparent rounded hover:border-brand-gray-300 focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-brand-primary/10 outline-none transition-all text-xs py-1
+                                                          ${(rates.concentrations[row.label.replace('Crédito ', '')] || 0) > 0 ? 'text-blue-600 font-bold' : 'text-brand-gray-400'}
+                                                      `}
+                                                      value={rates.concentrations[row.label.replace('Crédito ', '')] || 0} 
                                                       onChange={e => {
-                                                          // Update concentration logic placeholder
                                                           const key = row.label.replace('Crédito ', '');
                                                           const val = parseFloat(e.target.value);
                                                           setRates(p => ({...p, concentrations: {...p.concentrations, [key]: val}}));
                                                       }}
                                                   />
-                                                  <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[10px] text-brand-gray-400">%</span>
+                                                  <span className="text-[10px] text-brand-gray-400 ml-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4">%</span>
                                               </div>
                                           </td>
                                       </tr>
                                   ))}
                               </tbody>
+                              <tfoot className="bg-brand-gray-50 border-t border-brand-gray-200">
+                                  <tr>
+                                      <td className="px-4 py-2 font-bold text-xs text-brand-gray-600 text-right border-r border-brand-gray-200">Total</td>
+                                      <td className="border-r border-brand-gray-200"></td>
+                                      <td className="px-2 py-2 text-center">
+                                          <div className={`text-xs font-bold px-2 py-1 rounded-full inline-flex items-center gap-1
+                                              ${Math.abs(totalConcentration - 100) < 0.1 ? 'text-green-700 bg-green-100' : 'text-orange-700 bg-orange-100 animate-pulse'}
+                                          `}>
+                                              {Math.abs(totalConcentration - 100) >= 0.1 && <AlertCircle className="w-3 h-3" />}
+                                              {totalConcentration.toFixed(0)}%
+                                          </div>
+                                      </td>
+                                  </tr>
+                              </tfoot>
                           </table>
                       </div>
+                      
+                      {Math.abs(totalConcentration - 100) >= 0.1 && (
+                          <p className="text-[10px] text-center text-orange-600 font-medium">
+                              ⚠️ A soma das concentrações deve ser igual a 100% para o cálculo correto da taxa efetiva.
+                          </p>
+                      )}
                   </div>
               ) : (
                   <div className="flex flex-col lg:flex-row gap-6">

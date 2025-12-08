@@ -996,4 +996,20 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
                      <div><label className="block text-xs font-bold text-brand-gray-500 uppercase tracking-wide mb-1">UF *</label><input type="text" value={toolInput.uf} onChange={(e) => setToolInput({...toolInput, uf: e.target.value})} className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 focus:ring-1 focus:ring-brand-primary outline-none" /></div>
                   </div>
                   <button onClick={handleTestRegion} disabled={toolLoading || !toolInput.bairro} className="w-full bg-brand-primary text-white py-2 rounded-lg font-bold hover:bg-brand-dark transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                     {toolLoading ? 'Processando...' :
+                     {toolLoading ? 'Processando...' : 'Identificar Região'}
+                  </button>
+                  {toolResult && (
+                     <div className="mt-4 bg-brand-gray-50 rounded-xl p-4 border border-brand-gray-200">
+                        <p className="text-xl font-bold text-brand-gray-900 mb-1">{toolResult.region}</p>
+                        <p className="text-xs text-brand-gray-500 italic">Via {toolResult.method}</p>
+                     </div>
+                  )}
+              </div>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default BaseClientesPage;
