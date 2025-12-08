@@ -11,7 +11,6 @@ import MapaGestaoPage from './pages/MapaGestaoPage';
 import PricingPage from './pages/PricingPage';
 import ConfigTaxasPage from './pages/ConfigTaxasPage';
 import CadastroPage from './pages/CadastroPage';
-import ResultadosPage from './pages/ResultadosPage'; // Imports Demandas Page
 import HelpPage from './pages/HelpPage';
 import { Logo } from './components/Logo';
 import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw, BadgePercent } from 'lucide-react';
@@ -194,10 +193,6 @@ const App: React.FC = () => {
 
         {(currentPage === Page.CADASTRO) && (
             <CadastroPage />
-        )}
-
-        {(currentPage === Page.DEMANDAS) && (
-            <ResultadosPage />
         )}
 
         {(currentPage === Page.AJUDA) && (

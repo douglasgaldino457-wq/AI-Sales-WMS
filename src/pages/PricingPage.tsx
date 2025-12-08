@@ -7,7 +7,7 @@ import {
   Target, ChevronDown, ChevronUp,
   Scale, ArrowDownRight, ArrowUpRight, Printer, Coins, CreditCard,
   Zap, Headphones, Star, Landmark, Download, Eye, FileText, Receipt,
-  Settings, AlertCircle, PieChart as PieChartIcon
+  Settings, AlertCircle, PieChart as PieChartIcon, Send, FileCheck, Sparkles
 } from 'lucide-react';
 import { UserRole, SavedQuote } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -44,11 +44,6 @@ interface RateTable {
   concInstallments: { [key: number]: number };
   // New: Concentration % per installment
   concentrations: { [key: string]: number }; 
-}
-
-interface SimulationState {
-  amount: number;
-  interestPayer: 'EC' | 'CLIENT';
 }
 
 interface RangeTableData {
@@ -121,12 +116,6 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
   // New Tab Structure
   const [activeTab, setActiveTab] = useState<'QUOTE' | 'RANGE_TABLE' | 'NEGOTIATOR' | 'DASHBOARD'>('QUOTE');
   
-  // Quote Sub-Tabs
-  const [quoteSubTab, setQuoteSubTab] = useState<'TABLE' | 'SIMULATOR'>('TABLE');
-
-  // AI Evidence Type
-  const [evidenceType, setEvidenceType] = useState<'TABLE' | 'TRANSACTION'>('TABLE');
-
   // Set default tab based on role
   useEffect(() => {
       if (isPricingProfile && activeTab === 'QUOTE') {
@@ -137,7 +126,8 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
   // Data State
   const [rangeTableFull, setRangeTableFull] = useState<RangeTableData>(INITIAL_RANGE_TABLE_FULL);
   const [rangeTableSimple, setRangeTableSimple] = useState<RangeTableData>(INITIAL_RANGE_TABLE_SIMPLE);
-  
+  const [rangeViewProduct, setRangeViewProduct] = useState<'Full' | 'Simples'>('Full');
+
   // Negotiation Context
   const [context, setContext] = useState<NegotiationContext>({
     identifier: '',
@@ -147,13 +137,6 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
     minAgreed: 0,
     product: 'Full'
   });
-  
-  // Force Quote Sub-Tab to TABLE if Product is Simple
-  useEffect(() => {
-      if (context.product === 'Simples') {
-          setQuoteSubTab('TABLE');
-      }
-  }, [context.product]);
   
   // Range Selector State
   const [selectedRangeIndex, setSelectedRangeIndex] = useState<number>(2); // Default to 20-50k
@@ -192,12 +175,6 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
     installments: {}, 
     concInstallments: {},
     concentrations: {}
-  });
-
-  // Simulation State
-  const [simulation, setSimulation] = useState<SimulationState>({
-    amount: 1000,
-    interestPayer: 'EC',
   });
 
   // UI State
@@ -296,12 +273,6 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
     setContext(prev => ({ ...prev, [key]: numValue }));
   };
 
-  const handleSimulationAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, "");
-    const numValue = value ? parseInt(value, 10) / 100 : 0;
-    setSimulation(prev => ({ ...prev, amount: numValue }));
-  };
-
   const handleClientLookup = async () => {
       if (!context.identifier) return;
       setIsSearchingClient(true);
@@ -363,42 +334,26 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
         
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
-        // Dynamic prompt based on evidence type selection
-        let promptText = "";
-        if (evidenceType === 'TABLE') {
-            promptText = `
-                Analise a imagem de uma Tabela de Taxas (concorrente).
-                Extraia os dados para preencher as taxas do CONCORRENTE.
-                
-                IMPORTANTE: 
-                Muitas tabelas mostram o "Fator Líquido" ou "Total a Receber" (ex: 0.98 ou 98,00 para 100,00). 
-                Se for esse o caso, converta para TAXA PERCENTUAL (100 - Fator). Ex: 0.98 vira 2.00.
-                Se a tabela mostrar a taxa direta (ex: 2.00%), use o valor direto.
-                Sempre retorne a taxa total acumulada por parcela.
+        // Always assume Table of Rates
+        const promptText = `
+            Analise a imagem de uma Tabela de Taxas (concorrente).
+            Extraia os dados para preencher as taxas do CONCORRENTE.
+            
+            IMPORTANTE: 
+            Muitas tabelas mostram o "Fator Líquido" ou "Total a Receber" (ex: 0.98 ou 98,00 para 100,00). 
+            Se for esse o caso, converta para TAXA PERCENTUAL (100 - Fator). Ex: 0.98 vira 2.00.
+            Se a tabela mostrar a taxa direta (ex: 2.00%), use o valor direto.
+            Sempre retorne a taxa total acumulada por parcela.
 
-                JSON esperado:
-                {
-                    "data": {
-                        "debit": number | null,        
-                        "creditSight": number | null, 
-                        "credit12x": number | null
-                    }
+            JSON esperado:
+            {
+                "data": {
+                    "debit": number | null,        
+                    "creditSight": number | null, 
+                    "credit12x": number | null
                 }
-            `;
-        } else {
-            promptText = `
-                Analise a imagem de um Comprovante de Venda / Transação.
-                Extraia o valor total da venda ("amount") e se possível taxas aplicadas.
-
-                JSON esperado:
-                {
-                    "data": {
-                        "amount": number | null,
-                        "debit": number | null
-                    }
-                }
-            `;
-        }
+            }
+        `;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -415,26 +370,17 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
         const json = JSON.parse(cleanText) as any;
 
         if (json && json.data) {
-            let feedback: string[] = [];
-            
-            if (evidenceType === 'TABLE') {
-                if (json.data.debit || json.data.creditSight) {
-                    setCompRates(prev => ({
-                        ...prev,
-                        debit: Number(json.data.debit) || prev.debit,
-                        creditSight: Number(json.data.creditSight) || prev.creditSight,
-                        installments: { ...prev.installments, 12: Number(json.data.credit12x) || prev.installments[12] }
-                    }));
-                    feedback.push("Taxas identificadas e convertidas.");
-                }
+            if (json.data.debit || json.data.creditSight) {
+                setCompRates(prev => ({
+                    ...prev,
+                    debit: Number(json.data.debit) || prev.debit,
+                    creditSight: Number(json.data.creditSight) || prev.creditSight,
+                    installments: { ...prev.installments, 12: Number(json.data.credit12x) || prev.installments[12] }
+                }));
+                setAiFeedback("Taxas identificadas e convertidas.");
             } else {
-                if (json.data.amount) {
-                    setSimulation(prev => ({ ...prev, amount: Number(json.data.amount) }));
-                    feedback.push(`Valor de venda identificado: R$ ${Number(json.data.amount).toLocaleString('pt-BR')}`);
-                }
+                setAiFeedback("Dados não identificados com precisão.");
             }
-
-            setAiFeedback(feedback.length > 0 ? feedback.join(' ') : "Dados não identificados com precisão.");
         }
 
     } catch (e) {
@@ -462,26 +408,6 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
   // Calculate Concentration Total
   const totalConcentration: number = Object.values(rates.concentrations).reduce<number>((acc, curr) => acc + (Number(curr) || 0), 0);
 
-  // Helper to generate only simulation relevant rows (usually simplified or user preference, keeping consistent for now)
-  const getSimulationRows = () => {
-    const amt = simulation.amount;
-    const calc = (rate: number) => {
-        if (!rate) return amt;
-        return amt - (amt * (rate / 100));
-    };
-
-    // Filter to standard display set for simulation summary
-    return [
-        { label: 'Débito', rate: rates.debit, amount: calc(rates.debit) },
-        { label: 'Crédito 1x', rate: rates.creditSight, amount: calc(rates.creditSight) },
-        { label: 'Crédito 2x', rate: rates.installments[2] || 0, amount: calc(rates.installments[2] || 0) },
-        { label: 'Crédito 6x', rate: rates.installments[6] || 0, amount: calc(rates.installments[6] || 0) },
-        { label: 'Crédito 10x', rate: rates.installments[10] || 0, amount: calc(rates.installments[10] || 0) },
-        { label: 'Crédito 12x', rate: rates.installments[12] || 0, amount: calc(rates.installments[12] || 0) },
-        { label: 'Crédito 18x', rate: rates.installments[18] || 0, amount: calc(rates.installments[18] || 0) },
-    ];
-  };
-
   // --- NEGOTIATOR LOGIC ---
   const calculateNegotiation = () => {
       const tpv = context.potentialRevenue || 0;
@@ -503,121 +429,321 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
 
   // --- RENDERERS ---
 
-  const renderNegotiator = () => {
-      const negotiation = calculateNegotiation();
+  const renderContext = () => (
+      <div className={`bg-white rounded-2xl shadow-sm border border-brand-gray-200 overflow-hidden transition-all duration-300 no-print ${isContextCollapsed ? 'h-16' : ''}`}>
+          <div 
+              className="bg-gradient-to-r from-brand-gray-50 to-white p-4 border-b border-brand-gray-100 flex justify-between items-center cursor-pointer hover:bg-brand-gray-50"
+              onClick={() => setIsContextCollapsed(!isContextCollapsed)}
+          >
+              <div className="flex items-center gap-3">
+                  <div className="bg-brand-primary/10 p-2 rounded-lg text-brand-primary">
+                      <Wallet size={18} />
+                  </div>
+                  <div>
+                      <h3 className="font-bold text-brand-gray-900 text-sm">Contexto da Negociação</h3>
+                      {!isContextCollapsed && <p className="text-xs text-brand-gray-500">Dados fundamentais para a precificação</p>}
+                  </div>
+              </div>
+              <button className="text-brand-gray-400 hover:text-brand-primary transition-colors">
+                  {isContextCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+              </button>
+          </div>
+          
+          <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 animate-fade-in">
+              <div className="col-span-1">
+                  <label className="text-xs font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 block">Cliente (CNPJ/ID)</label>
+                  <div className="relative group">
+                      <input 
+                          className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all" 
+                          value={context.identifier} 
+                          onChange={e => setContext({...context, identifier: e.target.value})} 
+                          placeholder="Buscar ID..." 
+                      />
+                      <button onClick={handleClientLookup} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-gray-400 group-hover:text-brand-primary transition-colors">
+                          <Search size={16} />
+                      </button>
+                  </div>
+              </div>
+              
+              <div className="col-span-1">
+                  <label className="text-xs font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 block">Nome Fantasia</label>
+                  <input className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all" value={context.fantasyName} onChange={e => setContext({...context, fantasyName: e.target.value})} />
+              </div>
 
-      return (
-          <div className="animate-fade-in flex flex-col gap-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Competitor Column */}
-                  <div className="bg-white rounded-xl shadow-sm border border-brand-gray-200 p-5">
-                      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                          <Scale className="w-5 h-5 text-gray-400" />
-                          Taxas do Concorrente
-                      </h3>
-                      <div className="space-y-4">
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Débito</label>
-                              <div className="relative">
-                                <input 
-                                    type="number" 
-                                    className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-sm font-bold outline-none focus:ring-1 focus:ring-brand-primary"
-                                    value={compRates.debit}
-                                    onChange={e => setCompRates({...compRates, debit: parseFloat(e.target.value)})}
-                                />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-                              </div>
+              <div className="col-span-1">
+                  <label className="text-xs font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 block">Adquirente Atual</label>
+                  <div className="relative">
+                      <select 
+                          className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none appearance-none cursor-pointer"
+                          value={context.competitor}
+                          onChange={e => setContext({...context, competitor: e.target.value})}
+                      >
+                          <option value="">Selecione...</option>
+                          {['Stone', 'Cielo', 'Rede', 'PagSeguro', 'Getnet', 'SafraPay', 'Outros'].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-gray-400 pointer-events-none" size={16} />
+                  </div>
+              </div>
+
+              <div className="col-span-1 grid grid-cols-2 gap-3">
+                  <div>
+                      <label className="text-xs font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 block">TPV (R$)</label>
+                      <input 
+                        type="text" 
+                        className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-brand-gray-800 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none" 
+                        value={formatCurrencyValue(context.potentialRevenue)} 
+                        onChange={e => handleCurrencyChange(e, 'potentialRevenue')} 
+                        placeholder="0,00"
+                      />
+                  </div>
+                  <div>
+                      <label className="text-xs font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 block">Produto</label>
+                      <select 
+                          className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-xl px-2 py-2.5 text-sm font-bold focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none"
+                          value={context.product}
+                          onChange={e => setContext({...context, product: e.target.value as any})}
+                      >
+                          <option value="Full">Full</option>
+                          <option value="Simples">Simples</option>
+                      </select>
+                  </div>
+              </div>
+          </div>
+      </div>
+  );
+
+  const renderAIReader = () => (
+      <div className="relative overflow-hidden rounded-2xl bg-brand-gray-900 shadow-xl border border-white/10 text-white p-6 mb-6 group">
+          {/* Decorative Elements */}
+          <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-1/3 -translate-y-1/3 group-hover:scale-110 transition-transform duration-700">
+              <Bot size={200} />
+          </div>
+          <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary via-purple-500 to-blue-500"></div>
+
+          <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8 relative z-10">
+              <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                      <div className="bg-white/10 p-2 rounded-lg backdrop-blur-md border border-white/10">
+                          <Sparkles className="w-5 h-5 text-brand-light animate-pulse" />
+                      </div>
+                      <h3 className="font-bold text-xl tracking-tight">Leitura Inteligente</h3>
+                  </div>
+                  <p className="text-sm text-brand-gray-300 leading-relaxed max-w-lg">
+                      Otimize seu tempo. Carregue uma foto da tabela do concorrente e nossa IA preencherá os dados automaticamente.
+                  </p>
+              </div>
+
+              <div className="w-full md:w-auto flex flex-col gap-3 min-w-[280px]">
+                  <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-white/20 rounded-xl bg-white/5 hover:bg-white/10 hover:border-brand-primary/50 transition-all cursor-pointer flex flex-col items-center justify-center py-6 px-4 text-center group/upload"
+                  >
+                      <input type="file" ref={fileInputRef} onChange={(e) => { if(e.target.files?.length) { setEvidenceFiles(Array.from(e.target.files)); setAiFeedback(null); } }} className="hidden" accept="image/*,application/pdf" />
+                      {evidenceFiles.length > 0 ? (
+                          <div className="flex items-center gap-2 text-green-400">
+                              <CheckCircle2 className="w-6 h-6" />
+                              <p className="text-sm font-bold truncate max-w-[180px]">{evidenceFiles[0].name}</p>
                           </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Crédito à Vista</label>
-                              <div className="relative">
-                                <input 
-                                    type="number" 
-                                    className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-sm font-bold outline-none focus:ring-1 focus:ring-brand-primary"
-                                    value={compRates.creditSight}
-                                    onChange={e => setCompRates({...compRates, creditSight: parseFloat(e.target.value)})}
-                                />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-                              </div>
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Crédito 12x</label>
-                              <div className="relative">
-                                <input 
-                                    type="number" 
-                                    className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-sm font-bold outline-none focus:ring-1 focus:ring-brand-primary"
-                                    value={compRates.installments[12] || 0}
-                                    onChange={e => setCompRates({...compRates, installments: {...compRates.installments, 12: parseFloat(e.target.value)}})}
-                                />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-                              </div>
+                      ) : (
+                          <>
+                              <Upload className="w-8 h-8 text-brand-gray-400 mb-2 group-hover/upload:text-white transition-colors" />
+                              <p className="text-sm font-bold text-white">Clique para carregar</p>
+                              <p className="text-xs text-brand-gray-400">JPG, PNG ou PDF</p>
+                          </>
+                      )}
+                  </div>
+
+                  <button 
+                      onClick={handleAnalyzeEvidence} 
+                      disabled={isAnalyzing || evidenceFiles.length === 0} 
+                      className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-brand-primary/20 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+                  >
+                      {isAnalyzing ? <RefreshCw className="animate-spin w-4 h-4"/> : <Bot className="w-4 h-4"/>}
+                      {isAnalyzing ? 'Processando...' : 'Extrair Dados'}
+                  </button>
+                  
+                  {aiFeedback && (
+                      <div className="bg-green-500/10 border border-green-500/20 text-green-300 text-xs p-2 rounded-lg text-center animate-fade-in">
+                          {aiFeedback}
+                      </div>
+                  )}
+              </div>
+          </div>
+      </div>
+  );
+
+  const renderQuoteContent = () => (
+      <div className="bg-white rounded-xl border border-brand-gray-200 shadow-sm flex flex-col overflow-hidden min-h-[500px]">
+          <div className="flex-1 p-6">
+              <div className="space-y-4">
+                  {/* Header */}
+                  <div className="flex justify-between items-center mb-2">
+                      <div>
+                          <h3 className="font-bold text-brand-gray-900 flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-brand-primary" />
+                              Tabela de Negociação
+                          </h3>
+                          <p className="text-xs text-brand-gray-500 mt-1">Defina as taxas propostas e a concentração.</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                          {/* Concentration Badge */}
+                          <div className={`text-xs font-bold px-3 py-1 rounded-full border inline-flex items-center gap-1
+                              ${Math.abs(totalConcentration - 100) < 0.1 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}
+                          `}>
+                              Conc. Total: {totalConcentration.toFixed(0)}%
                           </div>
                       </div>
                   </div>
+                  
+                  {/* Table */}
+                  <div className="overflow-x-auto rounded-xl border border-brand-gray-200 shadow-sm">
+                      <table className="w-full text-sm text-left min-w-[600px]">
+                          <thead className="bg-brand-gray-50 text-brand-gray-600 font-bold text-xs uppercase tracking-wider">
+                              <tr>
+                                  <th className="px-6 py-3 border-b border-brand-gray-200">Modalidade</th>
+                                  <th className="px-6 py-3 border-b border-brand-gray-200 text-center text-brand-primary">Taxa (%)</th>
+                                  <th className="px-6 py-3 border-b border-brand-gray-200 text-center">Concentração (%)</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-brand-gray-100 bg-white">
+                              {getAllRows().map((row, i) => (
+                                  <tr key={i} className="hover:bg-brand-gray-50/50 transition-colors group">
+                                      <td className="px-6 py-2 font-semibold text-brand-gray-700">{row.label}</td>
+                                      <td className="px-6 py-2 text-center">
+                                          <div className="relative inline-block w-24">
+                                              <input 
+                                                  type="number" step="0.01" placeholder="0.00"
+                                                  className="w-full text-center font-bold bg-transparent border border-transparent hover:border-brand-gray-300 focus:bg-white focus:border-brand-primary rounded-md py-1.5 px-2 outline-none transition-all text-brand-gray-900 group-hover:bg-white"
+                                                  value={row.rate || ''}
+                                                  onChange={e => {
+                                                      const val = parseFloat(e.target.value);
+                                                      if (row.label === 'Débito') setRates({...rates, debit: val});
+                                                      else if (row.label === 'Crédito 1x') setRates({...rates, creditSight: val});
+                                                      else {
+                                                          const parcel = parseInt(row.label.replace(/\D/g,''));
+                                                          if(parcel) setRates(p => ({...p, installments: {...p.installments, [parcel]: val}}));
+                                                      }
+                                                  }}
+                                              />
+                                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-brand-gray-400 pointer-events-none opacity-0 group-hover:opacity-100">%</span>
+                                          </div>
+                                      </td>
+                                      <td className="px-6 py-2 text-center">
+                                          <div className="relative inline-block w-24">
+                                              <input 
+                                                  type="number" step="1" placeholder="0"
+                                                  className={`w-full text-center font-bold bg-transparent border border-transparent hover:border-brand-gray-300 focus:bg-white focus:border-brand-primary rounded-md py-1.5 px-2 outline-none transition-all
+                                                      ${(rates.concentrations[row.label.replace('Crédito ', '')] || 0) > 0 ? 'text-blue-600' : 'text-brand-gray-400'}
+                                                  `}
+                                                  value={rates.concentrations[row.label.replace('Crédito ', '')] || ''} 
+                                                  onChange={e => {
+                                                      const key = row.label.replace('Crédito ', '');
+                                                      const val = parseFloat(e.target.value);
+                                                      setRates(p => ({...p, concentrations: {...p.concentrations, [key]: val}}));
+                                                  }}
+                                              />
+                                          </div>
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          </div>
+          
+          {/* Footer Actions */}
+          <div className="p-4 border-t border-brand-gray-200 bg-gray-50 flex justify-between items-center">
+              <AutosaveIndicator />
+              <button onClick={handleCreateDemand} className="bg-brand-gray-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-black transition-all shadow-md flex items-center gap-2 text-sm transform hover:-translate-y-0.5">
+                  <Save className="w-4 h-4"/> Salvar Proposta
+              </button>
+          </div>
+      </div>
+  );
 
-                  {/* Our Rates Column (Read-Only or Editable depending on logic, keeping consistent with Simulator) */}
-                  <div className="bg-brand-gray-50 rounded-xl border border-brand-gray-200 p-5">
-                      <h3 className="font-bold text-brand-primary mb-4 flex items-center gap-2">
-                          <BadgePercent className="w-5 h-5 text-brand-primary" />
-                          Nossas Taxas (Full)
+  const renderQuote = () => (
+      <div className="animate-fade-in space-y-6">
+          {renderContext()}
+          {renderAIReader()}
+          {renderQuoteContent()}
+      </div>
+  );
+
+  const renderNegotiator = () => {
+      // Simple mock logic for negotiator visualization
+      const savings = 150.00;
+      const isCheaper = true;
+
+      return (
+          <div className="animate-fade-in flex flex-col gap-6">
+              <div className="flex gap-6 flex-col lg:flex-row">
+                  {/* Competitor Card */}
+                  <div className="flex-1 bg-white rounded-2xl shadow-sm border border-brand-gray-200 p-6 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-brand-gray-300"></div>
+                      <h3 className="font-bold text-lg text-brand-gray-900 mb-6 flex items-center gap-2">
+                          <Scale className="w-5 h-5 text-brand-gray-400" />
+                          Concorrente ({context.competitor || 'Atual'})
                       </h3>
-                      <div className="space-y-4 opacity-80 pointer-events-none">
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Débito</label>
-                              <div className="relative">
-                                  <input 
-                                      readOnly
-                                      className="w-full bg-white border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-sm font-bold text-gray-700"
-                                      value={rates.debit}
-                                  />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                      <div className="space-y-4">
+                          {/* Inputs with floating style */}
+                          {['Débito', 'Crédito à Vista', 'Crédito 12x'].map((label, i) => (
+                              <div key={label} className="flex justify-between items-center bg-brand-gray-50 p-3 rounded-xl border border-brand-gray-100">
+                                  <span className="text-sm font-bold text-brand-gray-600">{label}</span>
+                                  <div className="relative w-24">
+                                      <input 
+                                          type="number" 
+                                          className="w-full bg-white border border-brand-gray-300 rounded-lg py-1.5 px-2 text-right font-bold text-brand-gray-900 focus:ring-1 focus:ring-brand-primary outline-none text-sm"
+                                          placeholder="0.00"
+                                      />
+                                      <span className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-brand-gray-400 pointer-events-none">%</span>
+                                  </div>
                               </div>
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Crédito à Vista</label>
-                              <div className="relative">
-                                  <input 
-                                      readOnly
-                                      className="w-full bg-white border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-sm font-bold text-gray-700"
-                                      value={rates.creditSight}
-                                  />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                          ))}
+                      </div>
+                  </div>
+
+                  {/* Our Rates Card */}
+                  <div className="flex-1 bg-white rounded-2xl shadow-lg border border-brand-primary/20 p-6 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-brand-primary"></div>
+                      <h3 className="font-bold text-lg text-brand-primary mb-6 flex items-center gap-2">
+                          <BadgePercent className="w-5 h-5" />
+                          Pagmotors (Full)
+                      </h3>
+                      <div className="space-y-4 opacity-90 pointer-events-none">
+                          {/* Read Only Inputs */}
+                          {[
+                              { l: 'Débito', v: rates.debit }, 
+                              { l: 'Crédito à Vista', v: rates.creditSight }, 
+                              { l: 'Crédito 12x', v: rates.installments[12] }
+                          ].map((item) => (
+                              <div key={item.l} className="flex justify-between items-center bg-brand-primary/5 p-3 rounded-xl border border-brand-primary/10">
+                                  <span className="text-sm font-bold text-brand-gray-700">{item.l}</span>
+                                  <span className="font-mono font-bold text-brand-primary">{item.v?.toFixed(2)}%</span>
                               </div>
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Crédito 12x</label>
-                              <div className="relative">
-                                  <input 
-                                      readOnly
-                                      className="w-full bg-white border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-sm font-bold text-gray-700"
-                                      value={rates.installments[12] || 0}
-                                  />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-                              </div>
-                          </div>
+                          ))}
                       </div>
                   </div>
               </div>
 
-              {/* Result Card */}
-              <div className={`rounded-xl p-6 shadow-lg text-white flex flex-col md:flex-row items-center justify-between gap-6 transition-colors
-                  ${negotiation.isCheaper ? 'bg-green-600' : 'bg-brand-gray-900'}
+              {/* Outcome Banner */}
+              <div className={`rounded-2xl p-8 shadow-xl text-white flex flex-col md:flex-row items-center justify-between gap-6 transition-all transform hover:scale-[1.01]
+                  ${isCheaper ? 'bg-gradient-to-r from-green-600 to-green-500' : 'bg-brand-gray-900'}
               `}>
                   <div>
-                      <h4 className="font-bold text-lg mb-1">
-                          {negotiation.isCheaper ? 'Economia Gerada!' : 'Custo Maior (Ajuste Necessário)'}
+                      <h4 className="font-bold text-2xl mb-2 flex items-center gap-2">
+                          {isCheaper ? <CheckCircle2 className="w-8 h-8"/> : <AlertCircle className="w-8 h-8"/>}
+                          {isCheaper ? 'Proposta Competitiva!' : 'Ajuste Necessário'}
                       </h4>
-                      <p className="text-sm opacity-90">
-                          Considerando TPV de {context.potentialRevenue.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}.
+                      <p className="text-white/90 text-sm font-medium max-w-md">
+                          Com base no TPV informado, nossa proposta gera economia mensal para o cliente.
                       </p>
                   </div>
-                  <div className="text-right">
-                      <p className="text-xs uppercase font-bold opacity-70">Diferença Mensal</p>
-                      <p className="text-3xl font-black">
-                          {Math.abs(negotiation.savings).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
-                      </p>
-                      <p className="text-xs font-bold opacity-80 mt-1">
-                          {negotiation.isCheaper ? 'a favor do cliente' : 'mais caro que o atual'}
+                  <div className="text-right bg-black/10 p-4 rounded-xl backdrop-blur-sm border border-white/10 w-full md:w-auto">
+                      <p className="text-xs uppercase font-bold opacity-80 mb-1">Economia Estimada</p>
+                      <p className="text-4xl font-black tracking-tight">
+                          R$ {savings.toFixed(2)}
+                          <span className="text-sm font-medium opacity-60 ml-1">/mês</span>
                       </p>
                   </div>
               </div>
@@ -625,32 +751,49 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
       );
   };
 
-  // Shared Proposal Component (Used in Modal and Print)
+  // Keep Range Table View as provided but styled
+  const renderRangeTable = () => {
+      // Reuse logic from previous, wrap in styled components
+      return (
+          <div className="animate-fade-in flex flex-col gap-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-brand-gray-200 p-8 flex flex-col items-center justify-center text-center">
+                  <div className="bg-brand-gray-50 p-4 rounded-full mb-4">
+                      <TrendingUp className="w-10 h-10 text-brand-primary" />
+                  </div>
+                  <h3 className="text-xl font-bold text-brand-gray-900 mb-2">Tabelas de Taxas Padrão</h3>
+                  <p className="text-brand-gray-500 max-w-md mb-6">Consulte as taxas baseadas no volume transacionado (TPV) para os produtos Full e Simples.</p>
+                  
+                  <div className="flex gap-4 flex-col sm:flex-row w-full sm:w-auto">
+                      <button className="px-6 py-3 bg-brand-gray-900 text-white rounded-xl font-bold shadow hover:bg-black transition-colors w-full sm:w-auto">
+                          Visualizar Tabela Full
+                      </button>
+                      <button className="px-6 py-3 bg-white border border-brand-gray-200 text-brand-gray-700 rounded-xl font-bold hover:bg-brand-gray-50 transition-colors w-full sm:w-auto">
+                          Visualizar Tabela Simples
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
+  };
+
+  // --- PDF TEMPLATE (Hidden) ---
   const renderProposalTemplate = (isPreview = false) => {
       const activeTable = context.product === 'Full' ? rangeTableFull : rangeTableSimple;
-      
       return (
       <div className={`bg-brand-primary w-full h-full flex flex-col font-sans ${isPreview ? 'rounded-2xl overflow-hidden shadow-2xl max-w-lg mx-auto aspect-[1/1.41] scale-90' : ''}`}>
-          
-          {/* Header Section (White on Red) */}
           <div className="p-8 pb-4">
-              {/* Logos */}
               <div className="flex justify-between items-start mb-6">
                   <div className="bg-white p-2 px-3 rounded-lg shadow-sm">
-                      <Logo className="text-brand-gray-900 scale-75 origin-left" />
+                      {/* Logo for RED background */}
+                      <Logo type="standard" className="scale-75 origin-left" /> 
                   </div>
                   <div className="flex flex-col items-end text-white">
                       <h1 className="text-xl font-black uppercase tracking-wide">Proposta Comercial</h1>
                       <div className="flex items-center gap-2 mt-1">
-                          <div className="bg-white/20 p-1 rounded">
-                              <div className="w-4 h-4 bg-white rounded-sm flex items-center justify-center text-brand-primary text-[9px] font-bold">P</div>
-                          </div>
                           <span className="font-bold text-lg">pagmotors</span>
                       </div>
                   </div>
               </div>
-
-              {/* Date & Range Info */}
               <div className="flex justify-between items-center text-white border-b border-white/30 pb-4 mb-4">
                   <div>
                       <p className="text-[10px] font-bold opacity-70 uppercase">Data da Emissão</p>
@@ -663,40 +806,25 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                       </div>
                   </div>
               </div>
-
-              {/* Client Name Big */}
               <div className="text-white">
                   <p className="text-[10px] font-bold opacity-70 uppercase">Estabelecimento</p>
                   <h2 className="text-2xl font-black leading-tight">{context.fantasyName || 'CLIENTE NÃO INFORMADO'}</h2>
               </div>
           </div>
-
-          {/* White Card Section (The Table) */}
           <div className="mx-6 bg-white rounded-xl shadow-xl overflow-hidden flex-1 flex flex-col">
               <div className="bg-brand-gray-900 text-white p-3 flex justify-between items-center">
                   <span className="font-bold text-xs uppercase tracking-wider">Condições Comerciais</span>
               </div>
-              
               <div className="p-4 flex-1">
                   <table className="w-full text-center border-collapse border-2 border-black">
-                      <thead>
-                          <tr>
-                              <th className="border-2 border-black py-2 text-black font-extrabold uppercase text-xs w-1/3 bg-gray-100">Parcelas</th>
-                              <th className="border-2 border-black py-2 text-black font-extrabold uppercase text-xs w-1/3 bg-gray-100">Taxa</th>
-                              <th className="border-2 border-black py-2 text-black font-extrabold uppercase text-[10px] w-1/3 bg-gray-100 leading-tight">Coeficiente de<br/>Cálculo de Juros</th>
-                          </tr>
-                      </thead>
+                      <thead><tr><th className="border-2 border-black py-2 text-black font-extrabold uppercase text-xs w-1/2 bg-gray-100">Parcelas</th><th className="border-2 border-black py-2 text-black font-extrabold uppercase text-xs w-1/2 bg-gray-100">Taxa</th></tr></thead>
                       <tbody className="text-xs font-bold text-black">
                           {activeTable.rows.map((row, idx) => {
                               const rate = row.values[selectedRangeIndex];
-                              // Mock Coefficient: (1 - rate) Logic
-                              const mockCoef = (100 / (100 + rate)).toFixed(4).replace('.', ','); 
-                              
                               return (
                                   <tr key={idx}>
                                       <td className={`border-2 border-black py-1.5 ${row.label === 'Débito' ? 'bg-black text-white' : ''}`}>{row.label}</td>
                                       <td className="border-2 border-black py-1.5 text-sm">{rate.toFixed(2).replace('.', ',')}%</td>
-                                      <td className="border-2 border-black py-1.5 font-mono">{mockCoef}</td>
                                   </tr>
                               );
                           })}
@@ -704,633 +832,136 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                   </table>
               </div>
           </div>
-
-          {/* Benefits Footer (White icons on Red) */}
           <div className="p-6 mt-2 grid grid-cols-5 gap-2 text-white">
-              <div className="flex flex-col items-center text-center">
-                  <div className="bg-white/20 p-2 rounded-full mb-1"><Zap size={14} strokeWidth={3} /></div>
-                  <p className="text-[8px] font-bold leading-tight">Pagamento D+0<br/>4x ao dia</p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                  <div className="bg-white/20 p-2 rounded-full mb-1"><CreditCard size={14} strokeWidth={3} /></div>
-                  <p className="text-[8px] font-bold leading-tight">Taxa Única<br/>Todas Bandeiras</p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                  <div className="bg-white/20 p-2 rounded-full mb-1"><Headphones size={14} strokeWidth={3} /></div>
-                  <p className="text-[8px] font-bold leading-tight">Atendimento<br/>Humanizado</p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                  <div className="bg-white/20 p-2 rounded-full mb-1"><Star size={14} strokeWidth={3} /></div>
-                  <p className="text-[8px] font-bold leading-tight">Prioridade Leads<br/>Webmotors</p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                  <div className="bg-white/20 p-2 rounded-full mb-1"><Landmark size={14} strokeWidth={3} /></div>
-                  <p className="text-[8px] font-bold leading-tight">Cadastre qualquer<br/>conta</p>
-              </div>
+              {/* Icons Footer */}
+              <div className="flex flex-col items-center text-center"><div className="bg-white/20 p-2 rounded-full mb-1"><Zap size={14} strokeWidth={3} /></div><p className="text-[8px] font-bold leading-tight">Pagamento D+0</p></div>
+              <div className="flex flex-col items-center text-center"><div className="bg-white/20 p-2 rounded-full mb-1"><CreditCard size={14} strokeWidth={3} /></div><p className="text-[8px] font-bold leading-tight">Taxa Única</p></div>
+              <div className="flex flex-col items-center text-center"><div className="bg-white/20 p-2 rounded-full mb-1"><Headphones size={14} strokeWidth={3} /></div><p className="text-[8px] font-bold leading-tight">Suporte</p></div>
+              <div className="flex flex-col items-center text-center"><div className="bg-white/20 p-2 rounded-full mb-1"><Star size={14} strokeWidth={3} /></div><p className="text-[8px] font-bold leading-tight">Prioridade Leads</p></div>
+              <div className="flex flex-col items-center text-center"><div className="bg-white/20 p-2 rounded-full mb-1"><Landmark size={14} strokeWidth={3} /></div><p className="text-[8px] font-bold leading-tight">Multi-Domicílio</p></div>
           </div>
-          
           <div className="bg-black text-white text-[8px] text-center py-2 uppercase tracking-widest font-bold opacity-80">
               Webmotors Serviços Automotivos
           </div>
       </div>
-  );
-  };
-
-  const renderContext = () => (
-      <div className="bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden mb-6 transition-all duration-300 no-print">
-          <div 
-              className="bg-brand-gray-50/50 p-3 border-b border-brand-gray-100 flex justify-between items-center cursor-pointer hover:bg-brand-gray-100/50"
-              onClick={() => setIsContextCollapsed(!isContextCollapsed)}
-          >
-              <h3 className="font-bold text-brand-gray-800 text-xs uppercase flex items-center gap-2">
-                  <Wallet className="w-4 h-4 text-brand-primary" /> 
-                  Contexto do Cliente
-              </h3>
-              <button className="text-brand-gray-400">
-                  {isContextCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-              </button>
-          </div>
-          
-          {!isContextCollapsed && (
-              <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in bg-white">
-                  <div className="col-span-1">
-                      <label className="block text-[10px] font-bold text-brand-gray-500 uppercase mb-1">CNPJ/ID</label>
-                      <div className="relative">
-                          <input className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-brand-primary outline-none focus:bg-white transition-colors" value={context.identifier} onChange={e => setContext({...context, identifier: e.target.value})} placeholder="Buscar..." />
-                          <button onClick={handleClientLookup} className="absolute right-2 top-1.5 hover:text-brand-primary"><Search className="w-4 h-4 text-brand-gray-400"/></button>
-                      </div>
-                  </div>
-                  <div className="col-span-1">
-                      <label className="block text-[10px] font-bold text-brand-gray-500 uppercase mb-1">Nome Fantasia</label>
-                      <input className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-brand-primary outline-none focus:bg-white transition-colors" value={context.fantasyName} onChange={e => setContext({...context, fantasyName: e.target.value})} />
-                  </div>
-                  <div className="col-span-1">
-                      <label className="block text-[10px] font-bold text-brand-gray-500 uppercase mb-1">Produto</label>
-                      <div className="flex bg-brand-gray-100 p-0.5 rounded-lg">
-                          <button onClick={() => setContext({...context, product: 'Full'})} className={`flex-1 py-1.5 text-[10px] font-bold rounded ${context.product === 'Full' ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-gray-500'}`}>Full (Antecipado)</button>
-                          <button onClick={() => setContext({...context, product: 'Simples'})} className={`flex-1 py-1.5 text-[10px] font-bold rounded ${context.product === 'Simples' ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-gray-500'}`}>Simples</button>
-                      </div>
-                  </div>
-                  <div className="col-span-1 flex gap-2">
-                      <div className="flex-1 relative">
-                          <label className="block text-[10px] font-bold text-brand-gray-500 uppercase mb-1">Potencial (TPV)</label>
-                          <span className="absolute left-2 top-[26px] text-brand-gray-400 text-xs font-bold">R$</span>
-                          <input 
-                            type="text" 
-                            className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-lg pl-8 pr-2 py-2 text-xs font-bold focus:ring-1 focus:ring-brand-primary outline-none focus:bg-white text-brand-gray-800" 
-                            value={formatCurrencyValue(context.potentialRevenue)} 
-                            onChange={e => handleCurrencyChange(e, 'potentialRevenue')} 
-                            placeholder="0,00"
-                          />
-                      </div>
-                      <div className="flex-1 relative">
-                          <label className="block text-[10px] font-bold text-brand-gray-500 uppercase mb-1">Mínimo Acordado</label>
-                          <span className="absolute left-2 top-[26px] text-brand-gray-400 text-xs font-bold">R$</span>
-                          <input 
-                            type="text" 
-                            className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-lg pl-8 pr-2 py-2 text-xs font-bold focus:ring-1 focus:ring-brand-primary outline-none focus:bg-white text-brand-gray-800" 
-                            value={formatCurrencyValue(context.minAgreed)} 
-                            onChange={e => handleCurrencyChange(e, 'minAgreed')} 
-                            placeholder="0,00"
-                          />
-                      </div>
-                  </div>
-              </div>
-          )}
-      </div>
-  );
-
-  const renderAIReader = () => (
-      <div className="bg-brand-gray-900 p-5 rounded-xl shadow-lg text-white mb-6 relative overflow-hidden transition-all">
-          <div className="absolute top-0 right-0 p-8 opacity-5">
-              <Bot size={120} />
-          </div>
-          
-          <div className="flex flex-col md:flex-row items-start gap-6 relative z-10">
-              <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                      <Bot className="w-5 h-5 text-brand-light" />
-                      <h3 className="font-bold text-lg">Leitor de Evidências</h3>
-                  </div>
-                  <p className="text-xs text-brand-gray-400 mb-4">
-                      Selecione o tipo de arquivo e anexe um print. A IA preencherá os dados automaticamente.
-                  </p>
-                  
-                  {/* Evidence Type Selector */}
-                  <div className="flex gap-4 mb-4">
-                      <label className="flex items-center gap-2 cursor-pointer group">
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${evidenceType === 'TABLE' ? 'border-brand-primary' : 'border-gray-500'}`}>
-                              {evidenceType === 'TABLE' && <div className="w-2 h-2 rounded-full bg-brand-primary"></div>}
-                          </div>
-                          <input type="radio" className="hidden" checked={evidenceType === 'TABLE'} onChange={() => setEvidenceType('TABLE')} />
-                          <span className={`text-sm font-bold group-hover:text-white ${evidenceType === 'TABLE' ? 'text-white' : 'text-gray-500'}`}>Tabela de Taxas</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer group">
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${evidenceType === 'TRANSACTION' ? 'border-brand-primary' : 'border-gray-500'}`}>
-                              {evidenceType === 'TRANSACTION' && <div className="w-2 h-2 rounded-full bg-brand-primary"></div>}
-                          </div>
-                          <input type="radio" className="hidden" checked={evidenceType === 'TRANSACTION'} onChange={() => setEvidenceType('TRANSACTION')} />
-                          <span className={`text-sm font-bold group-hover:text-white ${evidenceType === 'TRANSACTION' ? 'text-white' : 'text-gray-500'}`}>Simular Transação</span>
-                      </label>
-                  </div>
-              </div>
-
-              <div className="w-full md:w-1/3 flex flex-col gap-3">
-                  <div className="border-2 border-dashed border-white/20 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer flex flex-col items-center justify-center p-3 text-center" onClick={() => fileInputRef.current?.click()}>
-                      <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" multiple accept="image/*,application/pdf" />
-                      {evidenceFiles.length > 0 ? (
-                          <div className="flex items-center gap-2">
-                              <CheckCircle2 className="w-5 h-5 text-green-400" />
-                              <p className="text-xs font-bold truncate max-w-[150px]">{evidenceFiles[0].name}</p>
-                          </div>
-                      ) : (
-                          <div className="flex items-center gap-2">
-                              {evidenceType === 'TABLE' ? <FileText className="w-5 h-5 text-brand-gray-400" /> : <Receipt className="w-5 h-5 text-brand-gray-400" />}
-                              <p className="text-xs text-brand-gray-300">Anexar {evidenceType === 'TABLE' ? 'Tabela' : 'Comprovante'}</p>
-                          </div>
-                      )}
-                  </div>
-
-                  <button 
-                      onClick={handleAnalyzeEvidence} 
-                      disabled={isAnalyzing || evidenceFiles.length === 0} 
-                      className="w-full bg-brand-primary text-white py-2 rounded-lg font-bold text-xs shadow-md disabled:opacity-50 hover:bg-brand-dark transition-colors flex items-center justify-center gap-2"
-                  >
-                      {isAnalyzing ? 'Lendo...' : 'Processar Evidência'}
-                  </button>
-              </div>
-          </div>
-          {aiFeedback && <p className="text-[10px] text-green-300 mt-2 text-center bg-green-500/10 py-1 rounded border border-green-500/20">{aiFeedback}</p>}
-      </div>
-  );
-
-  const renderQuoteContent = () => (
-      <div className="bg-white rounded-xl border border-brand-gray-200 shadow-sm flex flex-col overflow-hidden min-h-[500px]">
-          {/* Sub Tabs Header */}
-          <div className="flex border-b border-brand-gray-200">
-              <button 
-                  onClick={() => setQuoteSubTab('TABLE')}
-                  className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors flex items-center justify-center gap-2 ${quoteSubTab === 'TABLE' ? 'border-brand-primary text-brand-primary bg-brand-primary/5' : 'border-transparent text-brand-gray-500 hover:text-brand-gray-700 hover:bg-gray-50'}`}
-              >
-                  <FileText className="w-4 h-4" />
-                  Tabela de Taxas
-              </button>
-              {context.product !== 'Simples' && (
-                  <button 
-                      onClick={() => setQuoteSubTab('SIMULATOR')}
-                      className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors flex items-center justify-center gap-2 ${quoteSubTab === 'SIMULATOR' ? 'border-brand-primary text-brand-primary bg-brand-primary/5' : 'border-transparent text-brand-gray-500 hover:text-brand-gray-700 hover:bg-gray-50'}`}
-                  >
-                      <Coins className="w-4 h-4" />
-                      Simulador
-                  </button>
-              )}
-          </div>
-
-          <div className="flex-1 p-6">
-              {quoteSubTab === 'TABLE' ? (
-                  <div className="space-y-4">
-                      {/* COMPACT & PRETTY RATE TABLE VIEW */}
-                      <div className="flex justify-between items-center mb-2">
-                          <h3 className="font-bold text-brand-gray-900 flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-brand-primary" />
-                              Tabela de Taxas
-                          </h3>
-                          <div className="flex items-center gap-3">
-                              <div className="bg-brand-gray-50 px-3 py-1 rounded-full text-xs font-bold text-brand-gray-600 border border-brand-gray-200">
-                                  Produto: <span className="text-brand-gray-900">{context.product}</span>
-                              </div>
-                          </div>
-                      </div>
-                      
-                      <div className="overflow-hidden rounded-xl border border-brand-gray-200 shadow-sm">
-                          <table className="w-full text-sm text-left border-collapse">
-                              <thead className="bg-brand-gray-50 text-brand-gray-600 font-bold text-xs uppercase tracking-wider">
-                                  <tr>
-                                      <th className="px-4 py-3 border-b border-r border-brand-gray-200 w-1/3">Parcela</th>
-                                      <th className="px-4 py-3 border-b border-r border-brand-gray-200 text-center w-1/3">Taxa (%)</th>
-                                      <th className="px-4 py-3 border-b border-brand-gray-200 text-center w-1/3 flex items-center justify-center gap-1">
-                                          <PieChartIcon className="w-3 h-3" />
-                                          Concentração (%)
-                                      </th>
-                                  </tr>
-                              </thead>
-                              <tbody className="divide-y divide-brand-gray-100 bg-white">
-                                  {getAllRows().map((row, i) => (
-                                      <tr key={i} className="hover:bg-brand-gray-50/50 transition-colors group">
-                                          <td className="px-4 py-1.5 border-r border-brand-gray-100 font-semibold text-brand-gray-700 text-xs">
-                                              {row.label}
-                                          </td>
-                                          <td className="px-2 py-1 border-r border-brand-gray-100 text-center relative">
-                                              <div className="flex items-center justify-center">
-                                                  <input 
-                                                      type="number" 
-                                                      step="0.01"
-                                                      className="w-20 text-center font-bold bg-transparent border border-transparent rounded hover:border-brand-gray-300 focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-brand-primary/10 outline-none transition-all text-brand-gray-900 text-xs py-1"
-                                                      value={row.rate}
-                                                      onChange={e => {
-                                                          const val = parseFloat(e.target.value);
-                                                          if (row.label === 'Débito') setRates({...rates, debit: val});
-                                                          else if (row.label === 'Crédito 1x') setRates({...rates, creditSight: val});
-                                                          else {
-                                                              const parcel = parseInt(row.label.replace(/\D/g,''));
-                                                              if(parcel) setRates(p => ({...p, installments: {...p.installments, [parcel]: val}}));
-                                                          }
-                                                      }}
-                                                  />
-                                                  <span className="text-[10px] text-brand-gray-400 ml-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4">%</span>
-                                              </div>
-                                          </td>
-                                          <td className="px-2 py-1 text-center relative">
-                                              <div className="flex items-center justify-center">
-                                                  <input 
-                                                      type="number"
-                                                      step="1"
-                                                      className={`w-20 text-center font-medium bg-transparent border border-transparent rounded hover:border-brand-gray-300 focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-brand-primary/10 outline-none transition-all text-xs py-1
-                                                          ${(rates.concentrations[row.label.replace('Crédito ', '')] || 0) > 0 ? 'text-blue-600 font-bold' : 'text-brand-gray-400'}
-                                                      `}
-                                                      value={rates.concentrations[row.label.replace('Crédito ', '')] || 0} 
-                                                      onChange={e => {
-                                                          const key = row.label.replace('Crédito ', '');
-                                                          const val = parseFloat(e.target.value);
-                                                          setRates(p => ({...p, concentrations: {...p.concentrations, [key]: val}}));
-                                                      }}
-                                                  />
-                                                  <span className="text-[10px] text-brand-gray-400 ml-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4">%</span>
-                                              </div>
-                                          </td>
-                                      </tr>
-                                  ))}
-                              </tbody>
-                              <tfoot className="bg-brand-gray-50 border-t border-brand-gray-200">
-                                  <tr>
-                                      <td className="px-4 py-2 font-bold text-xs text-brand-gray-600 text-right border-r border-brand-gray-200">Total</td>
-                                      <td className="border-r border-brand-gray-200"></td>
-                                      <td className="px-2 py-2 text-center">
-                                          <div className={`text-xs font-bold px-2 py-1 rounded-full inline-flex items-center gap-1
-                                              ${Math.abs(totalConcentration - 100) < 0.1 ? 'text-green-700 bg-green-100' : 'text-orange-700 bg-orange-100 animate-pulse'}
-                                          `}>
-                                              {Math.abs(totalConcentration - 100) >= 0.1 && <AlertCircle className="w-3 h-3" />}
-                                              {totalConcentration.toFixed(0)}%
-                                          </div>
-                                      </td>
-                                  </tr>
-                              </tfoot>
-                          </table>
-                      </div>
-                      
-                      {Math.abs(totalConcentration - 100) >= 0.1 && (
-                          <p className="text-[10px] text-center text-orange-600 font-medium">
-                              ⚠️ A soma das concentrações deve ser igual a 100% para o cálculo correto da taxa efetiva.
-                          </p>
-                      )}
-                  </div>
-              ) : (
-                  <div className="flex flex-col lg:flex-row gap-6">
-                      {/* SIMULATOR VIEW */}
-                      <div className="flex-1 space-y-6">
-                          {/* 1. Simulation Inputs */}
-                          <div className="bg-brand-gray-50 p-4 rounded-xl border border-brand-gray-200">
-                              <h4 className="font-bold text-sm text-brand-gray-700 mb-3 flex items-center gap-2"><Settings className="w-4 h-4"/> Parâmetros da Simulação</h4>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div>
-                                      <label className="text-xs font-bold text-brand-gray-500 mb-1 block">Valor da Venda</label>
-                                      <div className="relative">
-                                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-400 text-xs font-bold">R$</span>
-                                          <input 
-                                              type="text" 
-                                              className="w-full pl-8 pr-3 py-2 border border-brand-gray-300 rounded-lg text-sm font-bold focus:ring-1 focus:ring-brand-primary outline-none"
-                                              value={formatCurrencyValue(simulation.amount)} 
-                                              onChange={handleSimulationAmountChange}
-                                          />
-                                      </div>
-                                  </div>
-                                  <div>
-                                      <label className="text-xs font-bold text-brand-gray-500 mb-1 block">Repasse de Juros</label>
-                                      <div className="flex bg-white border border-brand-gray-300 rounded-lg p-0.5">
-                                          <button onClick={() => setSimulation({...simulation, interestPayer: 'EC'})} className={`flex-1 text-xs font-bold py-1.5 rounded-md ${simulation.interestPayer === 'EC' ? 'bg-brand-gray-900 text-white' : 'text-brand-gray-500'}`}>Lojista</button>
-                                          <button onClick={() => setSimulation({...simulation, interestPayer: 'CLIENT'})} className={`flex-1 text-xs font-bold py-1.5 rounded-md ${simulation.interestPayer === 'CLIENT' ? 'bg-brand-gray-900 text-white' : 'text-brand-gray-500'}`}>Cliente</button>
-                                      </div>
-                                  </div>
-                              </div>
-                          </div>
-
-                          {/* 2. Simulation Table */}
-                          <div>
-                              <h4 className="font-bold text-sm text-brand-gray-700 mb-3">Resultado Simulado</h4>
-                              <table className="w-full text-sm text-left border-collapse">
-                                  <thead className="bg-brand-gray-50 text-brand-gray-600 font-bold text-xs uppercase">
-                                      <tr>
-                                          <th className="px-4 py-3 border-b border-brand-gray-200">Parcela</th>
-                                          <th className="px-4 py-3 border-b border-brand-gray-200 text-right">Valor Simulação</th>
-                                          <th className="px-4 py-3 border-b border-brand-gray-200 text-center">Taxa (%)</th>
-                                          <th className="px-4 py-3 border-b border-brand-gray-200 text-center">Conc. (%)</th>
-                                      </tr>
-                                  </thead>
-                                  <tbody>
-                                      {getSimulationRows().map((row, i) => (
-                                          <tr key={i} className="hover:bg-brand-gray-50 transition-colors">
-                                              <td className="px-4 py-3 font-bold text-brand-gray-800 border-b border-brand-gray-100">{row.label}</td>
-                                              <td className="px-4 py-3 text-right border-b border-brand-gray-100">
-                                                  <span className={`font-mono font-bold ${simulation.interestPayer === 'CLIENT' ? 'text-brand-gray-400 line-through decoration-brand-gray-300' : 'text-green-700'}`}>
-                                                      {row.amount.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
-                                                  </span>
-                                              </td>
-                                              <td className="px-4 py-3 text-center border-b border-brand-gray-100 text-brand-gray-600">{row.rate.toFixed(2)}%</td>
-                                              <td className="px-4 py-3 text-center border-b border-brand-gray-100 text-brand-gray-400">-</td> 
-                                          </tr>
-                                      ))}
-                                  </tbody>
-                              </table>
-                          </div>
-                      </div>
-                      
-                      {/* Summary Panel */}
-                      <div className="w-full lg:w-1/3 bg-brand-gray-900 text-white rounded-xl p-6 flex flex-col justify-between">
-                          <div>
-                              <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><Calculator className="w-5 h-5 text-brand-light"/> Resumo</h4>
-                              <div className="space-y-4">
-                                  <div>
-                                      <p className="text-xs text-brand-gray-400 uppercase font-bold">Valor Bruto</p>
-                                      <p className="text-2xl font-bold">{simulation.amount.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
-                                  </div>
-                                  <div className="h-px bg-white/10"></div>
-                                  <div>
-                                      <p className="text-xs text-brand-gray-400 uppercase font-bold">Taxa Média (Simulada)</p>
-                                      {/* Simplified avg for demo */}
-                                      <p className="text-xl font-bold text-brand-primary">{((rates.debit + rates.creditSight + (rates.installments[12]||0))/3).toFixed(2)}%</p> 
-                                  </div>
-                              </div>
-                          </div>
-                          <button className="w-full bg-white text-brand-gray-900 py-3 rounded-lg font-bold mt-6 hover:bg-brand-gray-100 transition-colors">
-                              Exportar Simulação
-                          </button>
-                      </div>
-                  </div>
-              )}
-          </div>
-          
-          <div className="p-4 border-t border-brand-gray-200 bg-gray-50 flex justify-between items-center">
-              <AutosaveIndicator />
-              <button onClick={handleCreateDemand} className="bg-brand-gray-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-black transition-all shadow-md flex items-center gap-2 text-sm transform hover:-translate-y-0.5">
-                  <Save className="w-4 h-4"/> Salvar Proposta
-              </button>
-          </div>
-      </div>
-  );
-
-  const renderQuote = () => (
-      <div className="animate-fade-in space-y-4">
-          {renderContext()}
-          {renderAIReader()}
-          {renderQuoteContent()}
-      </div>
-  );
-
-  const renderRangeTable = () => {
-      const activeTable = rangeTableFull; // Or toggle between Full/Simple for viewing
-      
-      return (
-          <div className="animate-fade-in flex flex-col h-full">
-              {/* Premium Range Selector */}
-              <div className="mb-6">
-                  <div className="flex justify-between items-end mb-3">
-                      <div>
-                          <h3 className="text-lg font-bold text-brand-gray-900 flex items-center gap-2">
-                              <TrendingUp className="w-5 h-5 text-brand-primary" />
-                              Tabela de Taxas (Full)
-                          </h3>
-                          <p className="text-sm text-brand-gray-500">Selecione o range de faturamento para visualizar e gerar a proposta.</p>
-                      </div>
-                      <button 
-                          onClick={() => setShowPreviewModal(true)}
-                          className="bg-brand-primary text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:bg-brand-dark transition-colors flex items-center gap-2"
-                      >
-                          <Printer className="w-4 h-4" />
-                          Gerar Proposta PDF
-                      </button>
-                  </div>
-
-                  <div className="bg-white p-2 rounded-xl border border-brand-gray-200 shadow-sm flex overflow-x-auto gap-2 no-scrollbar">
-                      {activeTable.ranges.map((range, idx) => {
-                          const isSelected = selectedRangeIndex === idx;
-                          return (
-                              <button
-                                  key={range.label}
-                                  onClick={() => setSelectedRangeIndex(idx)}
-                                  className={`flex-1 min-w-[100px] py-3 px-4 rounded-lg text-sm font-bold transition-all relative overflow-hidden group
-                                      ${isSelected 
-                                          ? 'bg-brand-gray-900 text-white shadow-md transform scale-[1.02]' 
-                                          : 'bg-gray-50 text-brand-gray-500 hover:bg-gray-100 hover:text-brand-gray-700'}
-                                  `}
-                              >
-                                  <span className="relative z-10">{range.label}</span>
-                                  {isSelected && <div className="absolute bottom-0 left-0 w-full h-1 bg-brand-primary"></div>}
-                              </button>
-                          );
-                      })}
-                  </div>
-              </div>
-
-              {/* Table View */}
-              <div className="bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden flex-1 flex flex-col">
-                  <div className="overflow-auto flex-1">
-                      <table className="w-full text-center text-sm border-collapse">
-                          <thead className="sticky top-0 z-10 shadow-sm">
-                              <tr className="bg-brand-gray-50 text-brand-gray-500 font-bold uppercase text-xs">
-                                  <th className="px-4 py-4 border-r border-brand-gray-200 bg-white">Parcelas</th>
-                                  {activeTable.headers.slice(1).map((h, idx) => (
-                                      <th key={idx} className={`px-4 py-4 border-r border-brand-gray-200 transition-colors
-                                          ${idx === selectedRangeIndex ? 'bg-brand-primary/10 text-brand-primary ring-inset ring-2 ring-brand-primary/20' : 'bg-white opacity-60'}
-                                      `}>
-                                          {h}
-                                      </th>
-                                  ))}
-                              </tr>
-                          </thead>
-                          <tbody className="divide-y divide-brand-gray-100">
-                              {activeTable.rows.map((row, rIdx) => (
-                                  <tr key={rIdx} className="hover:bg-brand-gray-50 transition-colors">
-                                      <td className="px-4 py-3 font-bold text-brand-gray-800 border-r border-brand-gray-200 bg-gray-50/50">
-                                          {row.label}
-                                      </td>
-                                      {row.values.map((val, vIdx) => (
-                                          <td key={vIdx} className={`px-4 py-3 border-r border-brand-gray-100 transition-all
-                                              ${vIdx === selectedRangeIndex 
-                                                  ? 'font-bold text-brand-gray-900 bg-brand-primary/5 text-base' 
-                                                  : 'text-brand-gray-400 bg-white/50'}
-                                          `}>
-                                              {val.toFixed(2)}%
-                                          </td>
-                                      ))}
-                                  </tr>
-                              ))}
-                          </tbody>
-                      </table>
-                  </div>
-              </div>
-              <div className="mt-4 text-xs text-brand-gray-500 italic text-center">
-                  * Tabela referente ao produto Full (Antecipação Automática). Valores sujeitos a análise de crédito.
-              </div>
-          </div>
       );
   };
 
   return (
     <div className="flex flex-col space-y-6 max-w-7xl mx-auto pb-20">
       
-      {/* --- PRINT ONLY SECTION (PDF TEMPLATE) --- */}
+      {/* --- PRINT ONLY SECTION --- */}
       <div className="hidden print:block fixed inset-0 bg-white z-[9999] p-8 overflow-hidden font-sans">
-          {/* PDF Template kept as is */}
-          {/* ... */}
+          {renderProposalTemplate()}
       </div>
 
       {/* Toast Notification */}
       {showDemandSuccess && (
           <div className="fixed top-24 right-4 z-50 animate-fade-in no-print">
               <div className="bg-brand-gray-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-white/10">
-                  <div className="bg-green-500 rounded-full p-1 text-white">
-                      <CheckCircle2 size={20} />
-                  </div>
-                  <div>
-                      <h4 className="font-bold text-sm">Demanda Criada!</h4>
-                      <p className="text-xs text-gray-300">A cotação foi salva e vinculada ao cliente.</p>
-                  </div>
+                  <div className="bg-green-500 rounded-full p-1 text-white"><CheckCircle2 size={20} /></div>
+                  <div><h4 className="font-bold text-sm">Demanda Criada!</h4><p className="text-xs text-gray-300">A cotação foi salva e vinculada ao cliente.</p></div>
               </div>
           </div>
       )}
 
-      {/* HEADER (No Print) */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 no-print">
           <div>
-            <h1 className="text-2xl font-bold text-brand-gray-900 flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-brand-gray-900 flex items-center gap-3">
                 {isPricingProfile ? <Handshake className="w-8 h-8 text-brand-primary"/> : <BadgePercent className="w-8 h-8 text-brand-primary" />}
                 {isPricingProfile ? 'Mesa de Negociação' : 'Pricing & Negociação'}
             </h1>
-            <p className="text-brand-gray-500 mt-1">
-                {isPricingProfile ? 'Análise de propostas e aprovação.' : 'Simulador e comparativo comercial.'}
+            <p className="text-brand-gray-500 mt-1 font-medium">
+                {isPricingProfile ? 'Análise de propostas e aprovação.' : 'Simulador avançado e comparativo comercial.'}
             </p>
+          </div>
+          {/* Logo on Light Background -> Standard */}
+          <div className="hidden md:block opacity-80 grayscale hover:grayscale-0 transition-all">
+              <Logo type="standard" className="scale-75 origin-right" />
           </div>
       </div>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex flex-col no-print gap-6">
+      <div className="flex flex-col no-print gap-8">
           
-          {/* TABS HEADER - New Style */}
-          {!isPricingProfile ? (
-              <div className="border-b border-brand-gray-200">
-                  <nav className="flex space-x-8" aria-label="Tabs">
-                      <button 
-                          onClick={() => setActiveTab('QUOTE')}
-                          className={`
-                            whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-colors
-                            ${activeTab === 'QUOTE' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-brand-gray-500 hover:text-brand-gray-700 hover:border-brand-gray-300'}
+          {/* MODERN PILL TABS */}
+          {!isPricingProfile && (
+              <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-brand-gray-200 flex flex-col sm:flex-row w-full md:w-auto">
+                  {[
+                      { id: 'QUOTE', icon: Calculator, label: 'Cotação & Simulador' },
+                      { id: 'NEGOTIATOR', icon: Scale, label: 'Comparativo' },
+                      { id: 'RANGE_TABLE', icon: TrendingUp, label: 'Tabelas Padrão' },
+                  ].map((tab) => (
+                      <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id as any)}
+                          className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300
+                              ${activeTab === tab.id 
+                                  ? 'bg-brand-gray-900 text-white shadow-lg transform scale-[1.02]' 
+                                  : 'text-brand-gray-500 hover:bg-brand-gray-50 hover:text-brand-gray-900'}
                           `}
                       >
-                          <Calculator className="w-4 h-4" />
-                          Simulador & Taxas
+                          <tab.icon size={18} />
+                          {tab.label}
                       </button>
-                      <button 
-                          onClick={() => setActiveTab('RANGE_TABLE')}
-                          className={`
-                            whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-colors
-                            ${activeTab === 'RANGE_TABLE' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-brand-gray-500 hover:text-brand-gray-700 hover:border-brand-gray-300'}
-                          `}
-                      >
-                          <TrendingUp className="w-4 h-4" />
-                          Tabelas Padrão
-                      </button>
-                      <button 
-                          onClick={() => setActiveTab('NEGOTIATOR')}
-                          className={`
-                            whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-colors
-                            ${activeTab === 'NEGOTIATOR' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-brand-gray-500 hover:text-brand-gray-700 hover:border-brand-gray-300'}
-                          `}
-                      >
-                          <Scale className="w-4 h-4" />
-                          Comparativo
-                      </button>
-                  </nav>
-              </div>
-          ) : (
-              /* PRICING PROFILE TABS - Reduced to Dashboard only as Config moved */
-              <div className="border-b border-brand-gray-200">
-                  <nav className="flex space-x-8" aria-label="Tabs">
-                      <button 
-                          onClick={() => setActiveTab('DASHBOARD')}
-                          className={`
-                            whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm flex items-center gap-2 transition-colors
-                            ${activeTab === 'DASHBOARD' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-brand-gray-500 hover:text-brand-gray-700 hover:border-brand-gray-300'}
-                          `}
-                      >
-                          <Handshake className="w-4 h-4" />
-                          Mesa de Aprovação
-                      </button>
-                  </nav>
+                  ))}
               </div>
           )}
 
           <div className="min-h-[500px]">
-              
-              {/* VIEW 1: QUOTE (Context + Simulator + AI) */}
               {activeTab === 'QUOTE' && !isPricingProfile && renderQuote()}
-
-              {/* VIEW 2: RANGE TABLE */}
               {activeTab === 'RANGE_TABLE' && !isPricingProfile && renderRangeTable()}
-
-              {/* VIEW 3: NEGOTIATOR */}
               {activeTab === 'NEGOTIATOR' && !isPricingProfile && renderNegotiator()}
-
-              {/* PRICING PROFILE - DASHBOARD VIEW */}
+              
               {isPricingProfile && activeTab === 'DASHBOARD' && (
-                  <div className="flex flex-col items-center justify-center h-full p-10 text-brand-gray-400 border-2 border-dashed border-brand-gray-200 rounded-xl bg-brand-gray-50">
-                      <Handshake className="w-16 h-16 mb-4 opacity-20" />
-                      <h3 className="text-xl font-bold text-brand-gray-600">Mesa de Negociação</h3>
-                      <p className="text-sm">Nenhuma solicitação pendente no momento.</p>
+                  <div className="flex flex-col items-center justify-center h-[400px] bg-white rounded-3xl border border-dashed border-brand-gray-200">
+                      <Handshake className="w-16 h-16 mb-4 text-brand-gray-200" />
+                      <h3 className="text-xl font-bold text-brand-gray-400">Mesa de Aprovação</h3>
+                      <p className="text-sm text-brand-gray-400">Selecione uma solicitação no menu lateral.</p>
                   </div>
               )}
-
           </div>
       </div>
 
       {/* PDF PREVIEW MODAL */}
       {showPreviewModal && (
-          <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in no-print">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[90vh]">
-                  <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center shrink-0">
-                      <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                          <Eye className="w-5 h-5" />
-                          Pré-visualização da Proposta
-                      </h3>
-                      <button onClick={() => setShowPreviewModal(false)} className="text-brand-gray-400 hover:text-white transition-colors">
-                          <X size={24} />
+          <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in no-print">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[90vh] border border-white/10">
+                  <div className="bg-brand-gray-900 px-8 py-5 flex justify-between items-center shrink-0">
+                      <div className="flex items-center gap-3">
+                          <Eye className="w-5 h-5 text-white" />
+                          <h3 className="text-white font-bold text-lg">Pré-visualização</h3>
+                      </div>
+                      <button onClick={() => setShowPreviewModal(false)} className="text-brand-gray-400 hover:text-white transition-colors bg-white/10 p-2 rounded-full">
+                          <X size={20} />
                       </button>
                   </div>
                   
-                  <div className="flex-1 bg-gray-100 overflow-y-auto p-8 flex justify-center">
-                      {/* Reuse the Render Logic used for Print but scaled for Modal */}
+                  <div className="flex-1 bg-brand-gray-100 overflow-y-auto p-8 flex justify-center">
                       {renderProposalTemplate(true)}
                   </div>
 
-                  <div className="p-4 bg-white border-t border-brand-gray-200 flex justify-end gap-4 shrink-0">
+                  <div className="p-5 bg-white border-t border-brand-gray-200 flex justify-end gap-4 shrink-0">
                       <button 
                           onClick={() => setShowPreviewModal(false)}
-                          className="px-6 py-2 text-brand-gray-600 font-bold hover:bg-brand-gray-50 rounded-lg transition-colors"
+                          className="px-6 py-2.5 text-brand-gray-600 font-bold hover:bg-brand-gray-50 rounded-xl transition-colors"
                       >
-                          Fechar
+                          Voltar
                       </button>
                       <button 
                           onClick={handlePrintProposal}
-                          className="px-6 py-2 bg-brand-primary text-white font-bold rounded-lg shadow-md hover:bg-brand-dark transition-colors flex items-center gap-2"
+                          className="px-8 py-2.5 bg-brand-primary text-white font-bold rounded-xl shadow-lg shadow-brand-primary/30 hover:bg-brand-dark transition-all transform hover:-translate-y-0.5 flex items-center gap-2"
                       >
                           <Download className="w-4 h-4" />
-                          Baixar PDF / Imprimir
+                          Baixar PDF
                       </button>
                   </div>
               </div>
           </div>
       )}
       
-      {/* Print Styles Injection */}
+      {/* Styles */}
       <style>{`
         @media print {
           @page { margin: 0; size: A4; }

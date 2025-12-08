@@ -21,7 +21,6 @@ export enum Page {
   CONFIG_TAXAS = 'Config. Taxas', // New Page for Pricing
   CADASTRO = 'Cadastro', // New Page
   METAS = 'Metas & KPI', // New Page for Estrategia
-  DEMANDAS = 'Demandas', // New Page for Manual Demands
   AJUDA = 'Ajuda & IA', // New Page
 }
 
