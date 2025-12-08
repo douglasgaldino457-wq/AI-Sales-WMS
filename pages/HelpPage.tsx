@@ -1,11 +1,11 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { 
     HelpCircle, BookOpen, Send, Bot, User, MessageSquare, 
     ChevronRight, Sparkles, Youtube, FileText, BadgePercent, Map, Users, Settings, MapPinned
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { UserRole } from '../types';
+import { runWithRetry } from '../services/geminiService';
 
 interface HelpPageProps {
     role: UserRole;
@@ -189,7 +189,8 @@ const HelpPage: React.FC<HelpPageProps> = ({ role }) => {
                 }))
             });
 
-            const result = await chat.sendMessage({ message: userMsg.text });
+            // Using retry logic for the message sending
+            const result = await runWithRetry<GenerateContentResponse>(() => chat.sendMessage({ message: userMsg.text }));
             
             const modelMsg: ChatMessage = {
                 id: (Date.now() + 1).toString(),
@@ -205,7 +206,7 @@ const HelpPage: React.FC<HelpPageProps> = ({ role }) => {
             const errorMsg: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'model',
-                text: "Estou enfrentando uma instabilidade momentânea. Tente novamente em alguns segundos.",
+                text: "Estou enfrentando uma instabilidade momentânea na IA. Tente novamente em alguns segundos.",
                 timestamp: new Date()
             };
             setMessages(prev => [...prev, errorMsg]);

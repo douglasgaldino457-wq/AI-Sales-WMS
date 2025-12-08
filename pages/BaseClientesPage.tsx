@@ -178,7 +178,7 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
            
            const fieldSales = getValue(['field', 'field sales', 'consultor', 'executivo']) || 'A definir';
            const insideSales = getValue(['inside', 'inside sales', 'vendedor', 'sdr']) || 'A definir';
-           const status: 'Active' | 'Lead' = getValue(['status']) === 'Lead' ? 'Lead' : 'Active';
+           const status = getValue(['status']) === 'Lead' ? 'Lead' : 'Active';
 
            // Region Logic: Explicit -> Inference
            // UPDATED: Added 'reg. agrupada' and variations to ensure it catches the specific column name

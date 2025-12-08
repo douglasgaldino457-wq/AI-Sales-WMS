@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { UserRole, Page } from './types';
 import Sidebar from './components/Sidebar';
@@ -14,6 +13,7 @@ import HelpPage from './pages/HelpPage'; // New Import
 import { Logo } from './components/Logo';
 import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
+import { runWithRetry } from './services/geminiService';
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
@@ -41,10 +41,10 @@ const App: React.FC = () => {
     setGeneratingBg(true);
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
+        const response = await runWithRetry(() => ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: 'Wide angle view of a futuristic automotive workshop interior. Ideally positioned in the center is a modern silver hatchback car with the hood open. A sleek, high-tech red robotic arm is interacting with the engine. A professional red tool chest is visible. The environment is clean, with bright studio lighting, polished concrete floor, and depth of field blurring the background equipment. Photorealistic, 8k resolution, cinematic.',
-        });
+        }));
         
         if (response.candidates && response.candidates[0].content.parts) {
             for (const part of response.candidates[0].content.parts) {

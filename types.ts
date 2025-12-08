@@ -3,8 +3,7 @@ export enum UserRole {
   INSIDE_SALES = 'Inside Sales',
   FIELD_SALES = 'Field Sales',
   GESTOR = 'Gestor',
-  ESTRATEGIA = 'Estratégia',
-  PRICING = 'Pricing'
+  ESTRATEGIA = 'Estratégia'
 }
 
 export enum Page {
@@ -18,7 +17,6 @@ export enum Page {
   DASHBOARD_GERAL = 'Dashboard Geral', // Gestor
   MAPA_GESTAO = 'Mapa de Gestão', // Gestor
   PRICING = 'Pricing/Taxas',
-  CONFIG_TAXAS = 'Config. Taxas', // New Page for Pricing
   CADASTRO = 'Cadastro', // New Page
   METAS = 'Metas & KPI', // New Page for Estrategia
   AJUDA = 'Ajuda & IA', // New Page
@@ -132,7 +130,7 @@ export interface Appointment {
   insideSalesName?: string; // Added to track Inside Sales performance
   date?: string; // Optional for Wallet flow
   period?: VisitPeriod; // Optional for Wallet flow
-  status: 'Scheduled' | 'Completed' | 'Cancelled';
+  status: 'Scheduled' | 'Completed';
   visitReason?: string; // New field for Wallet flow
   isWallet?: boolean; // To distinguish flow type
   fieldObservation?: string; // New: Observation made by Field Sales upon completion
@@ -160,13 +158,4 @@ export interface ManualDemand {
     description?: string;
     result?: string;
     requester: string;
-}
-
-// --- INTEGRATION TYPES ---
-export interface SavedQuote {
-    clientId: string; // Or Client Name if ID is missing
-    revenuePotential: number;
-    competitorAcquirer: string;
-    date: string;
-    product: string;
 }

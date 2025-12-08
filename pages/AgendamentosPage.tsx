@@ -7,7 +7,7 @@ import { AddressAutocomplete } from '../components/AddressAutocomplete';
 import { 
   Calendar, Clock, MapPin, User, MessageCircle, CheckCircle2, Save, 
   ArrowRight, Search, ChevronLeft, Pencil, FileText, Briefcase, Map, Layout,
-  Timer, PenSquare, X, AlertTriangle, Route, Plus, Eye, DollarSign, BarChart2, Check, CalendarDays, History, Loader2, CloudOff, Sparkles
+  Timer, PenSquare, X, AlertTriangle, Route, Plus, Eye, DollarSign, BarChart2, Check, CalendarDays, History, Loader2
 } from 'lucide-react';
 
 interface AgendamentosPageProps {
@@ -16,12 +16,6 @@ interface AgendamentosPageProps {
 
 const ORIGINS: LeadOrigin[] = ['SIR', 'SIN', 'CAM', 'Indicação', 'Prospecção'];
 const PERIODS: VisitPeriod[] = ['Manhã', 'Tarde', 'Horário Comercial'];
-
-const AutosaveIndicator = () => (
-    <span className="text-[10px] text-gray-400 flex items-center gap-1 bg-gray-50 px-2 py-1 rounded animate-fade-in">
-        <Save className="w-3 h-3" /> Salvo no dispositivo
-    </span>
-);
 
 const AgendamentosPage: React.FC<AgendamentosPageProps> = ({ role }) => {
   const isInside = role === UserRole.INSIDE_SALES;
@@ -37,7 +31,6 @@ const AgendamentosPage: React.FC<AgendamentosPageProps> = ({ role }) => {
 
 /* --- INSIDE SALES COMPONENT --- */
 const InsideSalesView: React.FC = () => {
-  // ... (Inside Sales View Logic Unchanged) ...
   const [activeTab, setActiveTab] = useState<'Novos' | 'Carteira'>('Novos');
   const [isWalletScheduleMode, setIsWalletScheduleMode] = useState(false);
   const [previewId, setPreviewId] = useState<string>('');
@@ -56,24 +49,6 @@ const InsideSalesView: React.FC = () => {
     setWalletClients(appStore.getClients());
     setVisitReasons(appStore.getVisitReasons());
   }, [activeTab]); 
-
-  // Autosave Load
-  useEffect(() => {
-      const savedDraft = appStore.getLocalDraft('inside_appt');
-      if (savedDraft && !isWalletScheduleMode) {
-          setFormData(savedDraft);
-      }
-  }, []);
-
-  // Autosave Save
-  useEffect(() => {
-      if (!isWalletScheduleMode && !generatedLink) {
-          const timeout = setTimeout(() => {
-              appStore.saveLocalDraft('inside_appt', formData);
-          }, 1000);
-          return () => clearTimeout(timeout);
-      }
-  }, [formData, isWalletScheduleMode, generatedLink]);
 
   useEffect(() => {
     if (!previewId) {
@@ -159,9 +134,6 @@ const InsideSalesView: React.FC = () => {
     };
 
     appStore.addAppointment(newAppointment);
-    
-    // Clear Draft
-    if(!isWalletScheduleMode) appStore.clearLocalDraft('inside_appt');
 
     const consultant = MOCK_USERS.find(u => u.name === newAppointment.fieldSalesName);
     const consultantPhone = consultant ? consultant.whatsapp : "";
@@ -197,7 +169,6 @@ const InsideSalesView: React.FC = () => {
     });
     setGeneratedLink(null);
     setIsWalletScheduleMode(false);
-    appStore.clearLocalDraft('inside_appt');
   };
 
   const renderForm = () => (
@@ -415,8 +386,7 @@ const InsideSalesView: React.FC = () => {
                         onChange={e => setFormData({...formData, observation: e.target.value})}
                     />
                 </div>
-                <div className="mt-8 pt-6 border-t border-brand-gray-100 flex justify-end gap-4 items-center">
-                    <AutosaveIndicator />
+                <div className="mt-8 pt-6 border-t border-brand-gray-100 flex justify-end gap-4">
                     <button type="button" onClick={resetForm} className="px-6 py-3 rounded-lg text-brand-gray-600 font-bold hover:bg-brand-gray-100 transition-colors text-sm">Limpar</button>
                     <button type="submit" className="px-8 py-3 bg-brand-primary text-white rounded-lg font-bold hover:bg-brand-dark transition-all shadow-lg hover:shadow-xl flex items-center text-sm transform hover:-translate-y-0.5"><Save className="w-4 h-4 mr-2" />Salvar Agendamento</button>
                 </div>
@@ -572,7 +542,6 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [viewDetailsAppt, setViewDetailsAppt] = useState<Appointment | null>(null);
   const [reportData, setReportData] = useState<VisitReport>({});
-  const [quoteFound, setQuoteFound] = useState(false); // To show "Quote Imported" visual
 
   // Refs for click outside
   const searchWrapperRef = useRef<HTMLDivElement>(null);
@@ -592,39 +561,6 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  // Autosave New Visit
-  useEffect(() => {
-      if(isNewVisitModalOpen) {
-          const draft = appStore.getLocalDraft('field_new_visit');
-          if(draft) setNewVisitData(draft);
-      }
-  }, [isNewVisitModalOpen]);
-
-  useEffect(() => {
-      if(isNewVisitModalOpen) {
-          const t = setTimeout(() => appStore.saveLocalDraft('field_new_visit', newVisitData), 1000);
-          return () => clearTimeout(t);
-      }
-  }, [newVisitData, isNewVisitModalOpen]);
-
-  // Autosave Report
-  useEffect(() => {
-      if(selectedAppt) {
-          const key = `report_${selectedAppt.id}`;
-          const draft = appStore.getLocalDraft(key);
-          if(draft) setReportData(draft);
-      }
-  }, [selectedAppt]);
-
-  useEffect(() => {
-      if(selectedAppt) {
-          const key = `report_${selectedAppt.id}`;
-          const t = setTimeout(() => appStore.saveLocalDraft(key, reportData), 1000);
-          return () => clearTimeout(t);
-      }
-  }, [reportData, selectedAppt]);
-
 
   // Filtering Logic
   const filteredAppointments = appointments.filter(appt => {
@@ -649,29 +585,21 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
 
   const handleOpenReport = (appt: Appointment) => {
     setSelectedAppt(appt);
-    
-    // Check for saved quote in store to auto-fill
-    const savedQuote = appStore.getQuote(appt.clientId || appt.clientName);
-    const hasQuote = !!savedQuote;
-    setQuoteFound(hasQuote);
-
     setReportData({
         outcome: undefined,
         walletAction: undefined,
         withdrawalReason: undefined,
         swapReason: undefined,
         observation: '',
-        // Auto-fill from quote if available
-        revenuePotential: hasQuote ? savedQuote!.revenuePotential : undefined,
-        competitorAcquirer: hasQuote ? savedQuote!.competitorAcquirer : '',
-        hadRateQuote: hasQuote
+        revenuePotential: undefined,
+        competitorAcquirer: '',
+        hadRateQuote: false
     });
   };
 
   const handleSaveReport = () => {
     if (selectedAppt) {
         appStore.submitVisitReport(selectedAppt.id, reportData);
-        appStore.clearLocalDraft(`report_${selectedAppt.id}`);
         setSelectedAppt(null);
         setRefresh(prev => prev + 1);
     }
@@ -750,7 +678,6 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
       };
 
       appStore.addAppointment(newAppt);
-      appStore.clearLocalDraft('field_new_visit');
       
       // AUTO CHECK-IN & REPORT OPEN LOGIC FOR PROSPECTION
       if (newVisitMode === 'PROSPECTION') {
@@ -783,18 +710,17 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
   };
 
   const handleCurrencyInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, "");
-    const numberValue = value ? parseInt(value, 10) / 100 : 0;
+    let value = e.target.value;
+    // Remove everything that is not a digit
+    value = value.replace(/\D/g, "");
+    
+    // Convert to number (cents to float)
+    const numberValue = value ? parseInt(value, 10) / 100 : undefined;
     
     setReportData({
         ...reportData,
         revenuePotential: numberValue
     });
-  };
-
-  const formatCurrencyValue = (val: number | undefined) => {
-      if (!val && val !== 0) return '';
-      return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   return (
@@ -1082,15 +1008,12 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between mt-4">
-                            <AutosaveIndicator />
-                            <button 
-                                onClick={handleCreateVisit}
-                                className="bg-brand-primary text-white px-6 py-3 rounded-xl font-bold hover:bg-brand-dark transition-colors shadow-lg"
-                            >
-                                Confirmar Visita
-                            </button>
-                        </div>
+                        <button 
+                            onClick={handleCreateVisit}
+                            className="w-full bg-brand-primary text-white py-3 rounded-xl font-bold mt-4 hover:bg-brand-dark transition-colors shadow-lg"
+                        >
+                            Confirmar Visita
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1109,25 +1032,10 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                </div>
                
                <div className="p-6 overflow-y-auto">
-                   <div className="mb-4">
+                   <div className="mb-6">
                        <p className="text-xs font-bold text-brand-gray-400 uppercase">Cliente</p>
                        <p className="font-bold text-brand-gray-900 text-lg">{selectedAppt.clientName}</p>
                    </div>
-
-                   {/* Auto-filled Quote Alert */}
-                   {quoteFound && (
-                       <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-6 flex items-start gap-3">
-                           <div className="bg-green-100 p-1.5 rounded-full text-green-600 mt-0.5">
-                               <Sparkles size={14} />
-                           </div>
-                           <div>
-                               <p className="text-sm font-bold text-green-800">Cotação Encontrada!</p>
-                               <p className="text-xs text-green-700">
-                                   Preenchemos automaticamente o <strong>Potencial</strong> e o <strong>Concorrente</strong> com base na última cotação realizada no Pricing.
-                               </p>
-                           </div>
-                       </div>
-                   )}
 
                    {/* DYNAMIC FORM BASED ON VISIT TYPE */}
                    {!selectedAppt.isWallet ? (
@@ -1155,15 +1063,15 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                                    <input 
                                        type="text" 
                                        placeholder="0,00"
-                                       className={`w-full border border-brand-gray-300 rounded-lg px-3 py-2 outline-none focus:border-brand-primary ${quoteFound ? 'bg-green-50/50' : ''}`}
-                                       value={formatCurrencyValue(reportData.revenuePotential)}
+                                       className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 outline-none focus:border-brand-primary"
+                                       value={reportData.revenuePotential ? (reportData.revenuePotential * 100).toString() : ''}
                                        onChange={handleCurrencyInput}
                                    />
                                </div>
                                <div>
                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Concorrente</label>
                                    <select
-                                      className={`w-full border border-brand-gray-300 rounded-lg px-3 py-2 bg-white outline-none focus:border-brand-primary text-sm ${quoteFound ? 'bg-green-50/50' : ''}`}
+                                      className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 bg-white outline-none focus:border-brand-primary text-sm"
                                       value={reportData.competitorAcquirer || ''}
                                       onChange={e => setReportData({...reportData, competitorAcquirer: e.target.value})}
                                    >
@@ -1258,12 +1166,9 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                    </div>
                </div>
 
-               <div className="p-4 border-t border-brand-gray-100 bg-brand-gray-50 flex justify-between gap-3 shrink-0 items-center">
-                   <AutosaveIndicator />
-                   <div className="flex gap-2">
-                       <button onClick={() => setSelectedAppt(null)} className="px-4 py-2 text-brand-gray-600 font-bold hover:bg-brand-gray-200 rounded-lg transition-colors">Cancelar</button>
-                       <button onClick={handleSaveReport} className="px-6 py-2 bg-brand-primary text-white font-bold rounded-lg shadow hover:bg-brand-dark transition-colors">Finalizar Visita</button>
-                   </div>
+               <div className="p-4 border-t border-brand-gray-100 bg-brand-gray-50 flex justify-end gap-3 shrink-0">
+                   <button onClick={() => setSelectedAppt(null)} className="px-4 py-2 text-brand-gray-600 font-bold hover:bg-brand-gray-200 rounded-lg transition-colors">Cancelar</button>
+                   <button onClick={handleSaveReport} className="px-6 py-2 bg-brand-primary text-white font-bold rounded-lg shadow hover:bg-brand-dark transition-colors">Finalizar Visita</button>
                </div>
            </div>
         </div>

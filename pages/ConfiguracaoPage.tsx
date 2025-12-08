@@ -432,7 +432,6 @@ const ConfiguracaoPage: React.FC = () => {
                             ${user.role === UserRole.GESTOR ? 'bg-purple-100 text-purple-800 border-purple-200' : ''}
                             ${user.role === UserRole.FIELD_SALES ? 'bg-blue-100 text-blue-800 border-blue-200' : ''}
                             ${user.role === UserRole.INSIDE_SALES ? 'bg-orange-100 text-orange-800 border-orange-200' : ''}
-                            ${user.role === UserRole.PRICING ? 'bg-green-100 text-green-800 border-green-200' : ''}
                             `}>
                             {user.role}
                             </span>

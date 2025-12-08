@@ -17,9 +17,7 @@ import {
   ChevronRight,
   Target,
   ClipboardCheck,
-  HelpCircle,
-  Handshake,
-  Sliders
+  HelpCircle
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -72,13 +70,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: LayoutDashboard, label: 'Dashboard Geral', page: Page.DASHBOARD_GERAL },
           { icon: Target, label: 'Metas & KPI', page: Page.METAS },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
-        ];
-        break;
-      case UserRole.PRICING:
-        items = [
-          { icon: LayoutDashboard, label: 'Dashboard', page: Page.DASHBOARD_GERAL },
-          { icon: Handshake, label: 'Mesa de Negociação', page: Page.PRICING },
-          { icon: Sliders, label: 'Configuração de Taxas', page: Page.CONFIG_TAXAS },
+          { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
         ];
         break;
     }
@@ -119,12 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: Target, label: 'Metas', page: Page.METAS },
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true },
-        ];
-      case UserRole.PRICING:
-        return [
-          { icon: Handshake, label: 'Mesa', page: Page.PRICING },
-          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true }, // Central Button
-          { icon: Sliders, label: 'Config.', page: Page.CONFIG_TAXAS },
+          { icon: Settings, label: 'Config', page: Page.CONFIGURACAO },
         ];
       default:
         return [];
@@ -147,8 +134,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
 
         <div className="p-6 relative shrink-0 z-10">
           <div className="mb-6 flex justify-center">
-             {/* Updated to use 'white' logo for dark drawer */}
-             <Logo type="white" className="scale-[0.85] origin-center" />
+             <Logo className="text-white scale-[0.85] origin-center" />
           </div>
           
           {/* User Info Badge - Glassy */}
@@ -198,7 +184,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         
         {/* Footer Area */}
         <div className="p-4 border-t border-white/5 bg-black/20 text-center z-10">
-            <p className="text-[10px] text-gray-600 font-mono">Build v1.4.0 • 2025</p>
+            <p className="text-[10px] text-gray-600 font-mono">Build v1.3.0 • 2025</p>
         </div>
     </div>
   );
@@ -232,9 +218,9 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
             <Menu size={22} strokeWidth={2.5} />
          </button>
 
-         {/* Center: Logo (Now using standard for white header) */}
+         {/* Center: Logo (Now using dark text on white header) */}
          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <Logo type="standard" className="scale-[0.8] origin-center" />
+            <Logo className="scale-[0.8] origin-center text-brand-gray-900" />
          </div>
          
          {/* Right: Quick Logout */}
@@ -247,20 +233,21 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
          </button>
       </div>
 
-      {/* --- MOBILE BOTTOM NAV (Docked Bottom Bar) --- */}
+      {/* --- MOBILE BOTTOM NAV (Floating Dock) --- */}
       {bottomItems.length > 0 && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-brand-gray-900 border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] pb-[env(safe-area-inset-bottom)]">
+        <div className="md:hidden fixed bottom-6 left-4 right-4 z-40">
             {/* 
-                Using pb-[env(safe-area-inset-bottom)] handles iPhone X home indicator area.
-                The bar itself is fixed height 16 (4rem = 64px).
+                We use items-end to allow the central button to overflow upwards.
+                The padding-bottom ensures the standard buttons are centered vertically within the 'bar' area.
+                Width adjusted based on items length (1/5 or 1/4)
             */}
-            <div className="flex justify-between items-end h-16 px-1 relative">
+            <div className="bg-brand-gray-900/95 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl flex justify-between items-end h-16 px-1 pb-1 relative">
                 {bottomItems.map((item, idx) => {
                     const isActive = activePage === item.page;
                     const isCentral = (item as any).isCentral;
-                    const widthClass = bottomItems.length >= 5 ? 'w-1/5' : 'w-1/4';
+                    const widthClass = bottomItems.length === 5 ? 'w-1/5' : 'w-1/4';
 
-                    // CENTRAL BUTTON RENDER (Popped Up)
+                    // CENTRAL BUTTON RENDER
                     if (isCentral) {
                         return (
                             <div key={item.label} className={`relative -top-6 flex flex-col items-center justify-start ${widthClass} h-full pointer-events-none`}>
@@ -268,7 +255,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
                                     onClick={() => onNavigate(item.page)}
                                     className={`
                                         pointer-events-auto
-                                        w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300
+                                        w-14 h-14 rounded-full flex items-center justify-center shadow-glow transition-all duration-300
                                         ${isActive 
                                             ? 'bg-brand-primary text-white scale-110 border-4 border-gray-100' 
                                             : 'bg-brand-gray-800 text-gray-400 border-4 border-brand-gray-900 hover:bg-brand-primary hover:text-white hover:border-gray-100'}
@@ -285,20 +272,17 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
                         <button
                             key={item.label}
                             onClick={() => onNavigate(item.page)}
-                            className={`relative flex flex-col items-center justify-center ${widthClass} h-16 pb-2 group active:bg-white/5 transition-colors`}
+                            className={`relative flex flex-col items-center justify-center ${widthClass} h-14 group`}
                         >
                             <div className={`
                                 p-1.5 rounded-xl transition-all duration-300 mb-0.5
-                                ${isActive ? 'bg-white/10 text-white translate-y-[-2px]' : 'text-gray-500 group-hover:text-gray-300'}
+                                ${isActive ? 'bg-brand-primary text-white shadow-glow -translate-y-1' : 'text-gray-400 group-hover:text-gray-200'}
                             `}>
-                                <item.icon className={`h-5 w-5 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'}`} />
+                                <item.icon className={`h-4 w-4 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'}`} />
                             </div>
-                            <span className={`text-[9px] font-medium tracking-wide transition-colors ${isActive ? 'text-white' : 'text-gray-600'}`}>
+                            <span className={`text-[9px] font-medium tracking-wide transition-colors ${isActive ? 'text-white' : 'text-gray-500'}`}>
                                 {item.label}
                             </span>
-                            {isActive && (
-                                <div className="absolute bottom-0 w-8 h-1 bg-brand-primary rounded-t-full"></div>
-                            )}
                         </button>
                     );
                 })}

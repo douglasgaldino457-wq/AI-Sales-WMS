@@ -1,5 +1,5 @@
-
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { runWithRetry } from "./geminiService";
 
 // --- 1. Reference Database (Mock) ---
 interface RegionRule {
@@ -198,10 +198,10 @@ export const predictRegion = async (
         Exemplo: "Zona Sul SP"
       `;
 
-      const response = await ai.models.generateContent({
+      const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
-      });
+      }));
 
       let aiRegion = response.text?.trim() || "Região Não Identificada";
       aiRegion = aiRegion.replace(/\.$/, ''); // Remove trailing dot
