@@ -2,10 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { optimizeRoute } from '../services/geminiService';
 import { appStore } from '../services/store';
-import { Appointment } from '../types';
+import { Appointment, ClientBaseRow } from '../types';
 import { 
     Navigation, Loader2, MoveUp, MoveDown, Map as MapIcon, 
-    Flag, Clock, Car, Compass, Sparkles, MapPin, Locate, List, Crosshair
+    Flag, Clock, Car, Compass, Sparkles, MapPin, Locate, List, Crosshair, 
+    CalendarPlus, X, Search, Trash2, CalendarDays, Plus
 } from 'lucide-react';
 
 // Extend Appointment type locally to include coordinates
@@ -22,10 +23,16 @@ const RoutesPage: React.FC = () => {
   
   // Geolocation State
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [geoError, setGeoError] = useState<string | null>(null);
-
+  
   // Mobile View State
   const [activeTab, setActiveTab] = useState<'LIST' | 'MAP'>('LIST');
+
+  // PLANNER STATE
+  const [isPlannerOpen, setIsPlannerOpen] = useState(false);
+  const [plannerDate, setPlannerDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [plannerSearch, setPlannerSearch] = useState('');
+  const [plannerAppointments, setPlannerAppointments] = useState<Appointment[]>([]);
+  const [searchResultClients, setSearchResultClients] = useState<ClientBaseRow[]>([]);
 
   // Refs for Leaflet instance
   const mapRef = useRef<any>(null);
@@ -33,9 +40,12 @@ const RoutesPage: React.FC = () => {
   const polylineRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
 
-  useEffect(() => {
-    // 1. Get Appointments in Route
-    const appointments = appStore.getRouteAppointments('Cleiton Freitas'); // Mock User
+  const currentUser = 'Cleiton Freitas'; // Mock User Context
+
+  const loadRouteForToday = () => {
+    // 1. Get Appointments for TODAY
+    const today = new Date().toISOString().split('T')[0];
+    const appointments = appStore.getRouteAppointments(currentUser, today);
     
     // 2. Get Client Base to merge coordinates
     const clients = appStore.getClients();
@@ -51,6 +61,10 @@ const RoutesPage: React.FC = () => {
     });
 
     setRouteStops(enrichedStops);
+  };
+
+  useEffect(() => {
+    loadRouteForToday();
 
     // 4. Get User Location
     if (navigator.geolocation) {
@@ -59,14 +73,78 @@ const RoutesPage: React.FC = () => {
                 const { latitude, longitude } = position.coords;
                 setUserLocation({ lat: latitude, lng: longitude });
             },
-            (error) => {
-                console.error("Error getting location", error);
-                setGeoError("GPS inacessível");
-            },
+            (error) => console.error("Error getting location", error),
             { enableHighAccuracy: true }
         );
     }
-  }, []);
+  }, [isPlannerOpen]); // Reload route when planner closes
+
+  // --- PLANNER LOGIC ---
+  
+  // Generate next 7 days
+  const getNext7Days = () => {
+      const dates = [];
+      const today = new Date();
+      for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() + i);
+          dates.push(d);
+      }
+      return dates;
+  };
+
+  const weekDates = getNext7Days();
+
+  // Load appointments for selected planner date
+  useEffect(() => {
+      if (isPlannerOpen) {
+          const appts = appStore.getRouteAppointments(currentUser, plannerDate);
+          setPlannerAppointments(appts);
+      }
+  }, [plannerDate, isPlannerOpen]);
+
+  // Search Clients for Planner
+  useEffect(() => {
+      if (plannerSearch.length > 2) {
+          const allClients = appStore.getClients();
+          const filtered = allClients.filter(c => 
+              c.nomeEc.toLowerCase().includes(plannerSearch.toLowerCase()) ||
+              c.endereco.toLowerCase().includes(plannerSearch.toLowerCase())
+          ).slice(0, 5);
+          setSearchResultClients(filtered);
+      } else {
+          setSearchResultClients([]);
+      }
+  }, [plannerSearch]);
+
+  const handleAddToPlanner = (client: ClientBaseRow) => {
+      const newAppt: Appointment = {
+          id: appStore.generateId(),
+          clientId: client.id,
+          clientName: client.nomeEc,
+          address: client.endereco,
+          responsible: client.responsavel,
+          whatsapp: client.contato,
+          fieldSalesName: currentUser,
+          status: 'Scheduled',
+          leadOrigins: [],
+          isWallet: true,
+          date: plannerDate,
+          period: 'Horário Comercial',
+          visitReason: 'Planejamento Semanal',
+          inRoute: true,
+          observation: ''
+      };
+      appStore.addAppointment(newAppt);
+      // Refresh local list
+      setPlannerAppointments(appStore.getRouteAppointments(currentUser, plannerDate));
+      setPlannerSearch('');
+  };
+
+  const handleRemoveFromPlanner = (id: string) => {
+      appStore.removeAppointment(id);
+      setPlannerAppointments(appStore.getRouteAppointments(currentUser, plannerDate));
+  };
 
   // --- LEAFLET MAP INITIALIZATION & UPDATE ---
   useEffect(() => {
@@ -79,7 +157,7 @@ const RoutesPage: React.FC = () => {
             initMap();
         }, 100);
     }
-  }, [activeTab, routeStops, userLocation]); // Re-run when userLocation updates
+  }, [activeTab, routeStops, userLocation]); 
 
   const initMap = () => {
     const L = (window as any).L;
@@ -88,7 +166,6 @@ const RoutesPage: React.FC = () => {
     if (!mapRef.current) {
         const mapContainer = document.getElementById('leaflet-map');
         if (mapContainer) {
-            // Default center SP
             const initialCenter = userLocation ? [userLocation.lat, userLocation.lng] : [-23.5505, -46.6333];
             const map = L.map('leaflet-map').setView(initialCenter, 13);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -103,7 +180,7 @@ const RoutesPage: React.FC = () => {
     if (mapRef.current) {
         const map = mapRef.current;
         
-        // 1. Render User Location Marker
+        // Render User Location
         if (userLocation) {
              if (userMarkerRef.current) map.removeLayer(userMarkerRef.current);
              
@@ -121,15 +198,13 @@ const RoutesPage: React.FC = () => {
                 .bindPopup('<div class="font-bold text-xs text-center">📍 Sua Localização Atual<br/>(Ponto de Partida)</div>');
         }
 
-        // 2. Render Stops
+        // Render Stops
         if (routeStops.length > 0) {
             markersRef.current.forEach(m => map.removeLayer(m));
             markersRef.current = [];
             if (polylineRef.current) map.removeLayer(polylineRef.current);
 
             const latLngs: any[] = [];
-            
-            // Add user location as start of line if available
             if (userLocation) latLngs.push([userLocation.lat, userLocation.lng]);
 
             routeStops.forEach((stop, index) => {
@@ -172,7 +247,6 @@ const RoutesPage: React.FC = () => {
                     color: '#F3123C', weight: 4, opacity: 0.7, dashArray: '10, 10', lineCap: 'round'
                 }).addTo(map);
                 
-                // Fit bounds to include user location and stops
                 const bounds = L.latLngBounds(latLngs);
                 map.fitBounds(bounds, { padding: [50, 50] });
             } else if (latLngs.length === 1) {
@@ -194,7 +268,6 @@ const RoutesPage: React.FC = () => {
         address: a.address
     }));
     
-    // Pass User Location to AI as start point
     const startLocationStr = userLocation 
         ? `Coordenadas Lat: ${userLocation.lat}, Lng: ${userLocation.lng}` 
         : undefined;
@@ -261,39 +334,56 @@ const RoutesPage: React.FC = () => {
                     }
                 </p>
             </div>
-            {/* Mobile Tab Toggle */}
-            <div className="flex lg:hidden bg-brand-gray-100 p-1 rounded-lg">
+            {/* Mobile Toggle & Plan Button */}
+            <div className="flex gap-2 lg:hidden">
                 <button 
-                    onClick={() => setActiveTab('LIST')}
-                    className={`p-2 rounded-md ${activeTab === 'LIST' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-500'}`}
+                    onClick={() => setIsPlannerOpen(true)}
+                    className="p-2 rounded-lg bg-brand-gray-900 text-white shadow-sm"
                 >
-                    <List size={20} />
+                    <CalendarPlus size={20} />
                 </button>
-                <button 
-                    onClick={() => setActiveTab('MAP')}
-                    className={`p-2 rounded-md ${activeTab === 'MAP' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-500'}`}
-                >
-                    <MapIcon size={20} />
-                </button>
+                <div className="flex bg-brand-gray-100 p-1 rounded-lg">
+                    <button 
+                        onClick={() => setActiveTab('LIST')}
+                        className={`p-2 rounded-md ${activeTab === 'LIST' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-500'}`}
+                    >
+                        <List size={20} />
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('MAP')}
+                        className={`p-2 rounded-md ${activeTab === 'MAP' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-500'}`}
+                    >
+                        <MapIcon size={20} />
+                    </button>
+                </div>
             </div>
         </div>
         
-        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-            <div className="flex items-center gap-2 px-3 py-2 bg-brand-gray-50 rounded-lg border border-brand-gray-100 min-w-[100px]">
+        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+            {/* Desktop Plan Button */}
+            <button 
+                onClick={() => setIsPlannerOpen(true)}
+                className="hidden lg:flex items-center gap-2 px-4 py-2 bg-brand-gray-900 text-white rounded-xl font-bold text-xs hover:bg-black transition-colors shadow-md mr-2"
+            >
+                <CalendarPlus className="w-4 h-4" />
+                Planejar Semana
+            </button>
+
+            <div className="flex items-center gap-2 px-3 py-2 bg-brand-gray-50 rounded-lg border border-brand-gray-100 min-w-[90px]">
                 <Flag className="w-4 h-4 text-brand-gray-400" />
                 <div>
                     <p className="text-[9px] text-brand-gray-400 uppercase font-bold">Paradas</p>
                     <p className="text-sm font-bold text-brand-gray-900">{routeStops.length}</p>
                 </div>
             </div>
-            <div className="flex items-center gap-2 px-3 py-2 bg-brand-gray-50 rounded-lg border border-brand-gray-100 min-w-[100px]">
+            <div className="flex items-center gap-2 px-3 py-2 bg-brand-gray-50 rounded-lg border border-brand-gray-100 min-w-[90px]">
                 <Car className="w-4 h-4 text-brand-gray-400" />
                 <div>
                     <p className="text-[9px] text-brand-gray-400 uppercase font-bold">Km Est.</p>
                     <p className="text-sm font-bold text-brand-gray-900">{(routeStops.length * 3.5).toFixed(1)}</p>
                 </div>
             </div>
-            <div className="flex items-center gap-2 px-3 py-2 bg-brand-gray-50 rounded-lg border border-brand-gray-100 min-w-[100px]">
+            <div className="flex items-center gap-2 px-3 py-2 bg-brand-gray-50 rounded-lg border border-brand-gray-100 min-w-[90px]">
                 <Clock className="w-4 h-4 text-brand-gray-400" />
                 <div>
                     <p className="text-[9px] text-brand-gray-400 uppercase font-bold">Tempo</p>
@@ -305,12 +395,12 @@ const RoutesPage: React.FC = () => {
 
       <div className="flex flex-col lg:flex-row gap-6 flex-1 overflow-hidden relative">
         
-        {/* LEFT PANEL: TIMELINE LIST (Visible on Desktop OR Mobile List Tab) */}
+        {/* LEFT PANEL: LIST */}
         <div className={`w-full lg:w-1/3 flex flex-col bg-white rounded-xl shadow-lg border border-brand-gray-100 overflow-hidden z-20 
             ${activeTab === 'LIST' ? 'flex h-full' : 'hidden lg:flex'}
         `}>
             <div className="p-4 border-b border-brand-gray-100 bg-brand-gray-50/50 flex justify-between items-center">
-                <h3 className="font-bold text-brand-gray-900 text-sm">Sequência de Visitas</h3>
+                <h3 className="font-bold text-brand-gray-900 text-sm">Sequência de Hoje</h3>
                 <button 
                     onClick={handleOptimize}
                     disabled={loading || routeStops.length < 2}
@@ -322,7 +412,6 @@ const RoutesPage: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-2 space-y-2 bg-white pb-28 md:pb-2">
-                {/* User Location Card in List */}
                 {userLocation && (
                     <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-3">
                          <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-md border-2 border-white">
@@ -338,7 +427,8 @@ const RoutesPage: React.FC = () => {
                 {routeStops.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-8 text-brand-gray-400">
                         <MapIcon className="w-12 h-12 mb-3 opacity-20" />
-                        <p className="text-sm">Rota vazia.</p>
+                        <p className="text-sm">Nenhuma visita agendada para hoje.</p>
+                        <button onClick={() => setIsPlannerOpen(true)} className="mt-4 text-brand-primary font-bold text-xs underline">Planejar rota agora</button>
                     </div>
                 ) : (
                     routeStops.map((stop, index) => (
@@ -348,29 +438,24 @@ const RoutesPage: React.FC = () => {
                                 ${hoveredStopId === stop.id ? 'bg-brand-gray-50 border-brand-primary shadow-md transform scale-[1.02]' : 'bg-white border-brand-gray-100 hover:border-brand-gray-300'}
                             `}
                             onClick={() => {
-                                if (window.innerWidth < 1024) setActiveTab('MAP'); // Auto switch to map on mobile
+                                if (window.innerWidth < 1024) setActiveTab('MAP');
                                 if (mapRef.current && stop.lat && stop.lng) {
                                     setTimeout(() => mapRef.current.setView([stop.lat, stop.lng], 16), 300);
                                 }
                             }}
                         >
-                            {/* Number Badge */}
                             <div className="flex flex-col items-center gap-1">
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm z-10 transition-colors
-                                    ${stop.status === 'Completed' 
-                                        ? 'bg-green-500 text-white' 
-                                        : 'bg-brand-gray-900 text-white'}
+                                    ${stop.status === 'Completed' ? 'bg-green-500 text-white' : 'bg-brand-gray-900 text-white'}
                                 `}>
                                     {index + 1}
                                 </div>
-                                {/* Sort Controls */}
                                 <div className="flex flex-col lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                     <button onClick={(e) => {e.stopPropagation(); moveItem(index, 'up')}} disabled={index === 0} className="p-0.5 hover:text-brand-primary disabled:opacity-0"><MoveUp size={12}/></button>
                                     <button onClick={(e) => {e.stopPropagation(); moveItem(index, 'down')}} disabled={index === routeStops.length - 1} className="p-0.5 hover:text-brand-primary disabled:opacity-0"><MoveDown size={12}/></button>
                                 </div>
                             </div>
 
-                            {/* Content */}
                             <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-start">
                                     <h4 className="font-bold text-brand-gray-900 text-sm truncate">{stop.clientName}</h4>
@@ -402,7 +487,6 @@ const RoutesPage: React.FC = () => {
                 )}
             </div>
             
-            {/* Optimization Result Text */}
             {optimizationResult && (
                 <div className="p-3 bg-brand-gray-900 text-white text-xs border-t border-brand-gray-800 animate-fade-in">
                     <p className="font-bold mb-1 flex items-center gap-2">
@@ -416,14 +500,12 @@ const RoutesPage: React.FC = () => {
             )}
         </div>
 
-        {/* RIGHT PANEL: INTERACTIVE MAP (Visible on Desktop OR Mobile Map Tab) */}
+        {/* RIGHT PANEL: MAP */}
         <div className={`flex-1 bg-brand-gray-200 rounded-xl shadow-lg border border-brand-gray-300 relative overflow-hidden group 
             ${activeTab === 'MAP' ? 'flex h-full min-h-[50vh]' : 'hidden lg:flex'}
         `}>
-             {/* Map Container */}
              <div id="leaflet-map" className="w-full h-full z-0"></div>
 
-             {/* Floating Info Overlay */}
              <div className="absolute top-4 left-4 z-[400] bg-white/95 backdrop-blur-md p-3 rounded-xl shadow-lg border border-brand-gray-200 max-w-xs pointer-events-none hidden md:block">
                 <h3 className="font-bold text-brand-gray-900 text-sm flex items-center gap-2">
                     <MapIcon className="w-4 h-4 text-brand-primary" />
@@ -434,7 +516,6 @@ const RoutesPage: React.FC = () => {
                 </p>
             </div>
 
-            {/* Recenter Button */}
             <button 
                 onClick={handleCenterMap}
                 className="absolute top-4 right-4 z-[400] bg-white p-2 rounded-lg shadow-lg text-brand-gray-700 hover:text-brand-primary hover:bg-brand-gray-50 border border-brand-gray-200"
@@ -443,19 +524,15 @@ const RoutesPage: React.FC = () => {
                 <Locate className="w-5 h-5" />
             </button>
 
-            {/* Start Navigation Overlay (Bottom) */}
              <div className="absolute bottom-28 md:bottom-6 left-1/2 transform -translate-x-1/2 z-[400] w-full max-w-sm px-4 pointer-events-auto">
                 <button 
                     onClick={() => {
                         const stopAddresses = routeStops.map(s => encodeURIComponent(s.address)).join('/');
                         let url = `https://www.google.com/maps/dir/${stopAddresses}`;
-                        
                         if (userLocation) {
                             const origin = `${userLocation.lat},${userLocation.lng}`;
-                            // Google Maps format: dir/origin/dest1/dest2/...
                             url = `https://www.google.com/maps/dir/${origin}/${stopAddresses}`;
                         }
-                        
                         window.open(url, '_blank');
                     }}
                     disabled={routeStops.length === 0}
@@ -467,6 +544,140 @@ const RoutesPage: React.FC = () => {
             </div>
         </div>
       </div>
+
+      {/* WEEK PLANNER MODAL */}
+      {isPlannerOpen && (
+          <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white shrink-0">
+                      <div className="flex items-center gap-3">
+                          <div className="bg-white/10 p-2 rounded-lg"><CalendarPlus className="w-6 h-6" /></div>
+                          <div>
+                              <h3 className="font-bold text-lg">Planejador Semanal</h3>
+                              <p className="text-xs text-brand-gray-400">Organize suas visitas com antecedência.</p>
+                          </div>
+                      </div>
+                      <button onClick={() => setIsPlannerOpen(false)} className="text-brand-gray-400 hover:text-white transition-colors">
+                          <X size={24} />
+                      </button>
+                  </div>
+
+                  {/* Date Tabs */}
+                  <div className="bg-brand-gray-50 border-b border-brand-gray-200 px-6 pt-4 pb-0 overflow-x-auto flex gap-2">
+                      {weekDates.map((d, idx) => {
+                          const dateStr = d.toISOString().split('T')[0];
+                          const isActive = dateStr === plannerDate;
+                          return (
+                              <button
+                                  key={idx}
+                                  onClick={() => setPlannerDate(dateStr)}
+                                  className={`px-4 py-3 rounded-t-lg text-sm font-bold border-t border-x transition-colors whitespace-nowrap
+                                      ${isActive 
+                                          ? 'bg-white border-brand-gray-200 text-brand-primary border-b-white translate-y-px z-10' 
+                                          : 'bg-transparent border-transparent text-brand-gray-500 hover:bg-brand-gray-100'}
+                                  `}
+                              >
+                                  {d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' })}
+                              </button>
+                          );
+                      })}
+                  </div>
+
+                  <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                      {/* Left: Search & Add */}
+                      <div className="w-full md:w-1/2 p-6 border-b md:border-b-0 md:border-r border-brand-gray-200 flex flex-col bg-white">
+                          <h4 className="text-xs font-bold text-brand-gray-500 uppercase tracking-wide mb-4">Adicionar à Rota</h4>
+                          <div className="relative mb-4">
+                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-brand-gray-400 w-4 h-4" />
+                              <input 
+                                  type="text" 
+                                  placeholder="Buscar cliente na base..." 
+                                  className="w-full pl-10 pr-4 py-2 border border-brand-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                  value={plannerSearch}
+                                  onChange={(e) => setPlannerSearch(e.target.value)}
+                              />
+                          </div>
+                          
+                          <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                              {plannerSearch.length > 2 && searchResultClients.length === 0 ? (
+                                  <p className="text-xs text-center text-brand-gray-400 mt-4">Nenhum cliente encontrado.</p>
+                              ) : searchResultClients.length > 0 ? (
+                                  searchResultClients.map(client => (
+                                      <div key={client.id} className="flex justify-between items-center p-3 border border-brand-gray-100 rounded-lg hover:bg-brand-gray-50 transition-colors">
+                                          <div className="overflow-hidden mr-2">
+                                              <p className="font-bold text-sm text-brand-gray-900 truncate">{client.nomeEc}</p>
+                                              <p className="text-xs text-brand-gray-500 truncate">{client.endereco}</p>
+                                          </div>
+                                          <button 
+                                              onClick={() => handleAddToPlanner(client)}
+                                              className="p-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark transition-colors shadow-sm"
+                                              title="Adicionar"
+                                          >
+                                              <Plus size={16} />
+                                          </button>
+                                      </div>
+                                  ))
+                              ) : (
+                                  <div className="text-center py-10 text-brand-gray-400">
+                                      <Search size={32} className="mx-auto mb-2 opacity-20" />
+                                      <p className="text-xs">Digite para buscar clientes...</p>
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+
+                      {/* Right: Scheduled List */}
+                      <div className="w-full md:w-1/2 p-6 flex flex-col bg-brand-gray-50">
+                          <div className="flex justify-between items-center mb-4">
+                              <h4 className="text-xs font-bold text-brand-gray-500 uppercase tracking-wide">
+                                  Roteiro de {new Date(plannerDate).toLocaleDateString('pt-BR')}
+                              </h4>
+                              <span className="bg-brand-gray-200 text-brand-gray-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                                  {plannerAppointments.length} Visitas
+                              </span>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                              {plannerAppointments.length === 0 ? (
+                                  <div className="text-center py-10 text-brand-gray-400 border-2 border-dashed border-brand-gray-200 rounded-xl">
+                                      <CalendarDays size={32} className="mx-auto mb-2 opacity-20" />
+                                      <p className="text-xs">Dia livre. Adicione visitas ao lado.</p>
+                                  </div>
+                              ) : (
+                                  plannerAppointments.map((appt, index) => (
+                                      <div key={appt.id} className="bg-white p-3 rounded-xl border border-brand-gray-200 shadow-sm flex items-start gap-3 group">
+                                          <div className="w-6 h-6 rounded-full bg-brand-gray-100 flex items-center justify-center text-xs font-bold text-brand-gray-600 mt-0.5">
+                                              {index + 1}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                              <p className="font-bold text-sm text-brand-gray-900 truncate">{appt.clientName}</p>
+                                              <p className="text-xs text-brand-gray-500 truncate">{appt.address}</p>
+                                          </div>
+                                          <button 
+                                              onClick={() => handleRemoveFromPlanner(appt.id)}
+                                              className="text-brand-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all"
+                                              title="Remover"
+                                          >
+                                              <Trash2 size={16} />
+                                          </button>
+                                      </div>
+                                  ))
+                              )}
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <div className="p-4 border-t border-brand-gray-200 bg-white flex justify-end">
+                      <button 
+                          onClick={() => setIsPlannerOpen(false)}
+                          className="px-6 py-2 bg-brand-primary text-white font-bold rounded-lg hover:bg-brand-dark transition-colors shadow-lg"
+                      >
+                          Concluir Planejamento
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

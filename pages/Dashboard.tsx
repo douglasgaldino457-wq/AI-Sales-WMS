@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole, Appointment, SystemUser } from '../types';
 import { 
-  PieChart, Pie, Cell, Legend, Tooltip, TooltipProps, ResponsiveContainer
+  PieChart, Pie, Cell, Legend, Tooltip, TooltipProps, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import { MOCK_SALES_DATA, MOCK_STATUS_DATA, MOCK_USERS } from '../constants';
 import { getDashboardInsights } from '../services/geminiService';
@@ -11,7 +12,7 @@ import {
     Sparkles, TrendingUp, CalendarCheck, CheckCircle2, Clock, 
     Briefcase, UserPlus, FileText, MapPin, Layout, Search, Filter, ArrowUpDown,
     ChevronLeft, ChevronRight, Check, Calendar, Users, Target, Phone, X, Eye, ArrowRight,
-    BarChart2, Lightbulb, AlertTriangle
+    BarChart2, Lightbulb, AlertTriangle, ThumbsUp, ThumbsDown, Activity
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -132,6 +133,8 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
          const totalConv = stats.reduce((acc, s) => acc + s.converted, 0);
          const lowPerformers = stats.filter(s => s.totalAppointments > 5 && s.conversionRate < 10).map(s => `${s.name}`).join(', ');
          summary = `Total Conversões: ${totalConv}. Topo: ${stats.slice(0,2).map(s => s.name).join(', ')}. Atenção: ${lowPerformers}.`;
+      } else if (role === UserRole.PRICING) {
+         summary = "Aprovação de taxas: 65%. Principais recusas por margem negativa em antecipação.";
       } else {
          const myName = role === UserRole.FIELD_SALES ? 'Cleiton Freitas' : 'Cauana Sousa';
          const myAppts = appointments.filter(a => role === UserRole.FIELD_SALES ? a.fieldSalesName === myName : a.insideSalesName === myName);
@@ -183,7 +186,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
                         <span className="bg-brand-primary text-[9px] px-1.5 py-0.5 rounded text-white font-bold">BETA</span>
                     </h3>
                     <p className="text-gray-400 text-xs mt-0.5 group-hover:text-gray-200 transition-colors">
-                        {loadingAI ? 'Analisando padrões de venda...' : 'Identificamos 3 ações táticas para hoje. Toque para ver.'}
+                        {loadingAI ? 'Analisando padrões de venda...' : 'Identificamos ações táticas para hoje. Toque para ver.'}
                     </p>
                 </div>
             </div>
@@ -269,15 +272,121 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
     </div>
   );
 
+  // --- PRICING DASHBOARD VIEW ---
+  if (role === UserRole.PRICING) {
+      // Mock Data for Pricing Dashboard
+      const pricingStats = {
+          totalRequests: 150,
+          approved: 85,
+          rejected: 40,
+          pending: 25,
+          avgSpread: 1.05
+      };
+
+      // Market Comparison Data (Mock)
+      const marketComparisonData = [
+          { name: 'Taxa Débito', Mercado: 1.10, Aprovado: 0.95, Target: 0.99 },
+          { name: 'Crédito 1x', Mercado: 3.50, Aprovado: 3.10, Target: 3.19 },
+          { name: 'Crédito 12x', Mercado: 14.50, Aprovado: 12.80, Target: 13.00 },
+      ];
+
+      return (
+          <div className="max-w-7xl mx-auto space-y-8">
+              <InsightBanner />
+              <InsightModal />
+
+              <div className="flex justify-between items-end mb-4">
+                  <div>
+                      <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Mesa de Negociação</h1>
+                      <p className="text-gray-500 mt-1">Acompanhamento de aprovações e competitividade.</p>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-lg px-4 py-2 shadow-sm text-sm">
+                      <span className="text-gray-500 font-bold mr-2">Spread Médio Atual:</span>
+                      <span className="text-green-600 font-bold">{pricingStats.avgSpread}%</span>
+                  </div>
+              </div>
+
+              {/* KPIs */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <KpiCard title="Total Solicitações" value={pricingStats.totalRequests} icon={FileText} colorClass="bg-gray-800 text-white" />
+                  <KpiCard title="Aprovadas" value={pricingStats.approved} icon={ThumbsUp} colorClass="bg-green-500 text-green-600" />
+                  <KpiCard title="Reprovadas (Negativos)" value={pricingStats.rejected} icon={ThumbsDown} colorClass="bg-red-500 text-red-600" />
+                  <KpiCard title="Em Análise" value={pricingStats.pending} icon={Clock} colorClass="bg-orange-500 text-orange-600" />
+              </div>
+
+              {/* CHARTS ROW */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Conversion Pie Chart */}
+                  <div className="lg:col-span-1 tech-card rounded-2xl p-6 flex flex-col items-center">
+                      <h3 className="font-bold text-gray-900 mb-2 w-full text-left">Conversão da Mesa</h3>
+                      <div style={{ width: '100%', height: 250, position: 'relative' }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                  <Pie
+                                      data={[
+                                          { name: 'Aprovados', value: pricingStats.approved },
+                                          { name: 'Negativos', value: pricingStats.rejected },
+                                          { name: 'Pendentes', value: pricingStats.pending }
+                                      ]}
+                                      cx="50%"
+                                      cy="50%"
+                                      innerRadius={60}
+                                      outerRadius={80}
+                                      paddingAngle={5}
+                                      dataKey="value"
+                                  >
+                                      <Cell fill="#10B981" />
+                                      <Cell fill="#EF4444" />
+                                      <Cell fill="#F59E0B" />
+                                  </Pie>
+                                  <Tooltip />
+                                  <Legend verticalAlign="bottom" height={36}/>
+                              </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center -mt-4">
+                               <span className="text-2xl font-bold text-gray-900">
+                                   {((pricingStats.approved / (pricingStats.approved + pricingStats.rejected)) * 100).toFixed(0)}%
+                               </span>
+                               <span className="block text-[10px] text-gray-400 uppercase">Aprovação</span>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Market Study Bar Chart */}
+                  <div className="lg:col-span-2 tech-card rounded-2xl p-6">
+                      <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+                          <Activity className="w-5 h-5 text-brand-primary" />
+                          Estudo de Taxas: Mercado vs. Aprovado
+                      </h3>
+                      <div style={{ width: '100%', height: 250 }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                              <BarChart
+                                  data={marketComparisonData}
+                                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                              >
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                  <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                                  <YAxis axisLine={false} tickLine={false} />
+                                  <Tooltip 
+                                      contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
+                                      cursor={{fill: '#F9FAFB'}}
+                                  />
+                                  <Legend align="right" verticalAlign="top" iconType="circle" />
+                                  <Bar dataKey="Mercado" fill="#9CA3AF" radius={[4, 4, 0, 0]} name="Média Concorrente" />
+                                  <Bar dataKey="Target" fill="#10B981" radius={[4, 4, 0, 0]} name="Target (Range)" />
+                                  <Bar dataKey="Aprovado" fill="#F3123C" radius={[4, 4, 0, 0]} name="Realizado (Nós)" />
+                              </BarChart>
+                          </ResponsiveContainer>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
   // --- FIELD SALES VIEW ---
   if (role === UserRole.FIELD_SALES) {
       const todayStr = new Date().toISOString().split('T')[0];
-      
-      // Calculate Stats based on Today's Agenda (as implies by "Total Agenda")
-      // OR based on filtering. 
-      // The original design had "Total Agenda" = 5, "Pendentes" = 3.
-      // Usually Field Sales cares about "Today". 
-      // Let's filter appointments for Today to generate the KPIs.
       const todaysAppointments = appointments.filter(appt => appt.date === todayStr);
       
       const total = todaysAppointments.length;
@@ -285,7 +394,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
       const pending = todaysAppointments.filter(a => a.status === 'Scheduled').length;
       const converted = todaysAppointments.filter(a => a.visitReport?.outcome === 'Convertido').length;
 
-      // Filter displayed list based on selection
       const displayedAppointments = todaysAppointments.filter(a => {
           if (detailedMetricView === 'COMPLETED') return a.status === 'Completed';
           if (detailedMetricView === 'SCHEDULED') return a.status === 'Scheduled';
@@ -384,12 +492,10 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
 
   // --- INSIDE SALES VIEW ---
   if (role === UserRole.INSIDE_SALES) {
-      // Logic for Inside Sales Dashboard
       const totalAppointments = appointments.length;
       const completedVisits = appointments.filter(a => a.status === 'Completed').length;
       const pendingVisits = appointments.filter(a => a.status === 'Scheduled').length;
       
-      // Filter logic preserved but simplified for display
       const filteredList = appointments.filter(a => {
          if (cardFilter === 'COMPLETED' && a.status !== 'Completed') return false;
          if (cardFilter === 'SCHEDULED' && a.status !== 'Scheduled') return false;
@@ -457,7 +563,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
       );
   }
 
-  // --- GESTOR VIEW ---
+  // --- GESTOR / ESTRATEGIA VIEW ---
   const filteredGestorData = getFilteredAppointmentsForGestor();
   const consultantStats = calculateConsultantStats();
   const totalGestor = filteredGestorData.length;
@@ -527,7 +633,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
             </div>
 
             <div className="tech-card rounded-2xl p-6 flex flex-col justify-center items-center text-center">
-                 {/* Added explicit styles for width/height/position/min-width to avoid chart resize errors */}
                  <div style={{ width: 192, height: 192, position: 'relative', minWidth: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>

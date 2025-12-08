@@ -9,9 +9,11 @@ import AgendamentosPage from './pages/AgendamentosPage';
 import ConfiguracaoPage from './pages/ConfiguracaoPage';
 import MapaGestaoPage from './pages/MapaGestaoPage';
 import PricingPage from './pages/PricingPage';
+import ConfigTaxasPage from './pages/ConfigTaxasPage'; // New Import
 import CadastroPage from './pages/CadastroPage';
+import HelpPage from './pages/HelpPage';
 import { Logo } from './components/Logo';
-import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw } from 'lucide-react';
+import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw, BadgePercent } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
 const App: React.FC = () => {
@@ -27,6 +29,7 @@ const App: React.FC = () => {
     if (role === UserRole.INSIDE_SALES) setCurrentPage(Page.DASHBOARD);
     else if (role === UserRole.FIELD_SALES) setCurrentPage(Page.DASHBOARD);
     else if (role === UserRole.ESTRATEGIA) setCurrentPage(Page.METAS);
+    else if (role === UserRole.PRICING) setCurrentPage(Page.PRICING);
     else setCurrentPage(Page.DASHBOARD_GERAL);
   };
 
@@ -106,8 +109,8 @@ const App: React.FC = () => {
           
           <div className="flex flex-col items-center mb-10">
             <div className="scale-125 mb-6 drop-shadow-2xl">
-                 {/* Logo adapted to white text */}
-                 <Logo className="text-white" />
+                 {/* Updated to use 'white' type for dark background */}
+                 <Logo type="white" />
             </div>
             <h2 className="text-3xl font-bold text-center text-white drop-shadow-md">Bem-vindo</h2>
             <p className="text-center text-white/80 text-sm mt-2 font-medium tracking-wide drop-shadow-sm">Portal Integrado de Vendas & Gestão</p>
@@ -115,7 +118,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-4 w-full">
-            {[UserRole.INSIDE_SALES, UserRole.FIELD_SALES, UserRole.GESTOR, UserRole.ESTRATEGIA].map((role) => (
+            {[UserRole.INSIDE_SALES, UserRole.FIELD_SALES, UserRole.GESTOR, UserRole.ESTRATEGIA, UserRole.PRICING].map((role) => (
               <button
                 key={role}
                 onClick={() => handleLogin(role)}
@@ -123,7 +126,9 @@ const App: React.FC = () => {
               >
                 <div className="flex items-center relative z-10">
                   <div className={`text-white p-2 rounded-xl mr-4 bg-white/10 group-hover:bg-white group-hover:text-brand-primary transition-colors shadow-sm`}>
-                    {role === UserRole.ESTRATEGIA ? <Target size={20} strokeWidth={2.5} /> : <User size={20} strokeWidth={2.5} />}
+                    {role === UserRole.ESTRATEGIA ? <Target size={20} strokeWidth={2.5} /> : 
+                     role === UserRole.PRICING ? <BadgePercent size={20} strokeWidth={2.5} /> :
+                     <User size={20} strokeWidth={2.5} />}
                   </div>
                   <span className="font-bold text-base text-white tracking-wide">{role}</span>
                 </div>
@@ -182,8 +187,16 @@ const App: React.FC = () => {
             <PricingPage role={currentUserRole} />
         )}
 
+        {(currentPage === Page.CONFIG_TAXAS) && (
+            <ConfigTaxasPage />
+        )}
+
         {(currentPage === Page.CADASTRO) && (
             <CadastroPage />
+        )}
+
+        {(currentPage === Page.AJUDA) && (
+            <HelpPage role={currentUserRole} />
         )}
 
         {(currentPage === Page.METAS) && (

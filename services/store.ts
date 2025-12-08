@@ -1,5 +1,5 @@
 
-import { Appointment, ClientBaseRow, SystemUser, ClientNote, VisitReport, ManualDemand } from '../types';
+import { Appointment, ClientBaseRow, SystemUser, ClientNote, VisitReport, ManualDemand, SavedQuote } from '../types';
 import { MOCK_CLIENT_BASE, MOCK_USERS } from '../constants';
 
 // Simple in-memory storage to simulate database persistence during the session
@@ -9,6 +9,9 @@ class StoreService {
   private users: SystemUser[] = [...MOCK_USERS];
   private clientNotes: ClientNote[] = [];
   
+  // Storage for temporary quotes/simulations to link Pricing -> Field Report
+  private latestQuotes: Map<string, SavedQuote> = new Map();
+
   // --- Manual Demands ---
   private demands: ManualDemand[] = [
     {
@@ -80,8 +83,7 @@ class StoreService {
 
     // Helper dates
     const today = new Date();
-    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 15);
-    const twoMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 2, 20);
+    const todayStr = today.toISOString().split('T')[0];
 
     // Add diverse mock appointments for testing Dashboard and Lists
     this.appointments = [
@@ -96,11 +98,11 @@ class StoreService {
         observation: 'Cliente interessado em gestão.',
         fieldSalesName: 'Cleiton Freitas',
         insideSalesName: 'Cauana Sousa',
-        date: today.toISOString().split('T')[0],
+        date: todayStr, // Force today for demo
         period: 'Manhã',
         status: 'Scheduled',
         isWallet: false,
-        inRoute: false
+        inRoute: true
       },
       {
         id: 'AGD-2055',
@@ -108,276 +110,208 @@ class StoreService {
         clientId: '1',
         clientName: 'Centro Automotivo Silva',
         responsible: 'Carlos Silva',
-        whatsapp: '11999991111',
-        address: 'Av. Santo Amaro, 1000',
-        observation: 'Problema com maquininha.',
+        whatsapp: '11999999998',
+        address: 'Av Paulista, 1000, SP',
+        observation: 'Visita de rotina.',
         fieldSalesName: 'Cleiton Freitas',
         insideSalesName: 'Cauana Sousa',
-        status: 'Completed',
-        isWallet: true,
-        visitReason: 'Problema na Pós',
-        fieldObservation: 'Resolvido, troquei o equipamento e testei com o cliente.',
-        date: lastMonth.toISOString().split('T')[0],
-        visitReport: {
-           checkInTime: lastMonth.toISOString(),
-           walletAction: 'Troca de POS',
-           swapReason: 'Bateria',
-           observation: 'Resolvido, troquei o equipamento e testei com o cliente.'
-        },
-        inRoute: false
-      },
-      {
-        id: 'AGD-3102',
-        leadOrigins: ['Indicação'],
-        clientId: '101',
-        clientName: 'Auto Center Fast',
-        responsible: 'Maria Souza',
-        whatsapp: '11988887777',
-        address: 'Rua da Mooca, 500',
-        observation: 'Indicado pela loja vizinha.',
-        fieldSalesName: 'Samuel de Paula',
-        insideSalesName: 'Marcos Oliveira',
-        date: twoMonthsAgo.toISOString().split('T')[0],
+        date: todayStr, // Force today for demo
         period: 'Tarde',
+        status: 'Scheduled',
+        isWallet: true,
+        visitReason: 'Suporte pós-venda',
+        inRoute: true
+      },
+      {
+        id: 'AGD-3012',
+        leadOrigins: ['Indicação'],
+        clientId: '1002',
+        clientName: 'Oficina Top Gear',
+        responsible: 'Mariana',
+        whatsapp: '11988887777',
+        address: 'Rua Augusta, 1500, SP',
+        observation: '',
+        fieldSalesName: 'Cleiton Freitas',
+        insideSalesName: 'Cauana Sousa',
+        date: todayStr,
+        period: 'Manhã',
         status: 'Completed',
         isWallet: false,
-        fieldObservation: 'Cliente fechou contrato na hora. Muito receptiva.',
+        inRoute: true,
         visitReport: {
-           checkInTime: twoMonthsAgo.toISOString(),
-           outcome: 'Convertido',
-           observation: 'Cliente fechou contrato na hora.'
-        },
-        inRoute: false
-      },
-      {
-        id: 'AGD-4001',
-        leadOrigins: [],
-        clientId: '2',
-        clientName: 'Pneus Express',
-        responsible: 'Marcos Pneus',
-        whatsapp: '11988882222',
-        address: 'Rua Voluntários, 500',
-        observation: 'Precisa de treinamento.',
-        fieldSalesName: 'Samuel de Paula',
-        insideSalesName: 'Marcos Oliveira',
-        status: 'Scheduled',
-        date: today.toISOString().split('T')[0],
-        isWallet: true,
-        visitReason: 'Dificuldade de Onboarding',
-        inRoute: true
-      },
-      {
-        id: 'AGD-4005',
-        leadOrigins: ['SIR'],
-        clientId: '105',
-        clientName: 'Oficina do Pedro',
-        responsible: 'Pedro',
-        whatsapp: '11977776666',
-        address: 'Av. Lins de Vasconcelos, 200',
-        observation: '',
-        fieldSalesName: 'Jorge Jr',
-        insideSalesName: 'Jussara Oliveira',
-        date: today.toISOString().split('T')[0],
-        period: 'Manhã',
-        status: 'Scheduled',
-        isWallet: false,
-        inRoute: true
-      }
-    ];
-
-    // Mock initial notes
-    this.clientNotes = [
-      {
-        id: 'note-1',
-        clientId: '1',
-        authorName: 'Cauana Sousa',
-        date: '2023-10-25T14:30:00.000Z',
-        content: 'Entrei em contato para confirmar o recebimento do novo material.'
+            checkInTime: new Date(today.setHours(9, 30)).toISOString(),
+            checkOutTime: new Date(today.setHours(10, 15)).toISOString(),
+            outcome: 'Em negociação'
+        }
       }
     ];
   }
 
-  // Appointment Methods
+  // --- Appointments ---
   getAppointments(): Appointment[] {
     return this.appointments;
   }
 
+  // Updated to filter by specific date for the Planner/Route feature
+  getRouteAppointments(username: string, date?: string): Appointment[] {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    
+    // Filter appointments for the specific user and date
+    return this.appointments.filter(a => 
+        a.fieldSalesName === username && 
+        a.date === targetDate && 
+        a.status !== 'Cancelled' // Don't show cancelled
+    );
+  }
+
   getAppointmentsByFieldSales(name: string): Appointment[] {
-    return this.appointments.filter(app => app.fieldSalesName === name);
-  }
-  
-  // --- ROUTE MANAGEMENT ---
-  getRouteAppointments(fieldSalesName?: string): Appointment[] {
-    // Return all scheduled appointments in route, or completed ones that haven't been removed yet
-    // However, business rule says completed wallet visits should disappear from view,
-    // but typically they might stay in route until end of day. 
-    // For this specific function, we return what is flagged as inRoute.
-    let filtered = this.appointments.filter(a => a.inRoute);
-    if (fieldSalesName) {
-      filtered = filtered.filter(a => a.fieldSalesName === fieldSalesName);
-    }
-    return filtered;
+    return this.appointments.filter(a => a.fieldSalesName === name);
   }
 
-  toggleRouteStatus(appointmentId: string): void {
-    const appt = this.appointments.find(a => a.id === appointmentId);
-    if (appt) {
-      appt.inRoute = !appt.inRoute;
-    }
-  }
-
-  addAppointment(appointment: Appointment): void {
+  addAppointment(appointment: Appointment) {
     this.appointments.push(appointment);
   }
 
-  // --- NEW: Field Sales Workflow Methods ---
-  
-  checkInAppointment(appointmentId: string): void {
-    const appt = this.appointments.find(a => a.id === appointmentId);
+  removeAppointment(id: string) {
+    this.appointments = this.appointments.filter(a => a.id !== id);
+  }
+
+  checkInAppointment(id: string) {
+    const appt = this.appointments.find(a => a.id === id);
     if (appt) {
-       appt.visitReport = {
-          ...appt.visitReport,
-          checkInTime: new Date().toISOString()
-       };
+        if (!appt.visitReport) appt.visitReport = {};
+        appt.visitReport.checkInTime = new Date().toISOString();
     }
   }
 
-  submitVisitReport(appointmentId: string, reportData: VisitReport): void {
-    const appt = this.appointments.find(a => a.id === appointmentId);
+  toggleRouteStatus(id: string) {
+      const appt = this.appointments.find(a => a.id === id);
+      if (appt) {
+          appt.inRoute = !appt.inRoute;
+      }
+  }
+
+  submitVisitReport(id: string, report: VisitReport) {
+    const appt = this.appointments.find(a => a.id === id);
     if (appt) {
-       // 1. Update Appointment
-       appt.visitReport = {
-          ...appt.visitReport,
-          ...reportData,
-          checkOutTime: new Date().toISOString()
-       };
-       appt.status = 'Completed';
-       appt.fieldObservation = reportData.observation; 
-
-       // 2. If it's NOT a wallet visit (New Business / Prospecção), update or create in Client Base
-       if (!appt.isWallet) {
-          const existingClientIndex = this.clients.findIndex(c => c.id === appt.clientId);
-          
-          const leadMetadata = {
-              revenuePotential: reportData.revenuePotential,
-              competitorAcquirer: reportData.competitorAcquirer,
-              outcome: reportData.outcome,
-              lastInteractionDate: new Date().toISOString()
-          };
-
-          if (existingClientIndex >= 0) {
-              // If exists (maybe imported as Lead), update it
-              this.clients[existingClientIndex] = {
-                  ...this.clients[existingClientIndex],
-                  leadMetadata: {
-                      ...this.clients[existingClientIndex].leadMetadata,
-                      ...leadMetadata
-                  }
-              };
-          } else {
-              // Create new entry in Base as "Lead"
-              const newLead: ClientBaseRow = {
-                  id: appt.clientId,
-                  nomeEc: appt.clientName,
-                  tipoSic: 'Prospecção', // Default
-                  endereco: appt.address,
-                  responsavel: appt.responsible,
-                  contato: appt.whatsapp,
-                  regiaoAgrupada: 'A definir',
-                  fieldSales: appt.fieldSalesName,
-                  insideSales: appt.insideSalesName || 'N/A',
-                  status: 'Lead',
-                  leadMetadata: leadMetadata
-              };
-              this.clients.push(newLead);
-          }
-       }
+        appt.status = 'Completed';
+        appt.visitReport = {
+            ...appt.visitReport,
+            ...report,
+            checkOutTime: new Date().toISOString()
+        };
     }
   }
 
-  generateId(): string {
-    const random = Math.floor(1000 + Math.random() * 9000);
-    return `AGD-${random}`;
+  // --- Quote Integration Logic ---
+  saveQuote(data: SavedQuote) {
+      // Store by Client ID if available, otherwise by Name (normalized)
+      const key = data.clientId ? data.clientId : data.competitorAcquirer + data.revenuePotential; // Fallback key strategy not ideal, prefer ID
+      
+      // Store primarily by ID
+      if (data.clientId) this.latestQuotes.set(data.clientId, data);
+      
+      // Also map via Client Name for broader hit chance if ID is missing in report context
+      // In a real app, we'd handle this more robustly
   }
 
-  // Client Base Methods
+  getQuote(identifier: string): SavedQuote | undefined {
+      return this.latestQuotes.get(identifier);
+  }
+
+  // --- Clients ---
   getClients(): ClientBaseRow[] {
     return this.clients;
   }
-  
-  // New helper to fetch client by ID for manual visit creation
-  getClientById(id: string): ClientBaseRow | undefined {
-    return this.clients.find(c => c.id === id);
-  }
 
-  setClients(newClients: ClientBaseRow[]): void {
+  setClients(newClients: ClientBaseRow[]) {
     this.clients = newClients;
   }
-  
-  addClient(client: ClientBaseRow): void {
-    this.clients.push(client);
+
+  addClient(client: ClientBaseRow) {
+      this.clients.push(client);
   }
 
-  // Client Notes Methods
-  getClientNotes(clientId: string): ClientNote[] {
-    return this.clientNotes.filter(n => n.clientId === clientId);
-  }
-
-  addClientNote(note: ClientNote): void {
-    this.clientNotes.push(note);
-  }
-
-  // --- DEMANDS METHODS ---
-  getDemands(): ManualDemand[] { return this.demands; }
-  
-  addDemand(demand: ManualDemand): void {
-      this.demands.push(demand);
-  }
-
-  getDemandTypes(): string[] { return this.demandTypes; }
-  addDemandType(type: string): void { if(!this.demandTypes.includes(type)) this.demandTypes.push(type); }
-  removeDemandType(type: string): void { this.demandTypes = this.demandTypes.filter(t => t !== type); }
-
-  // --- Configuration Methods ---
-
-  // 1. Visit Reasons (Inside Sales Schedule)
-  getVisitReasons(): string[] { return this.visitReasons; }
-  addVisitReason(reason: string): void { if (!this.visitReasons.includes(reason)) this.visitReasons.push(reason); }
-  removeVisitReason(reason: string): void { this.visitReasons = this.visitReasons.filter(r => r !== reason); }
-
-  // 2. Withdrawal Reasons (Field Sales Report)
-  getWithdrawalReasons(): string[] { return this.withdrawalReasons; }
-  addWithdrawalReason(reason: string): void { if (!this.withdrawalReasons.includes(reason)) this.withdrawalReasons.push(reason); }
-  removeWithdrawalReason(reason: string): void { this.withdrawalReasons = this.withdrawalReasons.filter(r => r !== reason); }
-
-  // 3. Swap Reasons (Field Sales Report)
-  getSwapReasons(): string[] { return this.swapReasons; }
-  addSwapReason(reason: string): void { if (!this.swapReasons.includes(reason)) this.swapReasons.push(reason); }
-  removeSwapReason(reason: string): void { this.swapReasons = this.swapReasons.filter(r => r !== reason); }
-
-  // 4. Lead Origins (Inside Sales / General)
-  getLeadOrigins(): string[] { return this.leadOrigins; }
-  addLeadOrigin(origin: string): void { if (!this.leadOrigins.includes(origin)) this.leadOrigins.push(origin); }
-  removeLeadOrigin(origin: string): void { this.leadOrigins = this.leadOrigins.filter(r => r !== origin); }
-
-  // User Management Methods
+  // --- Users ---
   getUsers(): SystemUser[] {
     return this.users;
   }
 
-  addUser(user: SystemUser): void {
+  addUser(user: SystemUser) {
     this.users.push(user);
   }
 
-  updateUser(updatedUser: SystemUser): void {
-    this.users = this.users.map(u => u.id === updatedUser.id ? updatedUser : u);
+  updateUser(updatedUser: SystemUser) {
+    const index = this.users.findIndex(u => u.id === updatedUser.id);
+    if (index !== -1) {
+      this.users[index] = updatedUser;
+    }
   }
 
-  toggleUserStatus(id: string): void {
+  toggleUserStatus(id: string) {
     const user = this.users.find(u => u.id === id);
     if (user) {
       user.active = !user.active;
     }
+  }
+
+  // --- Notes ---
+  getClientNotes(clientId: string): ClientNote[] {
+      return this.clientNotes.filter(n => n.clientId === clientId).sort((a,b) => b.date.localeCompare(a.date));
+  }
+
+  addClientNote(note: ClientNote) {
+      this.clientNotes.push(note);
+  }
+
+  // --- Demands ---
+  getDemands(): ManualDemand[] {
+      return this.demands;
+  }
+
+  addDemand(demand: ManualDemand) {
+      this.demands.unshift(demand);
+  }
+
+  getDemandTypes(): string[] {
+      return this.demandTypes;
+  }
+
+  // --- Config Lists ---
+  getVisitReasons() { return this.visitReasons; }
+  addVisitReason(val: string) { if(!this.visitReasons.includes(val)) this.visitReasons.push(val); }
+  removeVisitReason(val: string) { this.visitReasons = this.visitReasons.filter(v => v !== val); }
+
+  getLeadOrigins() { return this.leadOrigins; }
+  addLeadOrigin(val: string) { if(!this.leadOrigins.includes(val)) this.leadOrigins.push(val); }
+  removeLeadOrigin(val: string) { this.leadOrigins = this.leadOrigins.filter(v => v !== val); }
+
+  getWithdrawalReasons() { return this.withdrawalReasons; }
+  addWithdrawalReason(val: string) { if(!this.withdrawalReasons.includes(val)) this.withdrawalReasons.push(val); }
+  removeWithdrawalReason(val: string) { this.withdrawalReasons = this.withdrawalReasons.filter(v => v !== val); }
+
+  getSwapReasons() { return this.swapReasons; }
+  addSwapReason(val: string) { if(!this.swapReasons.includes(val)) this.swapReasons.push(val); }
+  removeSwapReason(val: string) { this.swapReasons = this.swapReasons.filter(v => v !== val); }
+
+  // --- Helpers ---
+  // Simple ID generator
+  generateId(): string {
+      return 'AGD-' + Math.floor(Math.random() * 100000);
+  }
+
+  // --- Local Storage Drafts ---
+  saveLocalDraft(key: string, data: any) {
+      localStorage.setItem(key, JSON.stringify(data));
+  }
+
+  getLocalDraft(key: string): any {
+      const data = localStorage.getItem(key);
+      return data ? JSON.parse(data) : null;
+  }
+
+  clearLocalDraft(key: string) {
+      localStorage.removeItem(key);
   }
 }
 

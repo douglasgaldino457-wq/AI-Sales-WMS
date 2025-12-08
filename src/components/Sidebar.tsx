@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { UserRole, Page } from '../types';
 import { 
@@ -72,7 +71,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: LayoutDashboard, label: 'Dashboard Geral', page: Page.DASHBOARD_GERAL },
           { icon: Target, label: 'Metas & KPI', page: Page.METAS },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
-          { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
         ];
         break;
       case UserRole.PRICING:
@@ -120,7 +118,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: Target, label: 'Metas', page: Page.METAS },
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true },
-          { icon: Settings, label: 'Config', page: Page.CONFIGURACAO },
         ];
       case UserRole.PRICING:
         return [
