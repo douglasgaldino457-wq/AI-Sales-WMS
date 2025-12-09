@@ -19,7 +19,8 @@ import {
   ClipboardCheck,
   HelpCircle,
   TrendingUp,
-  Percent
+  Percent,
+  Truck
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -62,7 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: LayoutDashboard, label: 'Dashboard Geral', page: Page.DASHBOARD_GERAL },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
           { icon: MapPinned, label: 'Mapa de Gestão', page: Page.MAPA_GESTAO },
-          { icon: BadgePercent, label: 'Pricing/Taxas', page: Page.PRICING },
+          { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
           { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
           { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
         ];
@@ -80,6 +81,12 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: LayoutDashboard, label: 'Dashboard Pricing', page: Page.PRICING_DASHBOARD },
           { icon: TrendingUp, label: 'Mesa de Negociação', page: Page.MESA_NEGOCIACAO },
           { icon: Percent, label: 'Config. Taxas', page: Page.CONFIG_TAXAS },
+        ];
+        break;
+      case UserRole.LOGISTICA:
+        items = [
+          { icon: LayoutDashboard, label: 'Painel Logístico', page: Page.LOGISTICA_DASHBOARD },
+          { icon: Map, label: 'Monitoramento Rotas', page: Page.ROTAS },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
         ];
         break;
@@ -98,7 +105,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: Calendar, label: 'Agenda', page: Page.AGENDAMENTOS },
           { icon: Map, label: 'Rota', page: Page.ROTAS },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, // Central Button
-          { icon: FilePlus, label: 'Cad', page: Page.CADASTRO },
           { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
         ];
       case UserRole.INSIDE_SALES:
@@ -106,7 +112,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: Calendar, label: 'Agenda', page: Page.AGENDAMENTOS },
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, // Central Button
-          { icon: FilePlus, label: 'Cad', page: Page.CADASTRO },
           { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
         ];
       case UserRole.GESTOR:
@@ -128,6 +133,11 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: TrendingUp, label: 'Mesa', page: Page.MESA_NEGOCIACAO },
           { icon: Percent, label: 'Config', page: Page.CONFIG_TAXAS },
           { icon: LayoutDashboard, label: 'Dash', page: Page.PRICING_DASHBOARD, isCentral: true },
+        ];
+      case UserRole.LOGISTICA:
+        return [
+          { icon: Map, label: 'Rotas', page: Page.ROTAS },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.LOGISTICA_DASHBOARD, isCentral: true },
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
         ];
       default:
@@ -250,31 +260,30 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
          </button>
       </div>
 
-      {/* --- MOBILE BOTTOM NAV (Floating Dock) --- */}
+      {/* --- MOBILE BOTTOM NAV (Fixed Full Width Bar) --- */}
       {bottomItems.length > 0 && (
-        <div className="md:hidden fixed bottom-6 left-4 right-4 z-40">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
             {/* 
-                We use items-end to allow the central button to overflow upwards.
-                The padding-bottom ensures the standard buttons are centered vertically within the 'bar' area.
-                Width adjusted based on items length (1/5 or 1/4)
+                Use solid background to prevent transparency issues.
             */}
-            <div className="bg-brand-gray-900/95 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl flex justify-between items-end h-16 px-1 pb-1 relative">
+            <div className="bg-brand-gray-900 border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] flex justify-between items-end h-[4.5rem] px-4 pb-2 relative">
                 {bottomItems.map((item, idx) => {
                     const isActive = activePage === item.page;
                     const isCentral = (item as any).isCentral;
-                    const widthClass = bottomItems.length === 5 ? 'w-1/5' : 'w-1/4';
+                    // Adjusted width logic for dynamic item count
+                    const widthClass = bottomItems.length >= 5 ? 'w-1/5' : bottomItems.length === 3 ? 'w-1/3' : 'w-1/4';
 
-                    // CENTRAL BUTTON RENDER
+                    // CENTRAL BUTTON RENDER (Floating effect above bar)
                     if (isCentral) {
                         return (
-                            <div key={item.label} className={`relative -top-6 flex flex-col items-center justify-start ${widthClass} h-full pointer-events-none`}>
+                            <div key={item.label} className={`relative -top-5 flex flex-col items-center justify-start ${widthClass} h-full pointer-events-none`}>
                                 <button
                                     onClick={() => onNavigate(item.page)}
                                     className={`
                                         pointer-events-auto
                                         w-14 h-14 rounded-full flex items-center justify-center shadow-glow transition-all duration-300
                                         ${isActive 
-                                            ? 'bg-brand-primary text-white scale-110 border-4 border-gray-100' 
+                                            ? 'bg-brand-primary text-white scale-110 border-4 border-brand-gray-100' 
                                             : 'bg-brand-gray-800 text-gray-400 border-4 border-brand-gray-900 hover:bg-brand-primary hover:text-white hover:border-gray-100'}
                                     `}
                                 >
@@ -289,15 +298,15 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
                         <button
                             key={item.label}
                             onClick={() => onNavigate(item.page)}
-                            className={`relative flex flex-col items-center justify-center ${widthClass} h-14 group`}
+                            className={`relative flex flex-col items-center justify-center ${widthClass} h-full group pb-2`}
                         >
                             <div className={`
                                 p-1.5 rounded-xl transition-all duration-300 mb-0.5
-                                ${isActive ? 'bg-brand-primary text-white shadow-glow -translate-y-1' : 'text-gray-400 group-hover:text-gray-200'}
+                                ${isActive ? 'bg-white/10 text-white shadow-sm' : 'text-gray-500 group-hover:text-gray-300'}
                             `}>
-                                <item.icon className={`h-4 w-4 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'}`} />
+                                <item.icon className={`h-5 w-5 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'}`} />
                             </div>
-                            <span className={`text-[9px] font-medium tracking-wide transition-colors ${isActive ? 'text-white' : 'text-gray-500'}`}>
+                            <span className={`text-[10px] font-medium tracking-wide transition-colors ${isActive ? 'text-white' : 'text-gray-600'}`}>
                                 {item.label}
                             </span>
                         </button>

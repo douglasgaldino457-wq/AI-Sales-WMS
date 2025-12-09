@@ -30,7 +30,7 @@ class StoreService {
         requester: 'Cleiton Freitas',
         description: 'Cliente optou pelo modelo Full com antecipação automática.'
     },
-    // New Pricing Request Mock
+    // New Pricing Request Mock - Pending
     {
         id: 'PRC-2001',
         type: 'Negociação de Taxas',
@@ -42,22 +42,33 @@ class StoreService {
         pricingData: {
             competitorRates: { debit: 0.90, credit1x: 2.50, credit12x: 10.50 },
             proposedRates: { debit: 0.85, credit1x: 2.40, credit12x: 10.00 },
-            financials: { spread: 0.65, mcf2: 150.00 }
+            financials: { spread: 0.65, mcf2: 150.00 },
+            context: {
+                potentialRevenue: 50000,
+                minAgreed: 30000
+            }
         }
     },
+    // New Pricing Request Mock - APPROVED (Ready for closing)
     {
         id: 'PRC-2002',
         type: 'Negociação de Taxas',
         clientName: 'Mecânica Rápida',
-        date: new Date(Date.now() - 86400000).toISOString(), // Yesterday
+        date: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
         status: 'Aprovado Pricing',
-        requester: 'Cauana Sousa',
-        description: 'Solicitação de redução para evitar Churn.',
+        requester: 'Eu', // Matches current user default
+        description: 'Solicitação de redução para evitar Churn. Aprovado contra-proposta.',
+        result: 'Contra-proposta aprovada pela mesa. Apresente as novas condições.',
         pricingData: {
             competitorRates: { debit: 1.10, credit1x: 3.00, credit12x: 12.00 },
-            proposedRates: { debit: 1.05, credit1x: 2.90, credit12x: 11.50 },
-            approvedRates: { debit: 1.05, credit1x: 2.90, credit12x: 11.50 },
-            financials: { spread: 0.70, mcf2: 90.00 }
+            proposedRates: { debit: 0.95, credit1x: 2.80, credit12x: 11.00 },
+            // Approved rates are slightly different (Counter-offer simulation)
+            approvedRates: { debit: 0.99, credit1x: 2.85, credit12x: 11.20 },
+            financials: { spread: 0.70, mcf2: 90.00 },
+            context: {
+                potentialRevenue: 25000,
+                minAgreed: 15000
+            }
         }
     }
   ];

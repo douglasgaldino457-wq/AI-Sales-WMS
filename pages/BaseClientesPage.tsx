@@ -178,7 +178,7 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
            
            const fieldSales = getValue(['field', 'field sales', 'consultor', 'executivo']) || 'A definir';
            const insideSales = getValue(['inside', 'inside sales', 'vendedor', 'sdr']) || 'A definir';
-           const status = getValue(['status']) === 'Lead' ? 'Lead' : 'Active';
+           const status: 'Active' | 'Lead' = getValue(['status']) === 'Lead' ? 'Lead' : 'Active';
 
            // Region Logic: Explicit -> Inference
            // UPDATED: Added 'reg. agrupada' and variations to ensure it catches the specific column name
@@ -307,7 +307,7 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
 
   const handleSaveObservation = () => {
     if (!selectedClient || !newObservation.trim()) return;
-    const currentUser = role === UserRole.INSIDE_SALES ? 'Inside Sales' : role === UserRole.ESTRATEGIA ? 'Estratégia' : 'Gestor';
+    const currentUser = role === UserRole.INSIDE_SALES ? 'Inside Sales' : role === UserRole.ESTRATEGIA ? 'Estratégia' : 'Gestão Comercial';
     const newNote: ClientNote = {
         id: Math.random().toString(36).substr(2, 9),
         clientId: selectedClient.id,

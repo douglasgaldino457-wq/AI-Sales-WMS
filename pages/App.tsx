@@ -11,9 +11,9 @@ import MapaGestaoPage from './pages/MapaGestaoPage';
 import PricingPage from './pages/PricingPage';
 import CadastroPage from './pages/CadastroPage';
 import HelpPage from './pages/HelpPage'; 
-import PricingDashboardPage from './pages/PricingDashboardPage'; // New
-import MesaNegociacaoPage from './pages/MesaNegociacaoPage'; // New
-import ConfigTaxasPage from './pages/ConfigTaxasPage'; // New
+import PricingDashboardPage from './pages/PricingDashboardPage';
+import MesaNegociacaoPage from './pages/MesaNegociacaoPage';
+import ConfigTaxasPage from './pages/ConfigTaxasPage';
 import { Logo } from './components/Logo';
 import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw, TrendingUp } from 'lucide-react';
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";

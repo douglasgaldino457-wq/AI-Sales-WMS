@@ -2,9 +2,10 @@
 export enum UserRole {
   INSIDE_SALES = 'Inside Sales',
   FIELD_SALES = 'Field Sales',
-  GESTOR = 'Gestor',
+  GESTOR = 'Gestão Comercial', // Updated from 'Gestor'
   ESTRATEGIA = 'Estratégia',
-  PRICING_MANAGER = 'Gestão de Pricing' // New Role
+  PRICING_MANAGER = 'Gestão de Pricing',
+  LOGISTICA = 'Logística' // New Role
 }
 
 export enum Page {
@@ -17,13 +18,14 @@ export enum Page {
   BASE_CLIENTES = 'Base de Clientes', // All
   DASHBOARD_GERAL = 'Dashboard Geral', // Gestor
   MAPA_GESTAO = 'Mapa de Gestão', // Gestor
-  PRICING = 'Pricing/Taxas',
+  PRICING = 'Pricing',
   CADASTRO = 'Cadastro', // New Page
   METAS = 'Metas & KPI', // New Page for Estrategia
   AJUDA = 'Ajuda & IA', // New Page
   PRICING_DASHBOARD = 'Dash Pricing', // New
   MESA_NEGOCIACAO = 'Mesa Negociação', // New
   CONFIG_TAXAS = 'Config. Taxas', // New
+  LOGISTICA_DASHBOARD = 'Dash Logística', // New
 }
 
 export interface Client {
@@ -158,6 +160,10 @@ export interface PricingRequestData {
     approvedRates?: { debit: number; credit1x: number; credit12x: number };
     financials?: { spread: number; mcf2: number };
     evidenceUrl?: string;
+    context?: {
+        potentialRevenue: number;
+        minAgreed: number;
+    };
 }
 
 export interface ManualDemand {

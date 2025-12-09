@@ -1,37 +1,92 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar 
 } from 'recharts';
 import { ManualDemand } from '../types';
 import { appStore } from '../services/store';
-import { CheckCircle2, Clock, AlertTriangle, TrendingUp, Calendar, Filter } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, TrendingUp, Calendar, Filter, Users, Layers, CreditCard } from 'lucide-react';
 
-// Mock data generation for the chart
-const generateChartData = () => {
-    return [
-        { name: 'Sem 1', Concorrencia: 2.10, Aprovado: 1.85 },
-        { name: 'Sem 2', Concorrencia: 1.95, Aprovado: 1.80 },
-        { name: 'Sem 3', Concorrencia: 2.30, Aprovado: 1.90 },
-        { name: 'Sem 4', Concorrencia: 2.05, Aprovado: 1.75 },
-    ];
-};
+// Types for filters
+type ProductType = 'Full' | 'Simples';
 
 const PricingDashboardPage: React.FC = () => {
     const [demands, setDemands] = useState<ManualDemand[]>([]);
-    const [chartData, setChartData] = useState(generateChartData());
+    const [filteredDemands, setFilteredDemands] = useState<ManualDemand[]>([]);
     
-    // Filters
+    // Global Dashboard Filters
     const [competitorFilter, setCompetitorFilter] = useState('Todos');
+    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [teamFilter, setTeamFilter] = useState('Todos');
+
+    // Chart Specific Filters
+    const [chartProduct, setChartProduct] = useState<ProductType>('Full');
 
     useEffect(() => {
         const allDemands = appStore.getDemands().filter(d => d.type.includes('Negociação') || d.type.includes('Taxa'));
         setDemands(allDemands);
+        setFilteredDemands(allDemands);
+        
+        // Set default date range (last 30 days)
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - 30);
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(end.toISOString().split('T')[0]);
     }, []);
 
-    const approvedCount = demands.filter(d => d.status === 'Aprovado Pricing' || d.status === 'Concluído').length;
-    const pendingCount = demands.filter(d => d.status === 'Em Análise' || d.status === 'Pendente').length;
-    const openCount = demands.filter(d => d.status === 'Pendente').length;
+    // Apply Global Filters to KPIs
+    useEffect(() => {
+        let result = demands;
+
+        // Date Filter
+        result = result.filter(d => {
+            const dDate = d.date.split('T')[0];
+            return dDate >= startDate && dDate <= endDate;
+        });
+
+        if (teamFilter !== 'Todos') {
+             result = result.filter(d => d.requester.includes(teamFilter) || teamFilter === 'Todos');
+        }
+
+        setFilteredDemands(result);
+    }, [startDate, endDate, teamFilter, demands]);
+
+    // Dynamic Chart Data Generator - RATE CURVE (Installments on X Axis)
+    const chartData = useMemo(() => {
+        const isSimples = chartProduct === 'Simples';
+        
+        // Mock Data Simulation for Rate Curve
+        // Full usually has lower rates than Simples
+        const baseCurve = {
+            debit: isSimples ? 1.49 : 0.99,
+            credit1x: isSimples ? 3.49 : 2.89,
+            credit2to6: isSimples ? 9.90 : 7.90,
+            credit7to12: isSimples ? 14.90 : 10.90,
+            credit13to18: isSimples ? 22.90 : 16.90
+        };
+
+        const competitorCurve = {
+            debit: isSimples ? 1.99 : 1.29,
+            credit1x: isSimples ? 4.99 : 3.29,
+            credit2to6: isSimples ? 12.90 : 9.50,
+            credit7to12: isSimples ? 18.90 : 13.50,
+            credit13to18: isSimples ? 26.90 : 19.50
+        };
+
+        return [
+            { name: 'Débito', Concorrencia: competitorCurve.debit, Aprovado: baseCurve.debit },
+            { name: '1x', Concorrencia: competitorCurve.credit1x, Aprovado: baseCurve.credit1x },
+            { name: '2x-6x', Concorrencia: competitorCurve.credit2to6, Aprovado: baseCurve.credit2to6 },
+            { name: '7x-12x', Concorrencia: competitorCurve.credit7to12, Aprovado: baseCurve.credit7to12 },
+            { name: '13x-18x', Concorrencia: competitorCurve.credit13to18, Aprovado: baseCurve.credit13to18 },
+        ];
+    }, [chartProduct]);
+
+    const approvedCount = filteredDemands.filter(d => d.status === 'Aprovado Pricing' || d.status === 'Concluído').length;
+    const pendingCount = filteredDemands.filter(d => d.status === 'Em Análise' || d.status === 'Pendente').length;
+    const openCount = filteredDemands.filter(d => d.status === 'Pendente').length;
 
     const KpiCard = ({ title, value, icon: Icon, color }: any) => (
         <div className="bg-white p-5 rounded-xl border border-brand-gray-100 shadow-sm flex items-center justify-between">
@@ -47,9 +102,44 @@ const PricingDashboardPage: React.FC = () => {
 
     return (
         <div className="space-y-8 max-w-7xl mx-auto">
-            <header>
-                <h1 className="text-3xl font-bold text-brand-gray-900 tracking-tight">Dashboard de Pricing</h1>
-                <p className="text-brand-gray-600 mt-1">Gestão de margens e aprovações.</p>
+            <header className="flex flex-col md:flex-row justify-between items-end gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-brand-gray-900 tracking-tight">Dashboard de Pricing</h1>
+                    <p className="text-brand-gray-600 mt-1">Gestão de margens e aprovações.</p>
+                </div>
+                
+                {/* Global Filters */}
+                <div className="flex flex-wrap gap-3 bg-white p-2 rounded-xl border border-brand-gray-200 shadow-sm">
+                    <div className="flex items-center gap-2 px-2">
+                        <Calendar className="w-4 h-4 text-brand-gray-400" />
+                        <input 
+                            type="date" 
+                            value={startDate} 
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="text-xs border-none outline-none text-brand-gray-600 font-bold bg-transparent"
+                        />
+                        <span className="text-brand-gray-300">-</span>
+                        <input 
+                            type="date" 
+                            value={endDate} 
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="text-xs border-none outline-none text-brand-gray-600 font-bold bg-transparent"
+                        />
+                    </div>
+                    <div className="w-px h-6 bg-brand-gray-200"></div>
+                    <div className="flex items-center gap-2 px-2">
+                        <Users className="w-4 h-4 text-brand-gray-400" />
+                        <select 
+                            className="text-xs font-bold text-brand-gray-600 bg-transparent outline-none"
+                            value={teamFilter}
+                            onChange={(e) => setTeamFilter(e.target.value)}
+                        >
+                            <option value="Todos">Todos os Times</option>
+                            <option value="Inside">Inside Sales</option>
+                            <option value="Field">Field Sales</option>
+                        </select>
+                    </div>
+                </div>
             </header>
 
             {/* KPIs */}
@@ -62,33 +152,62 @@ const PricingDashboardPage: React.FC = () => {
             {/* Chart Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-brand-gray-100">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-bold text-brand-gray-900 text-lg flex items-center gap-2">
-                            <TrendingUp className="w-5 h-5 text-brand-primary" />
-                            Taxas: Concorrência vs. Aprovado (Débito)
-                        </h3>
-                        <div className="flex items-center gap-2">
-                            <Filter className="w-4 h-4 text-brand-gray-400" />
-                            <select 
-                                className="bg-brand-gray-50 border border-brand-gray-200 text-sm rounded-lg p-2 outline-none"
-                                value={competitorFilter}
-                                onChange={(e) => setCompetitorFilter(e.target.value)}
-                            >
-                                <option value="Todos">Todos</option>
-                                <option value="Stone">Stone</option>
-                                <option value="Cielo">Cielo</option>
-                                <option value="PagSeguro">PagSeguro</option>
-                            </select>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                        <div>
+                            <h3 className="font-bold text-brand-gray-900 text-lg flex items-center gap-2">
+                                <TrendingUp className="w-5 h-5 text-brand-primary" />
+                                Curva de Taxas (Rate Curve)
+                            </h3>
+                            <p className="text-xs text-brand-gray-500 mt-1">Comparativo de taxas por modalidade/parcela.</p>
+                        </div>
+                        
+                        {/* Chart Filters */}
+                        <div className="flex flex-wrap gap-2">
+                            {/* Product Filter */}
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                                    <Layers className="w-3 h-3 text-brand-gray-400" />
+                                </div>
+                                <select 
+                                    className="bg-brand-gray-50 border border-brand-gray-200 text-xs font-bold rounded-lg py-2 pl-7 pr-3 outline-none focus:ring-1 focus:ring-brand-primary appearance-none"
+                                    value={chartProduct}
+                                    onChange={(e) => setChartProduct(e.target.value as ProductType)}
+                                >
+                                    <option value="Full">Full</option>
+                                    <option value="Simples">Simples</option>
+                                </select>
+                            </div>
+
+                            {/* Competitor Filter */}
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                                    <Filter className="w-3 h-3 text-brand-gray-400" />
+                                </div>
+                                <select 
+                                    className="bg-brand-gray-50 border border-brand-gray-200 text-xs font-bold rounded-lg py-2 pl-7 pr-3 outline-none focus:ring-1 focus:ring-brand-primary appearance-none"
+                                    value={competitorFilter}
+                                    onChange={(e) => setCompetitorFilter(e.target.value)}
+                                >
+                                    <option value="Todos">Todas Adq.</option>
+                                    <option value="Stone">Stone</option>
+                                    <option value="Cielo">Cielo</option>
+                                    <option value="PagSeguro">PagSeguro</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     
-                    <div className="h-[300px] w-full">
+                    <div className="h-[300px] w-full relative">
+                        <div className="absolute top-0 right-0 bg-white/80 px-2 py-1 text-[10px] font-bold text-brand-gray-400 border border-brand-gray-100 rounded z-10 pointer-events-none">
+                            Produto: {chartProduct}
+                        </div>
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} unit="%" />
+                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} unit="%" domain={[0, 'auto']} />
                                 <Tooltip 
+                                    formatter={(value: number) => [`${value}%`, 'Taxa']}
                                     contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}} 
                                     itemStyle={{fontSize: '12px', fontWeight: 'bold'}}
                                 />
@@ -124,7 +243,7 @@ const PricingDashboardPage: React.FC = () => {
                         </div>
                         <div>
                             <div className="flex justify-between text-sm mb-1 text-gray-300">
-                                <span>Gestor</span>
+                                <span>Gestão Comercial</span>
                                 <span>5%</span>
                             </div>
                             <div className="w-full bg-gray-700 rounded-full h-2">
