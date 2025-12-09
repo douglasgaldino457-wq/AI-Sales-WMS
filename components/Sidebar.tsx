@@ -17,7 +17,9 @@ import {
   ChevronRight,
   Target,
   ClipboardCheck,
-  HelpCircle
+  HelpCircle,
+  TrendingUp,
+  Percent
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -73,6 +75,14 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
         ];
         break;
+      case UserRole.PRICING_MANAGER:
+        items = [
+          { icon: LayoutDashboard, label: 'Dashboard Pricing', page: Page.PRICING_DASHBOARD },
+          { icon: TrendingUp, label: 'Mesa de Negociação', page: Page.MESA_NEGOCIACAO },
+          { icon: Percent, label: 'Config. Taxas', page: Page.CONFIG_TAXAS },
+          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+        ];
+        break;
     }
 
     // Add Help to all profiles at the end
@@ -112,6 +122,13 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true },
           { icon: Settings, label: 'Config', page: Page.CONFIGURACAO },
+        ];
+      case UserRole.PRICING_MANAGER:
+        return [
+          { icon: TrendingUp, label: 'Mesa', page: Page.MESA_NEGOCIACAO },
+          { icon: Percent, label: 'Config', page: Page.CONFIG_TAXAS },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.PRICING_DASHBOARD, isCentral: true },
+          { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
         ];
       default:
         return [];
@@ -184,7 +201,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         
         {/* Footer Area */}
         <div className="p-4 border-t border-white/5 bg-black/20 text-center z-10">
-            <p className="text-[10px] text-gray-600 font-mono">Build v1.3.0 • 2025</p>
+            <p className="text-[10px] text-gray-600 font-mono">Build v1.4.0 • 2025</p>
         </div>
     </div>
   );

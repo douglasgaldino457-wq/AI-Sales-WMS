@@ -504,6 +504,25 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                           </div>
                       </div>
 
+                      {/* Product Type Selector - Moved here */}
+                      <div>
+                          <label className="block text-xs font-bold text-brand-gray-500 mb-1">Modelo de Negócio</label>
+                          <div className="flex bg-brand-gray-100 p-1 rounded-lg">
+                              <button
+                                  onClick={() => setContext({...context, product: 'Full'})}
+                                  className={`flex-1 py-1.5 text-xs font-bold rounded transition-all ${context.product === 'Full' ? 'bg-white text-green-700 shadow-sm' : 'text-brand-gray-500 hover:text-brand-gray-700'}`}
+                              >
+                                  Full
+                              </button>
+                              <button
+                                  onClick={() => setContext({...context, product: 'Simples'})}
+                                  className={`flex-1 py-1.5 text-xs font-bold rounded transition-all ${context.product === 'Simples' ? 'bg-white text-blue-700 shadow-sm' : 'text-brand-gray-500 hover:text-brand-gray-700'}`}
+                              >
+                                  Simples
+                              </button>
+                          </div>
+                      </div>
+
                       <div>
                           <label className="block text-xs font-bold text-brand-gray-500 mb-1">Adquirente Concorrente</label>
                           <select 
@@ -598,16 +617,6 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                       {analysisMode === 'RATE_TABLE' ? <Hammer className="w-5 h-5 text-brand-primary"/> : <Calculator className="w-5 h-5 text-brand-primary"/>}
                       {analysisMode === 'RATE_TABLE' ? 'Definição de Taxas (Input)' : 'Simulador por Valor (Reverso)'}
                   </h3>
-                  <div className="flex bg-white rounded-lg border border-brand-gray-200 p-0.5">
-                      <button 
-                          onClick={() => setContext({...context, product: 'Full'})}
-                          className={`px-3 py-1 text-xs font-bold rounded transition-colors ${context.product === 'Full' ? 'bg-green-100 text-green-700' : 'text-brand-gray-500'}`}
-                      >Full</button>
-                      <button 
-                          onClick={() => setContext({...context, product: 'Simples'})}
-                          className={`px-3 py-1 text-xs font-bold rounded transition-colors ${context.product === 'Simples' ? 'bg-blue-100 text-blue-700' : 'text-brand-gray-500'}`}
-                      >Simples</button>
-                  </div>
               </div>
 
               <div className="p-6 flex-1 bg-brand-gray-50/30">

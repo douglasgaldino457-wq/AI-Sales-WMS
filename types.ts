@@ -3,7 +3,8 @@ export enum UserRole {
   INSIDE_SALES = 'Inside Sales',
   FIELD_SALES = 'Field Sales',
   GESTOR = 'Gestor',
-  ESTRATEGIA = 'Estratégia'
+  ESTRATEGIA = 'Estratégia',
+  PRICING_MANAGER = 'Gestão de Pricing' // New Role
 }
 
 export enum Page {
@@ -20,6 +21,9 @@ export enum Page {
   CADASTRO = 'Cadastro', // New Page
   METAS = 'Metas & KPI', // New Page for Estrategia
   AJUDA = 'Ajuda & IA', // New Page
+  PRICING_DASHBOARD = 'Dash Pricing', // New
+  MESA_NEGOCIACAO = 'Mesa Negociação', // New
+  CONFIG_TAXAS = 'Config. Taxas', // New
 }
 
 export interface Client {
@@ -147,15 +151,24 @@ export interface ClientNote {
   content: string;
 }
 
-// --- MANUAL DEMANDS ---
+// --- MANUAL DEMANDS / PRICING REQUESTS ---
+export interface PricingRequestData {
+    competitorRates: { debit: number; credit1x: number; credit12x: number };
+    proposedRates: { debit: number; credit1x: number; credit12x: number };
+    approvedRates?: { debit: number; credit1x: number; credit12x: number };
+    financials?: { spread: number; mcf2: number };
+    evidenceUrl?: string;
+}
+
 export interface ManualDemand {
     id: string;
     type: string; // "Venda Taxa Full", "Venda Taxa Simples", etc.
     clientId?: string;
     clientName: string;
     date: string; // ISO Date
-    status: 'Concluído' | 'Em Análise' | 'Pendente' | 'Rejeitado';
+    status: 'Concluído' | 'Em Análise' | 'Pendente' | 'Rejeitado' | 'Aprovado Pricing';
     description?: string;
     result?: string;
     requester: string;
+    pricingData?: PricingRequestData; // New for Pricing Flow
 }

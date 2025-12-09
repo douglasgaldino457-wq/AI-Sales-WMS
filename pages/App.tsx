@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { UserRole, Page } from './types';
 import Sidebar from './components/Sidebar';
@@ -9,10 +10,13 @@ import ConfiguracaoPage from './pages/ConfiguracaoPage';
 import MapaGestaoPage from './pages/MapaGestaoPage';
 import PricingPage from './pages/PricingPage';
 import CadastroPage from './pages/CadastroPage';
-import HelpPage from './pages/HelpPage'; // New Import
+import HelpPage from './pages/HelpPage'; 
+import PricingDashboardPage from './pages/PricingDashboardPage'; // New
+import MesaNegociacaoPage from './pages/MesaNegociacaoPage'; // New
+import ConfigTaxasPage from './pages/ConfigTaxasPage'; // New
 import { Logo } from './components/Logo';
-import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw, TrendingUp } from 'lucide-react';
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { runWithRetry } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -28,6 +32,7 @@ const App: React.FC = () => {
     if (role === UserRole.INSIDE_SALES) setCurrentPage(Page.DASHBOARD);
     else if (role === UserRole.FIELD_SALES) setCurrentPage(Page.DASHBOARD);
     else if (role === UserRole.ESTRATEGIA) setCurrentPage(Page.METAS);
+    else if (role === UserRole.PRICING_MANAGER) setCurrentPage(Page.PRICING_DASHBOARD);
     else setCurrentPage(Page.DASHBOARD_GERAL);
   };
 
@@ -41,7 +46,7 @@ const App: React.FC = () => {
     setGeneratingBg(true);
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await runWithRetry(() => ai.models.generateContent({
+        const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: 'Wide angle view of a futuristic automotive workshop interior. Ideally positioned in the center is a modern silver hatchback car with the hood open. A sleek, high-tech red robotic arm is interacting with the engine. A professional red tool chest is visible. The environment is clean, with bright studio lighting, polished concrete floor, and depth of field blurring the background equipment. Photorealistic, 8k resolution, cinematic.',
         }));
@@ -116,7 +121,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-4 w-full">
-            {[UserRole.INSIDE_SALES, UserRole.FIELD_SALES, UserRole.GESTOR, UserRole.ESTRATEGIA].map((role) => (
+            {[UserRole.INSIDE_SALES, UserRole.FIELD_SALES, UserRole.GESTOR, UserRole.ESTRATEGIA, UserRole.PRICING_MANAGER].map((role) => (
               <button
                 key={role}
                 onClick={() => handleLogin(role)}
@@ -124,7 +129,9 @@ const App: React.FC = () => {
               >
                 <div className="flex items-center relative z-10">
                   <div className={`text-white p-2 rounded-xl mr-4 bg-white/10 group-hover:bg-white group-hover:text-brand-primary transition-colors shadow-sm`}>
-                    {role === UserRole.ESTRATEGIA ? <Target size={20} strokeWidth={2.5} /> : <User size={20} strokeWidth={2.5} />}
+                    {role === UserRole.ESTRATEGIA ? <Target size={20} strokeWidth={2.5} /> : 
+                     role === UserRole.PRICING_MANAGER ? <TrendingUp size={20} strokeWidth={2.5} /> :
+                     <User size={20} strokeWidth={2.5} />}
                   </div>
                   <span className="font-bold text-base text-white tracking-wide">{role}</span>
                 </div>
@@ -189,6 +196,17 @@ const App: React.FC = () => {
 
         {(currentPage === Page.AJUDA) && (
             <HelpPage role={currentUserRole} />
+        )}
+
+        {/* NEW PRICING ROUTES */}
+        {(currentPage === Page.PRICING_DASHBOARD) && (
+            <PricingDashboardPage />
+        )}
+        {(currentPage === Page.MESA_NEGOCIACAO) && (
+            <MesaNegociacaoPage />
+        )}
+        {(currentPage === Page.CONFIG_TAXAS) && (
+            <ConfigTaxasPage />
         )}
 
         {(currentPage === Page.METAS) && (

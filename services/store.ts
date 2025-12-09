@@ -29,6 +29,36 @@ class StoreService {
         result: 'R$ 5.000,00 antecipados.',
         requester: 'Cleiton Freitas',
         description: 'Cliente optou pelo modelo Full com antecipação automática.'
+    },
+    // New Pricing Request Mock
+    {
+        id: 'PRC-2001',
+        type: 'Negociação de Taxas',
+        clientName: 'Auto Center Premium',
+        date: new Date().toISOString(),
+        status: 'Em Análise',
+        requester: 'Samuel de Paula',
+        description: 'Cliente com volume alto (50k/mês), Stone ofertando 0.90% no débito.',
+        pricingData: {
+            competitorRates: { debit: 0.90, credit1x: 2.50, credit12x: 10.50 },
+            proposedRates: { debit: 0.85, credit1x: 2.40, credit12x: 10.00 },
+            financials: { spread: 0.65, mcf2: 150.00 }
+        }
+    },
+    {
+        id: 'PRC-2002',
+        type: 'Negociação de Taxas',
+        clientName: 'Mecânica Rápida',
+        date: new Date(Date.now() - 86400000).toISOString(), // Yesterday
+        status: 'Aprovado Pricing',
+        requester: 'Cauana Sousa',
+        description: 'Solicitação de redução para evitar Churn.',
+        pricingData: {
+            competitorRates: { debit: 1.10, credit1x: 3.00, credit12x: 12.00 },
+            proposedRates: { debit: 1.05, credit1x: 2.90, credit12x: 11.50 },
+            approvedRates: { debit: 1.05, credit1x: 2.90, credit12x: 11.50 },
+            financials: { spread: 0.70, mcf2: 90.00 }
+        }
     }
   ];
 
@@ -71,7 +101,8 @@ class StoreService {
       'Antecipação Pontual',
       'Troca de Titularidade',
       'Solicitação de Bobina',
-      'Outros'
+      'Outros',
+      'Negociação de Taxas'
   ];
 
   constructor() {
@@ -332,6 +363,10 @@ class StoreService {
   
   addDemand(demand: ManualDemand): void {
       this.demands.push(demand);
+  }
+  
+  updateDemand(updatedDemand: ManualDemand): void {
+      this.demands = this.demands.map(d => d.id === updatedDemand.id ? updatedDemand : d);
   }
 
   getDemandTypes(): string[] { return this.demandTypes; }
