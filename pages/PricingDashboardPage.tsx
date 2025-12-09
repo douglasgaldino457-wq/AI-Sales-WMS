@@ -57,31 +57,42 @@ const PricingDashboardPage: React.FC = () => {
     const chartData = useMemo(() => {
         const isSimples = chartProduct === 'Simples';
         
-        // Mock Data Simulation for Rate Curve
-        // Full usually has lower rates than Simples
-        const baseCurve = {
-            debit: isSimples ? 1.49 : 0.99,
-            credit1x: isSimples ? 3.49 : 2.89,
-            credit2to6: isSimples ? 9.90 : 7.90,
-            credit7to12: isSimples ? 14.90 : 10.90,
-            credit13to18: isSimples ? 22.90 : 16.90
-        };
+        // Base Rates Setup
+        const baseDebit = 0.99;
+        const baseSight = 2.89;
+        const concDebit = 1.29;
+        const concSight = 3.29;
 
-        const competitorCurve = {
-            debit: isSimples ? 1.99 : 1.29,
-            credit1x: isSimples ? 4.99 : 3.29,
-            credit2to6: isSimples ? 12.90 : 9.50,
-            credit7to12: isSimples ? 18.90 : 13.50,
-            credit13to18: isSimples ? 26.90 : 19.50
-        };
+        if (isSimples) {
+            // VIEW: SIMPLES (Buckets)
+            return [
+                { name: 'Débito', Concorrencia: concDebit, Aprovado: 1.49 }, // Higher base for Simples
+                { name: '1x', Concorrencia: concSight, Aprovado: 3.49 },
+                { name: '2x-6x', Concorrencia: 9.50, Aprovado: 7.90 },
+                { name: '7x-12x', Concorrencia: 13.50, Aprovado: 10.90 },
+                { name: '13x-18x', Concorrencia: 19.50, Aprovado: 16.90 },
+            ];
+        } else {
+            // VIEW: FULL (Granular 2x to 18x)
+            const data = [
+                { name: 'Débito', Concorrencia: concDebit, Aprovado: baseDebit },
+                { name: '1x', Concorrencia: concSight, Aprovado: baseSight },
+            ];
 
-        return [
-            { name: 'Débito', Concorrencia: competitorCurve.debit, Aprovado: baseCurve.debit },
-            { name: '1x', Concorrencia: competitorCurve.credit1x, Aprovado: baseCurve.credit1x },
-            { name: '2x-6x', Concorrencia: competitorCurve.credit2to6, Aprovado: baseCurve.credit2to6 },
-            { name: '7x-12x', Concorrencia: competitorCurve.credit7to12, Aprovado: baseCurve.credit7to12 },
-            { name: '13x-18x', Concorrencia: competitorCurve.credit13to18, Aprovado: baseCurve.credit13to18 },
-        ];
+            // Generate 2x to 18x linear curve simulation
+            for (let i = 2; i <= 18; i++) {
+                // Simulation: Competitor implies ~1.5% per installment, Approved implies ~1.3%
+                const concRate = concSight + (i * 1.5);
+                const apprvRate = baseSight + (i * 1.3);
+                
+                data.push({
+                    name: `${i}x`,
+                    Concorrencia: parseFloat(concRate.toFixed(2)),
+                    Aprovado: parseFloat(apprvRate.toFixed(2))
+                });
+            }
+            return data;
+        }
     }, [chartProduct]);
 
     const approvedCount = filteredDemands.filter(d => d.status === 'Aprovado Pricing' || d.status === 'Concluído').length;
@@ -173,8 +184,8 @@ const PricingDashboardPage: React.FC = () => {
                                     value={chartProduct}
                                     onChange={(e) => setChartProduct(e.target.value as ProductType)}
                                 >
-                                    <option value="Full">Full</option>
-                                    <option value="Simples">Simples</option>
+                                    <option value="Full">Full (Todas Parc.)</option>
+                                    <option value="Simples">Simples (Agrupado)</option>
                                 </select>
                             </div>
 
@@ -199,12 +210,12 @@ const PricingDashboardPage: React.FC = () => {
                     
                     <div className="h-[300px] w-full relative">
                         <div className="absolute top-0 right-0 bg-white/80 px-2 py-1 text-[10px] font-bold text-brand-gray-400 border border-brand-gray-100 rounded z-10 pointer-events-none">
-                            Produto: {chartProduct}
+                            Visualização: {chartProduct === 'Full' ? 'Parcela a Parcela' : 'Buckets Agrupados'}
                         </div>
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={chartData}>
+                            <LineChart data={chartData} margin={{ left: -10 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} dy={10} />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 10}} dy={10} interval={chartProduct === 'Full' ? 1 : 0} />
                                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} unit="%" domain={[0, 'auto']} />
                                 <Tooltip 
                                     formatter={(value: number) => [`${value}%`, 'Taxa']}

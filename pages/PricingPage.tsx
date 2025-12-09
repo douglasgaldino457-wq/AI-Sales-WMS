@@ -1,710 +1,510 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState } from 'react';
+import { UserRole } from '../types';
 import { 
-  BadgePercent, Hammer, Calculator, Bot, RefreshCw, CheckCircle2, 
-  Wallet, Upload, FileText, Image as ImageIcon, X, PieChart, Save, Search, Building2, Globe, ArrowRight, Zap, Hourglass
+    CheckCircle2, User, Phone, Mail, DollarSign, Calculator, 
+    Smartphone, CreditCard, Download, Printer, Share2, Zap, Calendar, AlertCircle,
+    Table, List, PieChart, LayoutList, Send, AlertTriangle, ArrowRight, X
 } from 'lucide-react';
-import { UserRole, ClientBaseRow, ManualDemand } from '../types';
+import { Logo } from '../components/Logo';
+import ResultadosPage from './ResultadosPage';
+import ConfigTaxasPage from './ConfigTaxasPage';
 import { appStore } from '../services/store';
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { runWithRetry } from '../services/geminiService';
 
 interface PricingPageProps {
-  role: UserRole;
+  role: UserRole | null;
 }
 
-// --- TYPES ---
-type AnalysisMode = 'RATE_TABLE' | 'SIMULATION';
+// Defined Ranges with Discount Factors (Mock Logic)
+const TPV_RANGES = [
+    { id: 0, label: 'Até R$ 20.000,00', discount: 0 },
+    { id: 1, label: 'R$ 20k a R$ 50k', discount: 0.10 },
+    { id: 2, label: 'R$ 50k a R$ 100k', discount: 0.18 },
+    { id: 3, label: 'R$ 100k a R$ 250k', discount: 0.25 },
+    { id: 4, label: 'Acima de R$ 250k', discount: 0.35 },
+];
 
-interface NegotiationContext {
-  identifier: string; // CNPJ or ID
-  clientName: string;
-  competitor: string;
-  potentialRevenue: number;
-  minAgreed: number;
-  product: 'Full' | 'Simples';
-}
+// --- PROPOSAL GENERATOR COMPONENT (TABELA RANGE) ---
+const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
+    // State
+    const [rangeClientName, setRangeClientName] = useState('');
+    const [selectedRangeId, setSelectedRangeId] = useState<number>(1); // Default to 20k-50k
+    const [rangePlan, setRangePlan] = useState<'Full' | 'Simples'>('Full');
+    const [imgError, setImgError] = useState(false);
 
-interface RateTable {
-  debit: number;
-  creditSight: number;
-  credit2to6: number;
-  credit7to12: number;
-  credit13to18: number;
-  anticipation: number;
-  
-  concDebit: number;
-  concSight: number;
-  conc2to6: number;
-  conc7to12: number;
-  conc13to18: number;
+    // Approval Modal State
+    const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+    const [realTpv, setRealTpv] = useState<string>('');
+    const [justification, setJustification] = useState('');
 
-  installments: { [key: number]: number };
-  concInstallments: { [key: number]: number };
-}
+    const selectedRange = TPV_RANGES.find(r => r.id === selectedRangeId) || TPV_RANGES[0];
 
-interface SimulationState {
-  amount: number;
-  installments: number;
-  interestPayer: 'EC' | 'CLIENT';
-}
-
-const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
-  // --- STATE ---
-  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('RATE_TABLE');
-  
-  const [context, setContext] = useState<NegotiationContext>({
-    identifier: '',
-    clientName: '',
-    competitor: '',
-    potentialRevenue: 0,
-    minAgreed: 0,
-    product: 'Full'
-  });
-  
-  const [rates, setRates] = useState<RateTable>({
-    debit: 0,
-    creditSight: 0,
-    credit2to6: 0,
-    credit7to12: 0,
-    credit13to18: 0,
-    anticipation: 0,
-    concDebit: 1.20, 
-    concSight: 3.10,
-    conc2to6: 8.50,
-    conc7to12: 11.50,
-    conc13to18: 18.00,
-    installments: {}, 
-    concInstallments: {}
-  });
-
-  const [simulation, setSimulation] = useState<SimulationState>({
-    amount: 1000,
-    installments: 1,
-    interestPayer: 'EC'
-  });
-
-  // Client Search State
-  const [suggestions, setSuggestions] = useState<ClientBaseRow[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-  const [isSearchingReceita, setIsSearchingReceita] = useState(false);
-
-  // AI State
-  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showDemandSuccess, setShowDemandSuccess] = useState(false);
-
-  // Initialize installments
-  useEffect(() => {
-      if (Object.keys(rates.installments).length === 0) {
-          const initialInst: {[key: number]: number} = {};
-          const initialConc: {[key: number]: number} = {};
-          for(let i=2; i<=18; i++) {
-              initialInst[i] = 0;
-              initialConc[i] = 0;
-          }
-          setRates(prev => ({ ...prev, installments: initialInst, concInstallments: initialConc }));
-      }
-  }, []);
-
-  // Force RATE_TABLE mode when switching to Simples
-  useEffect(() => {
-      if (context.product === 'Simples') {
-          setAnalysisMode('RATE_TABLE');
-      }
-  }, [context.product]);
-
-  // Click outside to close suggestions
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // --- CLIENT SEARCH LOGIC ---
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value;
-      setContext(prev => ({ ...prev, identifier: val }));
-      
-      if (val.length > 2) {
-          const clients = appStore.getClients();
-          const matches = clients.filter(c => 
-              c.nomeEc.toLowerCase().includes(val.toLowerCase()) || 
-              c.id.includes(val)
-          ).slice(0, 5);
-          setSuggestions(matches);
-          setShowSuggestions(true);
-      } else {
-          setShowSuggestions(false);
-      }
-  };
-
-  const selectClient = (client: ClientBaseRow) => {
-      setContext(prev => ({
-          ...prev,
-          identifier: client.id,
-          clientName: client.nomeEc,
-          competitor: client.leadMetadata?.competitorAcquirer || '',
-          potentialRevenue: client.leadMetadata?.revenuePotential || 0
-      }));
-      setShowSuggestions(false);
-  };
-
-  const handleReceitaSearch = () => {
-      if (!context.identifier) return;
-      setIsSearchingReceita(true);
-      // Mock API call
-      setTimeout(() => {
-          setIsSearchingReceita(false);
-          if (!context.clientName) {
-              setContext(prev => ({ 
-                  ...prev, 
-                  clientName: "Estabelecimento Encontrado Ltda",
-                  potentialRevenue: 25000 
-              }));
-          }
-      }, 1500);
-  };
-
-  // --- CALCULATIONS ---
-  
-  // Auto-Calculate Full Rates from Simple Inputs (Legacy Logic, kept for safety)
-  useEffect(() => {
-      if (analysisMode === 'SIMULATION') return; 
-      if (context.product === 'Simples' && !rates.anticipation) return; 
-      
-      const newInst = { ...rates.installments };
-      const ant = rates.anticipation || 0;
-
-      const calc = (baseMdr: number, parc: number) => {
-          if (!baseMdr && !ant) return 0;
-          const averageTerm = (parc + 1) / 2;
-          const calculated = (baseMdr || 0) + (ant * averageTerm);
-          return parseFloat(calculated.toFixed(2));
-      };
-
-      for (let i = 2; i <= 18; i++) {
-          let baseMdr = 0;
-          if (i <= 6) baseMdr = rates.credit2to6;
-          else if (i <= 12) baseMdr = rates.credit7to12;
-          else baseMdr = rates.credit13to18;
-          
-          if ((baseMdr > 0 || ant > 0)) {
-             newInst[i] = calc(baseMdr, i);
-          }
-      }
-      
-      if (JSON.stringify(newInst) !== JSON.stringify(rates.installments)) {
-          setRates(prev => ({ ...prev, installments: newInst }));
-      }
-  }, [rates.anticipation, rates.credit2to6, rates.credit7to12, rates.credit13to18, context.product, analysisMode]);
-
-  // Format Helpers
-  const handleCurrencyChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'potentialRevenue' | 'minAgreed') => {
-      const rawValue = e.target.value.replace(/\D/g, ''); 
-      const numValue = rawValue ? parseInt(rawValue, 10) / 100 : 0;
-      setContext(prev => ({ ...prev, [field]: numValue }));
-  };
-
-  const formatCurrencyValue = (val: number) => {
-      if (!val) return '';
-      return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  // Helper: Format number to "00,00 %"
-  const formatPercent = (val: number) => {
-      if (val === undefined || val === null) return '';
-      return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
-  };
-
-  // Helper: Parse "123" -> 1.23
-  const parsePercent = (val: string) => {
-      const raw = val.replace(/\D/g, '');
-      return raw ? Math.min(100, parseInt(raw, 10) / 100) : 0;
-  };
-
-  const getTotalConcentration = () => {
-      if (context.product === 'Simples') return 100; // Mock 100 for Simple view simplicity
-      const granularSum = (Object.values(rates.concInstallments || {}) as number[]).reduce((acc, curr) => acc + (curr || 0), 0);
-      return ((rates.concDebit || 0) + (rates.concSight || 0) + granularSum);
-  };
-
-  const totalConc = getTotalConcentration();
-  const isConcValid = Math.abs(totalConc - 100) < 0.1;
-
-  const handleCreateDemand = () => {
-      if (!context.identifier) {
-          alert("Identifique o cliente para criar uma demanda.");
-          return;
-      }
-
-      // Create Demand for Negotiation Desk with ACTUAL data
-      const newDemand: ManualDemand = {
-          id: `NEG-${Math.floor(Math.random() * 10000)}`,
-          type: 'Negociação de Taxas',
-          clientId: context.identifier,
-          clientName: context.clientName,
-          date: new Date().toISOString(),
-          status: 'Pendente',
-          requester: 'Eu (Consultor)', // Mock requester
-          description: `Solicitação de taxas ${context.product} para cliente com potencial de R$ ${context.potentialRevenue.toLocaleString('pt-BR')}.`,
-          pricingData: {
-              competitorRates: {
-                  debit: rates.concDebit || 0,
-                  credit1x: rates.concSight || 0,
-                  credit12x: rates.concInstallments[12] || rates.conc7to12 || 0
-              },
-              proposedRates: {
-                  debit: rates.debit || 0,
-                  credit1x: rates.creditSight || 0,
-                  credit12x: rates.installments[12] || rates.credit7to12 || 0
-              },
-              financials: {
-                  spread: 0, // To be calculated by Pricing Desk
-                  mcf2: 0
-              },
-              context: {
-                  potentialRevenue: context.potentialRevenue,
-                  minAgreed: context.minAgreed
-              },
-              evidenceUrl: evidenceFiles.length > 0 ? 'simulated_evidence.jpg' : undefined
-          }
-      };
-
-      appStore.addDemand(newDemand);
-
-      setShowDemandSuccess(true);
-      setTimeout(() => setShowDemandSuccess(false), 4000);
-  };
-
-  // --- AI EVIDENCE LOGIC ---
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-        const newFiles = Array.from(e.target.files) as File[];
-        setEvidenceFiles(prev => [...prev, ...newFiles]);
-    }
-  };
-
-  const fileToGenerativePart = async (file: File) => {
-    const base64EncodedDataPromise = new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-          if (typeof reader.result === 'string') resolve(reader.result.split(',')[1]);
-          else resolve('');
-      };
-      reader.readAsDataURL(file);
-    });
-    return { inlineData: { data: await base64EncodedDataPromise, mimeType: file.type } };
-  };
-
-  const handleAnalyzeEvidence = async () => {
-    if (evidenceFiles.length === 0) return;
-    
-    // Check Requirement for Simulation
-    if (analysisMode === 'SIMULATION' && (!simulation.amount || simulation.amount <= 0)) {
-        alert("Para simulação por valor, informe o 'Valor da Venda' primeiro.");
-        return;
-    }
-
-    setIsAnalyzing(true);
-    try {
-        const apiKey = process.env.API_KEY;
-        const ai = new GoogleGenAI({ apiKey: apiKey! });
-        const fileParts = await Promise.all(evidenceFiles.map(fileToGenerativePart));
-        
-        let promptText = "";
-
-        if (analysisMode === 'SIMULATION') {
-            promptText = `
-              Você é um especialista em Pricing e Matemática Financeira.
-              Tarefa: Analisar a imagem de um simulador de maquininha.
-              VALOR BASE: R$ ${simulation.amount}.
-              OBJETIVO: Identifique parcelas e calcule a taxa implícita.
-              RETORNO JSON OBRIGATÓRIO: { "installments": { "1": number, "2": number, "12": number } }
-            `;
+    // --- LOGIC: BENEFITS ---
+    const getBenefitsList = (plan: string) => {
+        if (plan === 'Full') {
+            return [
+                "Pagamento no mesmo dia (4 grades de repasses)",
+                "Prioridade em oportunidades de novos leads Webmotors Serviços",
+                "Taxa única para todas as bandeiras",
+                "Suporte humanizado",
+                "Parcelamento em até 18x"
+            ];
         } else {
-            promptText = `
-              Extraia a tabela de taxas da imagem.
-              Retorne JSON: { "debit": number, "creditSight": number, "installments": { "2": number, ... "18": number } }
-            `;
+             return [
+                "Pagamentos na Agenda, conforme parcela",
+                "Prioridade em oportunidades de novos leads Webmotors Serviços",
+                "Taxa única para todas as bandeiras",
+                "Suporte humanizado",
+                "Solicitação de antecipação, paga no mesmo dia*"
+            ];
         }
+    };
 
-        const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [...fileParts, { text: promptText }] }
-        }));
-
-        let jsonStr = response.text || "";
-        jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '');
-        const firstOpen = jsonStr.indexOf('{');
-        const lastClose = jsonStr.lastIndexOf('}');
-        if (firstOpen !== -1 && lastClose !== -1) jsonStr = jsonStr.substring(firstOpen, lastClose + 1);
-
-        const parsed = JSON.parse(jsonStr);
+    // --- LOGIC: RATES TABLE ---
+    const getRangeRates = (plan: string, rangeDiscount: number) => {
+        const discount = rangeDiscount;
         
-        if (parsed) {
-            if (analysisMode === 'SIMULATION' && parsed.installments) {
-                setRates(prev => ({
-                    ...prev,
-                    installments: { ...prev.installments, ...parsed.installments }
-                }));
-                setSimulation(prev => ({...prev, interestPayer: 'CLIENT'}));
-            } else {
-                const { installments, ...baseRates } = parsed;
-                setRates(prev => ({ ...prev, ...baseRates, installments: { ...prev.installments, ...installments } }));
-            }
+        if (plan === 'Full') {
+             // FULL: Granular Display (Parcela a Parcela)
+             const rows = [
+                 { label: 'DÉBITO', rate: 0.99 - discount },
+                 { label: 'CRÉDITO 1X', rate: 2.89 - discount },
+             ];
+             
+             // Generate 2x to 18x
+             for(let i=2; i<=18; i++) {
+                 // Mock Curve: Base + (Installment * Factor) - Discount
+                 const rate = 3.5 + (i * 0.75) - discount; 
+                 rows.push({ label: `${i}x`, rate: parseFloat(rate.toFixed(2)) });
+             }
+             return rows;
+
+        } else {
+             // SIMPLES: Grouped Display (Buckets)
+             return [
+                 { label: 'DÉBITO', rate: 1.19 - discount },
+                 { label: 'CRÉDITO 1X', rate: 3.19 - discount },
+                 { label: '2X - 6X', rate: 9.90 - discount * 2 },
+                 { label: '7X - 12X', rate: 12.90 - discount * 2 },
+                 { label: '13X - 18X', rate: 16.90 - discount * 2 },
+             ];
+        }
+    };
+
+    const handleSendApproval = () => {
+        if (!realTpv || !rangeClientName) {
+            alert("Preencha o Nome do Cliente e o Volume Real.");
+            return;
         }
 
-    } catch (error) {
-        console.error("Erro na análise IA:", error);
-        alert("Não foi possível ler a evidência. Tente novamente.");
-    } finally {
-        setIsAnalyzing(false);
-        setEvidenceFiles([]);
-    }
-  };
+        // Logic to create manual demand
+        const demand = {
+            id: `APR-${Math.floor(Math.random() * 10000)}`,
+            clientName: rangeClientName,
+            type: 'Aprovação de Exceção (Range)',
+            date: new Date().toISOString(),
+            status: 'Em Análise' as const, // Cast to literal type
+            requester: role === UserRole.FIELD_SALES ? 'Cleiton Freitas' : 'Usuário Atual',
+            description: `Solicitação de enquadramento na faixa "${selectedRange.label}" com volume real de R$ ${realTpv}. Justificativa: ${justification}`,
+            pricingData: {
+                competitorRates: { debit: 0, credit1x: 0, credit12x: 0 }, // Mock empty
+                proposedRates: { debit: 0, credit1x: 0, credit12x: 0 }, // Would contain the rates from selectedRange
+                context: {
+                    potentialRevenue: parseFloat(realTpv.replace(/\D/g,'')) / 100, // Parsing currency string
+                    minAgreed: 0
+                }
+            }
+        };
 
-  const calculateRow = (type: 'Debit' | number) => {
-      let rate = 0;
-      if (type === 'Debit') rate = rates.debit ?? 0;
-      else if (type === 1) rate = rates.creditSight ?? 0;
-      else rate = (rates.installments && rates.installments[type as number]) ?? 0;
+        appStore.addDemand(demand);
+        setIsApprovalModalOpen(false);
+        alert("Solicitação enviada para a Mesa de Negociação! Acompanhe em 'Minhas Solicitações'.");
+        setRealTpv('');
+        setJustification('');
+    };
 
-      const decimalRate = rate / 100;
-      const amount = simulation.amount || 0;
-
-      if (simulation.interestPayer === 'EC') {
-          const cost = amount * decimalRate;
-          const net = amount - cost;
-          return { label: type === 'Debit' ? 'Débito' : `${type}x`, rate, value: net, detail: cost };
-      } else {
-          const charged = amount / (1 - decimalRate);
-          const diff = charged - amount;
-          return { label: type === 'Debit' ? 'Débito' : `${type}x`, rate, value: charged, detail: diff };
-      }
-  };
-
-  // Helper to render compact inputs with Mask "00,00 %"
-  const RateInput = ({ value, onChange, placeholder, isCompetitor = false }: any) => (
-      <input 
-          type="text"
-          inputMode="numeric" 
-          className={`w-full text-center font-bold rounded px-1 py-1.5 text-xs outline-none transition-all border
-              ${isCompetitor 
-                  ? 'text-blue-600 bg-blue-50/50 border-transparent focus:border-blue-300 placeholder-blue-300' 
-                  : 'text-gray-800 bg-gray-50 focus:bg-white border-transparent focus:border-brand-primary placeholder-gray-300'
-              }`}
-          value={value !== undefined ? formatPercent(value) : ''}
-          onChange={(e) => onChange(parsePercent(e.target.value))}
-          placeholder={placeholder || "0,00 %"}
-      />
-  );
-
-  // Helper for Card inputs in Simples view
-  const CardInput = ({ label, value, onChange, placeholder, isCompetitor = false }: any) => (
-      <div>
-          <label className={`text-[10px] block mb-1 ${isCompetitor ? 'text-blue-500 font-bold' : 'text-gray-400 font-bold'}`}>
-              {label}
-          </label>
-          <input 
-              type="text"
-              inputMode="numeric" 
-              className={`w-full text-center font-bold rounded px-2 py-2 text-sm outline-none border focus:ring-1 transition-all
-                  ${isCompetitor 
-                      ? 'bg-blue-50 text-blue-700 border-blue-200 focus:ring-blue-400 placeholder-blue-300' 
-                      : 'bg-white text-gray-800 border-gray-200 focus:ring-brand-primary placeholder-gray-300'}`}
-              value={value !== undefined ? formatPercent(value) : ''}
-              onChange={(e) => onChange(parsePercent(e.target.value))}
-              placeholder={placeholder || "0,00 %"}
-          />
-      </div>
-  );
-
-  return (
-    <div className="flex flex-col space-y-6 max-w-6xl mx-auto pb-24">
-      
-      {/* Toast Notification */}
-      {showDemandSuccess && (
-          <div className="fixed top-24 right-4 z-50 animate-fade-in">
-              <div className="bg-brand-gray-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-white/10">
-                  <div className="bg-green-500 rounded-full p-1 text-white">
-                      <CheckCircle2 size={20} />
-                  </div>
-                  <div>
-                      <h4 className="font-bold text-sm">Demanda Criada!</h4>
-                      <p className="text-xs text-gray-300">A proposta foi enviada para análise.</p>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-brand-gray-900 flex items-center gap-2">
-                <BadgePercent className="w-8 h-8 text-brand-primary" />
-                Pricing
-            </h1>
-            <p className="text-brand-gray-500 mt-1">
-                Definição de taxas e análise.
-            </p>
-          </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* --- LEFT COLUMN: CONTEXT --- */}
-          <div className="lg:col-span-1 space-y-4">
-              
-              {/* Context Form */}
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-brand-gray-100">
-                  <h3 className="font-bold text-brand-gray-900 mb-3 flex items-center gap-2 text-xs uppercase tracking-wide">
-                      <Wallet className="w-4 h-4 text-brand-primary" />
-                      Dados do Cliente
-                  </h3>
-                  
-                  <div className="space-y-3">
-                      <div className="relative" ref={searchRef}>
-                          <label className="block text-[10px] font-bold text-brand-gray-500 mb-1">Buscar (CNPJ/ID)</label>
-                          <div className="relative">
-                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-brand-gray-400" />
-                              <input 
-                                  type="text" 
-                                  className="w-full pl-8 border border-brand-gray-300 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-brand-primary transition-all"
-                                  placeholder="Digite para buscar..."
-                                  value={context.identifier}
-                                  onChange={handleSearchChange}
-                              />
-                          </div>
-                          {showSuggestions && suggestions.length > 0 && (
-                              <div className="absolute top-full left-0 right-0 bg-white border border-brand-gray-200 rounded-lg shadow-xl z-20 mt-1 max-h-48 overflow-y-auto animate-fade-in">
-                                  {suggestions.map(c => (
-                                      <div key={c.id} onClick={() => selectClient(c)} className="px-4 py-2 hover:bg-brand-gray-50 cursor-pointer border-b border-brand-gray-50 last:border-0">
-                                          <p className="text-xs font-bold text-brand-gray-800">{c.nomeEc}</p>
-                                          <p className="text-[10px] text-brand-gray-500">ID: {c.id}</p>
-                                      </div>
-                                  ))}
-                              </div>
-                          )}
-                      </div>
-
-                      {context.clientName && (
-                          <div className="bg-brand-gray-50 p-2 rounded-lg border border-brand-gray-200 flex items-center gap-2">
-                              <Building2 className="w-4 h-4 text-brand-gray-400" />
-                              <span className="text-xs font-bold text-brand-gray-800 truncate">{context.clientName}</span>
-                          </div>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-2">
-                          <div>
-                              <label className="block text-[10px] font-bold text-brand-gray-500 mb-1">Potencial (R$)</label>
-                              <input type="text" className="w-full border border-brand-gray-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-brand-primary" value={formatCurrencyValue(context.potentialRevenue)} onChange={e => handleCurrencyChange(e, 'potentialRevenue')} />
-                          </div>
-                          <div>
-                              <label className="block text-[10px] font-bold text-brand-gray-500 mb-1">Mínimo</label>
-                              <input type="text" className="w-full border border-brand-gray-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-brand-primary" value={formatCurrencyValue(context.minAgreed)} onChange={e => handleCurrencyChange(e, 'minAgreed')} />
-                          </div>
-                      </div>
-
-                      <div>
-                          <label className="block text-[10px] font-bold text-brand-gray-500 mb-1">Modelo</label>
-                          <div className="flex bg-brand-gray-100 p-1 rounded-lg">
-                              <button onClick={() => setContext({...context, product: 'Full'})} className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-all ${context.product === 'Full' ? 'bg-white text-green-700 shadow-sm' : 'text-brand-gray-500'}`}>Full</button>
-                              <button onClick={() => setContext({...context, product: 'Simples'})} className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-all ${context.product === 'Simples' ? 'bg-white text-blue-700 shadow-sm' : 'text-brand-gray-500'}`}>Simples</button>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-
-              {/* Mode Selector */}
-              <div className="bg-brand-gray-900 p-4 rounded-xl shadow-lg text-white">
-                  <div className="flex bg-black/30 p-1 rounded-lg mb-4">
-                      <button onClick={() => setAnalysisMode('RATE_TABLE')} className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-all flex items-center justify-center gap-2 ${analysisMode === 'RATE_TABLE' ? 'bg-brand-primary text-white' : 'text-gray-400 hover:text-white'}`}><FileText className="w-3 h-3" /> Tabela</button>
-                      {/* Hide Simulation button if Simples is selected */}
-                      {context.product === 'Full' && (
-                          <button onClick={() => setAnalysisMode('SIMULATION')} className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-all flex items-center justify-center gap-2 ${analysisMode === 'SIMULATION' ? 'bg-brand-primary text-white' : 'text-gray-400 hover:text-white'}`}><Calculator className="w-3 h-3" /> Simular</button>
-                      )}
-                  </div>
-
-                  <div className="mb-2">
-                      <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" multiple accept="image/*,application/pdf" />
-                      <button onClick={() => fileInputRef.current?.click()} className="w-full bg-white/10 border border-dashed border-white/30 rounded-lg p-3 flex flex-col items-center justify-center hover:bg-white/20 transition-colors text-center">
-                          <Upload className="w-4 h-4 text-brand-gray-400 mb-1" />
-                          <span className="text-[10px] text-gray-300">{analysisMode === 'RATE_TABLE' ? 'Foto da Tabela' : 'Print Simulador'}</span>
-                      </button>
-                      {evidenceFiles.length > 0 && <div className="mt-2 text-[10px] text-brand-primary text-center">{evidenceFiles.length} arquivo(s)</div>}
-                  </div>
-
-                  <button onClick={handleAnalyzeEvidence} disabled={isAnalyzing || evidenceFiles.length === 0} className="w-full bg-brand-primary hover:bg-brand-dark text-white py-2 rounded-lg font-bold text-xs shadow-md transition-all disabled:opacity-50">
-                      {isAnalyzing ? 'Lendo...' : 'Extrair com IA'}
-                  </button>
-              </div>
-          </div>
-
-          {/* --- RIGHT COLUMN: TABLE --- */}
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-brand-gray-100 flex flex-col overflow-hidden">
-              <div className="p-4 border-b border-brand-gray-100 flex justify-between items-center bg-brand-gray-50">
-                  <h3 className="font-bold text-brand-gray-900 flex items-center gap-2 text-sm">
-                      {analysisMode === 'RATE_TABLE' ? <Hammer className="w-4 h-4 text-brand-primary"/> : <Calculator className="w-4 h-4 text-brand-primary"/>}
-                      {analysisMode === 'RATE_TABLE' ? 'Definição de Taxas' : 'Simulação Financeira'}
-                  </h3>
-                  {analysisMode === 'RATE_TABLE' && context.product === 'Full' && (
-                      <div className={`px-2 py-1 rounded border flex items-center gap-2 text-xs font-bold ${isConcValid ? 'bg-green-100 border-green-200 text-green-700' : 'bg-red-100 border-red-200 text-red-700'}`}>
-                          <PieChart className="w-3 h-3" /> Conc: {totalConc?.toFixed(2)}%
-                      </div>
-                  )}
-              </div>
-
-              <div className="p-4 overflow-y-auto">
-                  {analysisMode === 'RATE_TABLE' && (
-                      <div className="space-y-6">
+    return (
+        <div className="animate-fade-in relative">
+            <header className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6">
+                <div>
+                    <h2 className="text-xl font-bold text-brand-gray-900 tracking-tight">Gerador de Proposta</h2>
+                    <p className="text-brand-gray-600 text-sm mt-1">Selecione a faixa de faturamento para gerar as condições comerciais.</p>
+                </div>
+                <div className="flex gap-2">
+                    <button className="flex items-center gap-2 bg-white border border-brand-gray-200 text-brand-gray-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-brand-gray-50 transition-colors shadow-sm">
+                        <Printer size={16} /> Imprimir
+                    </button>
+                    <button className="flex items-center gap-2 bg-brand-gray-900 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-black transition-colors shadow-lg">
+                        <Download size={16} /> Baixar PDF
+                    </button>
+                </div>
+            </header>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                 {/* LEFT COLUMN: CONTROLS (4 Cols) */}
+                 <div className="lg:col-span-4 space-y-6">
+                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-gray-100">
+                          <h3 className="font-bold text-lg text-brand-gray-900 mb-6 flex items-center gap-2">
+                               <Calculator className="w-5 h-5 text-brand-primary" />
+                               Configuração
+                          </h3>
                           
-                          {context.product === 'Simples' ? (
-                              // --- CARD VIEW FOR SIMPLES ---
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                  {/* Card 1: Débito */}
-                                  <div className="bg-brand-gray-50 p-3 rounded-xl border border-brand-gray-200 hover:border-brand-primary/50 transition-colors">
-                                      <div className="text-xs font-bold text-gray-600 uppercase mb-3 border-b border-gray-200 pb-1">Débito</div>
-                                      <div className="space-y-3">
-                                          <CardInput label="Proposta" value={rates.debit} onChange={(val: number) => setRates({...rates, debit: val})} />
-                                          <CardInput label="Concorrência" value={rates.concDebit} onChange={(val: number) => setRates({...rates, concDebit: val})} isCompetitor />
-                                      </div>
-                                  </div>
+                          <div className="space-y-5">
+                               <div>
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Nome do Cliente</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all"
+                                        placeholder="Ex: Oficina do João"
+                                        value={rangeClientName}
+                                        onChange={(e) => setRangeClientName(e.target.value)}
+                                    />
+                               </div>
+                               
+                               <div>
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Faixa de TPV (Tabela Range)</label>
+                                    <div className="relative">
+                                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-400" />
+                                         <select 
+                                              className="w-full pl-10 border border-brand-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none font-bold text-brand-gray-800 bg-white appearance-none"
+                                              value={selectedRangeId}
+                                              onChange={(e) => setSelectedRangeId(Number(e.target.value))}
+                                         >
+                                            {TPV_RANGES.map(range => (
+                                                <option key={range.id} value={range.id}>{range.label}</option>
+                                            ))}
+                                         </select>
+                                    </div>
+                                    <p className="text-[10px] text-brand-gray-400 mt-1 ml-1">
+                                        * Selecione a faixa para aplicar o desconto automático.
+                                    </p>
+                               </div>
 
-                                  {/* Card 2: 1x / Crédito à Vista */}
-                                  <div className="bg-brand-gray-50 p-3 rounded-xl border border-brand-gray-200 hover:border-brand-primary/50 transition-colors">
-                                      <div className="text-xs font-bold text-gray-600 uppercase mb-3 border-b border-gray-200 pb-1">1x (À Vista)</div>
-                                      <div className="space-y-3">
-                                          <CardInput label="Proposta" value={rates.creditSight} onChange={(val: number) => setRates({...rates, creditSight: val})} />
-                                          <CardInput label="Concorrência" value={rates.concSight} onChange={(val: number) => setRates({...rates, concSight: val})} isCompetitor />
-                                      </div>
-                                  </div>
-
-                                  {/* Card 3: 2x a 6x */}
-                                  <div className="bg-brand-gray-50 p-3 rounded-xl border border-brand-gray-200 hover:border-brand-primary/50 transition-colors">
-                                      <div className="text-xs font-bold text-gray-600 uppercase mb-3 border-b border-gray-200 pb-1">2x a 6x</div>
-                                      <div className="space-y-3">
-                                          <CardInput label="Proposta" value={rates.credit2to6} onChange={(val: number) => setRates({...rates, credit2to6: val})} />
-                                          <CardInput label="Concorrência" value={rates.conc2to6} onChange={(val: number) => setRates({...rates, conc2to6: val})} isCompetitor />
-                                      </div>
-                                  </div>
-
-                                  {/* Card 4: 7x a 12x */}
-                                  <div className="bg-brand-gray-50 p-3 rounded-xl border border-brand-gray-200 hover:border-brand-primary/50 transition-colors">
-                                      <div className="text-xs font-bold text-gray-600 uppercase mb-3 border-b border-gray-200 pb-1">7x a 12x</div>
-                                      <div className="space-y-3">
-                                          <CardInput label="Proposta" value={rates.credit7to12} onChange={(val: number) => setRates({...rates, credit7to12: val})} />
-                                          <CardInput label="Concorrência" value={rates.conc7to12} onChange={(val: number) => setRates({...rates, conc7to12: val})} isCompetitor />
-                                      </div>
-                                  </div>
-
-                                  {/* Card 5: 13x a 18x */}
-                                  <div className="bg-brand-gray-50 p-3 rounded-xl border border-brand-gray-200 hover:border-brand-primary/50 transition-colors">
-                                      <div className="text-xs font-bold text-gray-600 uppercase mb-3 border-b border-gray-200 pb-1">13x a 18x</div>
-                                      <div className="space-y-3">
-                                          <CardInput label="Proposta" value={rates.credit13to18} onChange={(val: number) => setRates({...rates, credit13to18: val})} />
-                                          <CardInput label="Concorrência" value={rates.conc13to18} onChange={(val: number) => setRates({...rates, conc13to18: val})} isCompetitor />
-                                      </div>
-                                  </div>
-                              </div>
-                          ) : (
-                              // --- TABLE VIEW FOR FULL ---
-                              <div className="overflow-x-auto rounded-lg border border-brand-gray-200">
-                                  <table className="w-full text-xs text-left table-fixed min-w-[300px]">
-                                      <thead className="bg-brand-gray-100 text-brand-gray-600 font-bold uppercase tracking-wider">
-                                          <tr>
-                                              <th className="px-2 py-2 text-center w-[25%]">Parcela</th>
-                                              <th className="px-2 py-2 text-center w-[37.5%]">Proposta (%)</th>
-                                              <th className="px-2 py-2 text-center w-[37.5%]">Conc. (%)</th>
-                                          </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-brand-gray-100 bg-white">
-                                          <tr>
-                                              <td className="px-2 py-1.5 text-center font-bold text-brand-gray-700">Débito</td>
-                                              <td className="px-2 py-1.5"><RateInput value={rates.debit} onChange={(val: number) => setRates({...rates, debit: val})} placeholder="0,00 %" /></td>
-                                              <td className="px-2 py-1.5"><RateInput value={rates.concDebit} onChange={(val: number) => setRates({...rates, concDebit: val})} placeholder="0,00 %" isCompetitor /></td>
-                                          </tr>
-                                          <tr>
-                                              <td className="px-2 py-1.5 text-center font-bold text-brand-gray-700">1x</td>
-                                              <td className="px-2 py-1.5"><RateInput value={rates.creditSight} onChange={(val: number) => setRates({...rates, creditSight: val})} placeholder="0,00 %" /></td>
-                                              <td className="px-2 py-1.5"><RateInput value={rates.concSight} onChange={(val: number) => setRates({...rates, concSight: val})} placeholder="0,00 %" isCompetitor /></td>
-                                          </tr>
-                                          {/* Installments */}
-                                          {Object.keys(rates.installments).map((key) => {
-                                              const i = parseInt(key);
-                                              return (
-                                                  <tr key={i} className="hover:bg-gray-50">
-                                                      <td className="px-2 py-1 text-center font-medium text-gray-600">{i}x</td>
-                                                      <td className="px-2 py-1"><RateInput value={rates.installments[i]} onChange={(val: number) => setRates({...rates, installments: {...rates.installments, [i]: val}})} /></td>
-                                                      <td className="px-2 py-1"><RateInput value={rates.concInstallments[i]} onChange={(val: number) => setRates({...rates, concInstallments: {...rates.concInstallments, [i]: val}})} isCompetitor /></td>
-                                                  </tr>
-                                              );
-                                          })}
-                                      </tbody>
-                                  </table>
-                              </div>
-                          )}
-                          
-                          <button onClick={handleCreateDemand} className="w-full bg-brand-gray-900 text-white py-3 rounded-xl font-bold shadow hover:bg-black transition-colors flex items-center justify-center gap-2 text-sm">
-                              <Save className="w-4 h-4" /> Formalizar Proposta
-                          </button>
-                      </div>
-                  )}
-
-                  {analysisMode === 'SIMULATION' && context.product === 'Full' && (
-                      <div className="space-y-4">
-                          {/* Simulation inputs and table */}
-                          <div className="grid grid-cols-2 gap-4 mb-4">
-                              <div>
-                                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Valor Venda</label>
-                                  <input type="number" className="w-full border rounded p-2 text-sm" value={simulation.amount} onChange={e => setSimulation({...simulation, amount: parseFloat(e.target.value)})} />
-                              </div>
-                              <div>
-                                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Juros</label>
-                                  <div className="flex bg-gray-100 rounded p-1">
-                                      <button onClick={() => setSimulation({...simulation, interestPayer: 'EC'})} className={`flex-1 text-xs py-1 rounded ${simulation.interestPayer === 'EC' ? 'bg-white shadow' : ''}`}>Lojista</button>
-                                      <button onClick={() => setSimulation({...simulation, interestPayer: 'CLIENT'})} className={`flex-1 text-xs py-1 rounded ${simulation.interestPayer === 'CLIENT' ? 'bg-white shadow' : ''}`}>Cliente</button>
-                                  </div>
-                              </div>
+                               <div>
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Modelo de Taxas</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                         <button 
+                                            onClick={() => setRangePlan('Full')}
+                                            className={`py-3 px-2 text-xs font-bold rounded-xl transition-all border-2 flex flex-col items-center justify-center gap-1
+                                                ${rangePlan === 'Full' 
+                                                    ? 'bg-green-50 border-green-500 text-green-700 shadow-sm' 
+                                                    : 'bg-white border-transparent text-gray-500 hover:bg-gray-50'}`}
+                                         >
+                                            <Zap size={18} className={rangePlan === 'Full' ? 'fill-current' : ''} />
+                                            FULL (D+1)
+                                         </button>
+                                         <button 
+                                            onClick={() => setRangePlan('Simples')}
+                                            className={`py-3 px-2 text-xs font-bold rounded-xl transition-all border-2 flex flex-col items-center justify-center gap-1
+                                                ${rangePlan === 'Simples' 
+                                                    ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' 
+                                                    : 'bg-white border-transparent text-gray-500 hover:bg-gray-50'}`}
+                                         >
+                                            <Calendar size={18} className={rangePlan === 'Simples' ? 'fill-current' : ''} />
+                                            SIMPLES (Agenda)
+                                         </button>
+                                    </div>
+                               </div>
                           </div>
-                          
-                          <div className="rounded-lg border border-gray-200 overflow-hidden">
-                              <table className="w-full text-xs text-left">
-                                  <thead className="bg-gray-50 font-bold text-gray-600">
-                                      <tr>
-                                          <th className="px-4 py-2">Parc.</th>
-                                          <th className="px-4 py-2 text-right">Taxa</th>
-                                          <th className="px-4 py-2 text-right">Valor Final</th>
-                                      </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-100">
-                                      {['Debit', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18].map((rowType: any) => {
-                                          const row = calculateRow(rowType);
-                                          return (
-                                              <tr key={rowType}>
-                                                  <td className="px-4 py-2 font-bold">{row.label}</td>
-                                                  <td className="px-4 py-2 text-right">{row.rate.toFixed(2)}%</td>
-                                                  <td className="px-4 py-2 text-right font-mono font-bold text-brand-primary">
-                                                      {row.value.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
-                                                  </td>
-                                              </tr>
-                                          )
-                                      })}
-                                  </tbody>
-                              </table>
+
+                          <div className="mt-8 pt-6 border-t border-brand-gray-100">
+                               <button 
+                                    onClick={() => setIsApprovalModalOpen(true)}
+                                    className="w-full py-3 bg-brand-gray-50 text-brand-gray-700 border border-brand-gray-200 rounded-xl font-bold text-xs hover:bg-brand-gray-100 hover:text-brand-primary transition-colors flex items-center justify-center gap-2 group"
+                               >
+                                    <AlertTriangle className="w-4 h-4 text-yellow-500 group-hover:text-brand-primary transition-colors" />
+                                    Solicitação de Aprovação
+                               </button>
+                               <p className="text-[10px] text-center text-brand-gray-400 mt-2 leading-tight">
+                                   Use quando o EC faturar <strong>menos</strong> que a faixa selecionada, mas necessitar das taxas daquele range.
+                               </p>
                           </div>
+                     </div>
+                 </div>
+
+                 {/* RIGHT COLUMN: PREVIEW (8 Cols) */}
+                 <div className="lg:col-span-8 flex justify-center bg-gray-100 rounded-2xl p-4 md:p-8 overflow-hidden shadow-inner border border-gray-200">
+                      
+                      {/* --- PROPOSAL DOCUMENT --- */}
+                      <div className="bg-white w-full max-w-[600px] shadow-2xl relative flex flex-col min-h-[800px] transform transition-transform hover:scale-[1.01] duration-500 origin-top">
+                            
+                            {/* HEADER - BRANDING */}
+                            <div className="bg-[#1A1B1E] h-28 flex items-center justify-between px-8 relative overflow-hidden shrink-0">
+                                {/* Logo Wrapper */}
+                                <div className="relative z-10 text-white transform scale-90 origin-left">
+                                    <Logo className="text-white" />
+                                </div>
+                                
+                                <div className="relative z-10 text-right">
+                                    <h2 className="text-xl font-bold uppercase tracking-widest text-white">Proposta Comercial</h2>
+                                    <p className="text-xs text-gray-400 font-medium tracking-wide mt-1">Soluções de Pagamento</p>
+                                </div>
+
+                                {/* Abstract Decor */}
+                                <div className="absolute -right-10 -top-20 w-64 h-64 bg-brand-primary rounded-full opacity-10 blur-3xl"></div>
+                            </div>
+
+                            {/* HERO SECTION - IMAGE & INTRO */}
+                            <div className="p-8 pb-4 relative">
+                                <div className="flex flex-col md:flex-row items-center gap-6">
+                                    <div className="flex-1 space-y-2">
+                                        <span className="inline-block px-3 py-1 rounded-full bg-brand-light/10 text-brand-primary text-[10px] font-bold uppercase tracking-wider border border-brand-light/20">
+                                            Plano Selecionado
+                                        </span>
+                                        <h1 className="text-3xl font-bold text-brand-gray-900 leading-tight">
+                                            {rangePlan === 'Full' ? 'Plano Full' : 'Plano Simples'}
+                                        </h1>
+                                        <p className="text-sm text-brand-gray-500 leading-relaxed">
+                                            Prepare-se para acelerar suas vendas com a tecnologia e segurança da Pagmotors. Confira as condições exclusivas para <strong className="text-brand-gray-900 uppercase">{rangeClientName || 'sua empresa'}</strong>.
+                                        </p>
+                                    </div>
+                                    <div className="w-40 h-40 relative flex-shrink-0 flex items-center justify-center">
+                                        {/* 3D Payment Terminal Image Simulation - PUBLIC RELIABLE URLs */}
+                                        {imgError ? (
+                                            <div className="w-full h-full bg-brand-gray-50 rounded-2xl flex items-center justify-center border-2 border-dashed border-brand-gray-200">
+                                                <CreditCard className="w-16 h-16 text-brand-primary/50" />
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <img 
+                                                    src="https://cdn3d.iconscout.com/3d/free/thumb/free-payment-terminal-3877926-3229665.png?f=webp"
+                                                    alt="Pagmotors Terminal"
+                                                    className="w-full h-full object-contain drop-shadow-2xl transform rotate-[-10deg] hover:rotate-0 transition-transform duration-500"
+                                                    onError={() => setImgError(true)}
+                                                />
+                                                {/* Floating Coins Effect */}
+                                                <img 
+                                                    src="https://cdn3d.iconscout.com/3d/free/thumb/free-coin-3877925-3229664.png?f=webp"
+                                                    className="absolute -top-2 -right-4 w-12 h-12 animate-bounce-slow drop-shadow-lg"
+                                                    alt="Coin"
+                                                    onError={(e) => e.currentTarget.style.display = 'none'}
+                                                />
+                                                <img 
+                                                    src="https://cdn3d.iconscout.com/3d/free/thumb/free-coin-3877925-3229664.png?f=webp"
+                                                    className="absolute bottom-2 -left-2 w-8 h-8 animate-bounce-slow delay-700 drop-shadow-lg"
+                                                    alt="Coin"
+                                                    onError={(e) => e.currentTarget.style.display = 'none'}
+                                                />
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* BENEFITS GRID */}
+                            <div className="px-8 py-2">
+                                <div className="bg-brand-gray-50 rounded-2xl p-6 border border-brand-gray-100">
+                                    <h3 className="text-xs font-bold text-brand-gray-400 uppercase tracking-widest mb-4">
+                                        Vantagens Exclusivas
+                                    </h3>
+                                    <ul className="grid grid-cols-1 gap-3">
+                                        {getBenefitsList(rangePlan).map((benefit, idx) => (
+                                            <li key={idx} className="flex items-start text-sm text-brand-gray-700 font-medium">
+                                                <div className="bg-green-100 text-green-600 rounded-full p-0.5 mr-3 mt-0.5 shrink-0">
+                                                    <CheckCircle2 className="w-3 h-3" strokeWidth={4} />
+                                                </div>
+                                                <span className="leading-snug">{benefit}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+
+                            {/* RATES TABLE */}
+                            <div className="p-8 pt-4 flex-1 flex flex-col">
+                                <div className="mb-4 flex items-end justify-between">
+                                    <h3 className="text-lg font-bold text-brand-gray-900">Condições Comerciais</h3>
+                                    <div className="text-right">
+                                        <span className="text-[10px] text-brand-gray-400 font-bold uppercase block">Enquadramento</span>
+                                        <span className="text-xs font-mono font-bold text-brand-gray-700 bg-brand-gray-100 px-2 py-0.5 rounded">
+                                            {selectedRange.label}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="border border-brand-gray-200 rounded-xl overflow-hidden shadow-sm flex-1">
+                                    {/* Table Header */}
+                                    <div className="bg-brand-gray-900 flex text-white text-xs font-bold uppercase tracking-wider">
+                                        <div className="w-1/2 py-3 px-6 border-r border-white/10">Modalidade / Parcela</div>
+                                        <div className="w-1/2 py-3 px-6 text-right">Taxa (%)</div>
+                                    </div>
+                                    
+                                    {/* Table Body */}
+                                    <div className="divide-y divide-brand-gray-100 bg-white">
+                                        {getRangeRates(rangePlan, selectedRange.discount).map((row, idx) => (
+                                            <div key={idx} className="flex items-center text-sm group hover:bg-brand-gray-50 transition-colors">
+                                                {/* Left Column: Red Accent Line + Text */}
+                                                <div className="w-1/2 py-2.5 px-6 font-bold text-brand-gray-700 border-r border-brand-gray-100 relative overflow-hidden">
+                                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                                    {row.label}
+                                                </div>
+                                                {/* Right Column: Value */}
+                                                <div className="w-1/2 py-2.5 px-6 text-right font-mono font-bold text-brand-gray-900">
+                                                    {row.rate.toFixed(2)}%
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Disclaimer for Simples */}
+                                {rangePlan === 'Simples' && (
+                                    <div className="mt-4 text-[10px] text-brand-gray-500 bg-brand-gray-50 p-3 rounded-lg border border-brand-gray-200">
+                                        <p className="flex items-center gap-1">
+                                            <span className="font-bold text-brand-primary">*</span>
+                                            Solicitação de antecipação deve ser realizada até as 15:00 horas para pagamento no mesmo dia.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* FOOTER - CONSULTANT */}
+                            <div className="mt-auto bg-white border-t border-brand-gray-200 p-6 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-brand-gray-100 rounded-full border-2 border-white shadow-md flex items-center justify-center text-brand-gray-400">
+                                        <User className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] text-brand-gray-400 font-bold uppercase tracking-wider">Consultor Responsável</p>
+                                        <p className="text-sm font-bold text-brand-gray-900">Cleiton Freitas</p>
+                                        <div className="flex items-center gap-3 text-xs text-brand-gray-600 mt-0.5">
+                                            <span className="flex items-center gap-1"><Phone size={12}/> (11) 98940-7547</span>
+                                            <span className="flex items-center gap-1"><Mail size={12}/> cleiton.freitas@car10.com.br</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <img src="https://logodownload.org/wp-content/uploads/2019/08/webmotors-logo-2.png" alt="Webmotors" className="h-6 opacity-50 grayscale hover:grayscale-0 transition-all" />
+                                </div>
+                            </div>
+                            
+                            {/* Legal Strip */}
+                            <div className="bg-brand-gray-900 text-white/30 text-[8px] p-2 text-center uppercase tracking-[0.2em]">
+                                Documento Confidencial • Webmotors Serviços Financeiros
+                            </div>
                       </div>
-                  )}
-              </div>
-          </div>
-      </div>
-    </div>
-  );
+                 </div>
+            </div>
+
+            {/* --- APPROVAL REQUEST MODAL --- */}
+            {isApprovalModalOpen && (
+                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                        <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white">
+                            <h3 className="font-bold text-lg flex items-center gap-2">
+                                <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                                Solicitação de Exceção
+                            </h3>
+                            <button onClick={() => setIsApprovalModalOpen(false)} className="text-brand-gray-400 hover:text-white"><X size={20}/></button>
+                        </div>
+                        
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-brand-gray-600 bg-yellow-50 p-3 rounded-lg border border-yellow-100">
+                                Você selecionou a faixa <strong>{selectedRange.label}</strong>, mas o cliente não atinge esse faturamento? Preencha o volume real para análise da mesa.
+                            </p>
+
+                            <div>
+                                <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Volume Real (R$)</label>
+                                <div className="relative">
+                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-400" />
+                                    <input 
+                                        type="text" 
+                                        className="w-full pl-10 border border-brand-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none font-bold text-brand-gray-800"
+                                        placeholder="0,00"
+                                        value={realTpv}
+                                        onChange={(e) => setRealTpv(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Justificativa</label>
+                                <textarea 
+                                    className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none resize-none h-24"
+                                    placeholder="Por que devemos aprovar essa exceção?"
+                                    value={justification}
+                                    onChange={(e) => setJustification(e.target.value)}
+                                />
+                            </div>
+
+                            <button 
+                                onClick={handleSendApproval}
+                                className="w-full bg-brand-primary text-white py-3 rounded-xl font-bold mt-2 hover:bg-brand-dark transition-colors flex items-center justify-center gap-2 shadow-md"
+                            >
+                                <Send className="w-4 h-4" />
+                                Enviar para Mesa
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// --- MAIN PRICING PAGE (WITH TABS) ---
+const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
+    const [activeTab, setActiveTab] = useState<'RANGE' | 'SIMULATOR' | 'REQUESTS'>('RANGE');
+
+    return (
+        <div className="bg-[#F8F9FC] min-h-screen">
+            {/* Header Tabs */}
+            <div className="sticky top-0 z-30 bg-white border-b border-brand-gray-200 shadow-sm">
+                <div className="max-w-7xl mx-auto px-4 md:px-8">
+                    <div className="flex gap-8 overflow-x-auto">
+                        <button 
+                            onClick={() => setActiveTab('RANGE')}
+                            className={`flex items-center gap-2 py-4 border-b-2 transition-all text-sm font-bold whitespace-nowrap
+                                ${activeTab === 'RANGE' 
+                                    ? 'border-brand-primary text-brand-primary' 
+                                    : 'border-transparent text-brand-gray-500 hover:text-brand-gray-800'
+                                }`}
+                        >
+                            <Table size={18} />
+                            Tabela Range
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('SIMULATOR')}
+                            className={`flex items-center gap-2 py-4 border-b-2 transition-all text-sm font-bold whitespace-nowrap
+                                ${activeTab === 'SIMULATOR' 
+                                    ? 'border-brand-primary text-brand-primary' 
+                                    : 'border-transparent text-brand-gray-500 hover:text-brand-gray-800'
+                                }`}
+                        >
+                            <Calculator size={18} />
+                            Simulador de Taxas
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('REQUESTS')}
+                            className={`flex items-center gap-2 py-4 border-b-2 transition-all text-sm font-bold whitespace-nowrap
+                                ${activeTab === 'REQUESTS' 
+                                    ? 'border-brand-primary text-brand-primary' 
+                                    : 'border-transparent text-brand-gray-500 hover:text-brand-gray-800'
+                                }`}
+                        >
+                            <List size={18} />
+                            Minhas Solicitações
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Content Area */}
+            <div className="max-w-7xl mx-auto p-4 md:p-8">
+                {activeTab === 'RANGE' && <ProposalGenerator role={role} />}
+                {activeTab === 'SIMULATOR' && (
+                    <div className="animate-fade-in">
+                        <ConfigTaxasPage />
+                    </div>
+                )}
+                {activeTab === 'REQUESTS' && (
+                    <div className="animate-fade-in">
+                        <ResultadosPage currentUser={role === UserRole.GESTOR ? 'Gestor' : 'Eu'} />
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 };
 
 export default PricingPage;

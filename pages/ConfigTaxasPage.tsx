@@ -249,6 +249,23 @@ const ConfigTaxasPage: React.FC = () => {
         );
     };
 
+    // --- REUSABLE CARD INPUT COMPONENT ---
+    const ConfigCard = ({ label, value, onChange, prefix }: { label: string, value: number, onChange: (val: number) => void, prefix?: string }) => (
+        <div className="bg-white border border-brand-gray-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all">
+            <label className="block text-[10px] font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 truncate" title={label}>
+                {label}
+            </label>
+            <div className="flex items-center justify-center">
+                <input 
+                    type="number" step="0.01"
+                    value={value}
+                    onChange={(e) => onChange(parseFloat(e.target.value))}
+                    className="w-full text-center text-xl font-bold text-brand-gray-900 bg-transparent outline-none p-0 focus:text-brand-primary transition-colors"
+                />
+            </div>
+        </div>
+    );
+
     // --- HANDLERS ---
     const updateRow = (index: number, field: keyof FullRow, value: number) => {
         const newRows = [...fullSim.rows];
@@ -256,7 +273,6 @@ const ConfigTaxasPage: React.FC = () => {
         setFullSim({ ...fullSim, rows: newRows });
     };
 
-    const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     const formatPct = (val: number) => val.toFixed(2).replace('.', ',') + '%';
 
     // Total Mix Check
@@ -294,88 +310,44 @@ const ConfigTaxasPage: React.FC = () => {
                 
                 {/* LEFT: Configuração de Custos (Comum) - Coluna Estreita */}
                 <div className="lg:col-span-3 space-y-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-brand-gray-100 p-5">
-                        <div className="flex justify-between items-center mb-6">
+                    <div className="bg-brand-gray-50 rounded-xl shadow-inner border border-brand-gray-200 p-5">
+                        <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-brand-gray-900 flex items-center gap-2 text-sm uppercase tracking-wide">
                                 <TrendingUp className="w-4 h-4 text-brand-primary" />
-                                Custos de Interchange
+                                Custos Interchange
                             </h3>
                             <button className="text-brand-primary hover:bg-brand-primary/10 p-1.5 rounded transition-colors" title="Salvar Custos">
                                 <Save className="w-4 h-4" />
                             </button>
                         </div>
                         
-                        <div className="space-y-5">
-                            <div>
-                                <label className="block text-xs font-bold text-brand-gray-700 mb-1.5">Interchange Débito (%)</label>
-                                <input 
-                                    type="number" step="0.01" 
-                                    value={costs.debitCost} 
-                                    onChange={e => setCosts({...costs, debitCost: parseFloat(e.target.value)})} 
-                                    className="w-full border border-brand-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-brand-gray-900 outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all" 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-brand-gray-700 mb-1.5">Interchange Crédito 1x (%)</label>
-                                <input 
-                                    type="number" step="0.01" 
-                                    value={costs.creditSightCost} 
-                                    onChange={e => setCosts({...costs, creditSightCost: parseFloat(e.target.value)})} 
-                                    className="w-full border border-brand-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-brand-gray-900 outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all" 
-                                />
-                            </div>
+                        <div className="space-y-3">
+                            <ConfigCard 
+                                label="Interchange Débito (%)" 
+                                value={costs.debitCost} 
+                                onChange={(val) => setCosts({...costs, debitCost: val})} 
+                            />
                             
-                            {/* Granular Installment Costs - Matching Screenshot */}
-                            <div>
-                                <label className="block text-xs font-bold text-brand-gray-700 mb-2">Interchange Parcelado (%)</label>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="border border-brand-gray-200 rounded-lg p-2 text-center hover:border-brand-primary/50 transition-colors">
-                                        <span className="block text-[10px] text-brand-gray-400 font-bold mb-1 uppercase tracking-wider">2x-6x</span>
-                                        <input 
-                                            type="number" step="0.01" 
-                                            className="w-full bg-transparent text-center font-bold text-sm text-brand-gray-900 outline-none p-0"
-                                            value={costs.installment2to6Cost}
-                                            onChange={e => setCosts({...costs, installment2to6Cost: parseFloat(e.target.value)})}
-                                        />
-                                    </div>
-                                    <div className="border border-brand-gray-200 rounded-lg p-2 text-center hover:border-brand-primary/50 transition-colors">
-                                        <span className="block text-[10px] text-brand-gray-400 font-bold mb-1 uppercase tracking-wider">7x-12x</span>
-                                        <input 
-                                            type="number" step="0.01" 
-                                            className="w-full bg-transparent text-center font-bold text-sm text-brand-gray-900 outline-none p-0"
-                                            value={costs.installment7to12Cost}
-                                            onChange={e => setCosts({...costs, installment7to12Cost: parseFloat(e.target.value)})}
-                                        />
-                                    </div>
-                                    <div className="border border-brand-gray-200 rounded-lg p-2 text-center hover:border-brand-primary/50 transition-colors">
-                                        <span className="block text-[10px] text-brand-gray-400 font-bold mb-1 uppercase tracking-wider">13x-18x</span>
-                                        <input 
-                                            type="number" step="0.01" 
-                                            className="w-full bg-transparent text-center font-bold text-sm text-brand-gray-900 outline-none p-0"
-                                            value={costs.installment13to18Cost}
-                                            onChange={e => setCosts({...costs, installment13to18Cost: parseFloat(e.target.value)})}
-                                        />
-                                    </div>
+                            <ConfigCard 
+                                label="Interchange Crédito 1x (%)" 
+                                value={costs.creditSightCost} 
+                                onChange={(val) => setCosts({...costs, creditSightCost: val})} 
+                            />
+                            
+                            <div className="pt-2">
+                                <label className="block text-xs font-bold text-brand-gray-700 mb-2 pl-1">Interchange Parcelado (%)</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <ConfigCard label="2x-6x" value={costs.installment2to6Cost} onChange={(val) => setCosts({...costs, installment2to6Cost: val})} />
+                                    <ConfigCard label="7x-12x" value={costs.installment7to12Cost} onChange={(val) => setCosts({...costs, installment7to12Cost: val})} />
+                                    <ConfigCard label="13x-18x" value={costs.installment13to18Cost} onChange={(val) => setCosts({...costs, installment13to18Cost: val})} />
                                 </div>
                             </div>
 
-                            <div className="pt-4 mt-2 border-t border-brand-gray-100">
-                                <label className="block text-xs font-bold text-brand-gray-700 mb-1.5">Custo Funding (a.m. %)</label>
-                                <input 
-                                    type="number" step="0.01" 
-                                    value={costs.anticipationCost} 
-                                    onChange={e => setCosts({...costs, anticipationCost: parseFloat(e.target.value)})} 
-                                    className="w-full border border-yellow-200 bg-yellow-50/50 rounded-lg px-3 py-2 text-sm font-bold text-yellow-900 outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-all" 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-brand-gray-700 mb-1.5">Impostos (%)</label>
-                                <input 
-                                    type="number" step="0.01" 
-                                    value={costs.taxRate} 
-                                    onChange={e => setCosts({...costs, taxRate: parseFloat(e.target.value)})} 
-                                    className="w-full border border-brand-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-brand-gray-900 outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all" 
-                                />
+                            <div className="border-t border-brand-gray-200 my-4"></div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <ConfigCard label="Funding (a.m.)" value={costs.anticipationCost} onChange={(val) => setCosts({...costs, anticipationCost: val})} />
+                                <ConfigCard label="Impostos" value={costs.taxRate} onChange={(val) => setCosts({...costs, taxRate: val})} />
                             </div>
                         </div>
                     </div>

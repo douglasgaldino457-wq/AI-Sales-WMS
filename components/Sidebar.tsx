@@ -43,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         items = [
           { icon: LayoutDashboard, label: 'Dashboard', page: Page.DASHBOARD },
           { icon: Calendar, label: 'Agendamentos', page: Page.AGENDAMENTOS },
-          { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
+          { icon: BadgePercent, label: 'Pricing & Pedidos', page: Page.PRICING },
           { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
         ];
@@ -53,7 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: LayoutDashboard, label: 'Dashboard', page: Page.DASHBOARD },
           { icon: Calendar, label: 'Minha Agenda', page: Page.AGENDAMENTOS },
           { icon: Map, label: 'Rota', page: Page.ROTAS },
-          { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
+          { icon: BadgePercent, label: 'Pricing & Pedidos', page: Page.PRICING },
           { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
         ];
@@ -63,7 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: LayoutDashboard, label: 'Dashboard Geral', page: Page.DASHBOARD_GERAL },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
           { icon: MapPinned, label: 'Mapa de Gestão', page: Page.MAPA_GESTAO },
-          { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
+          { icon: BadgePercent, label: 'Pricing & Pedidos', page: Page.PRICING },
           { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
           { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
         ];

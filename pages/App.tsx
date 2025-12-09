@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserRole, Page } from './types';
+import { UserRole, Page } from '../types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import RoutesPage from './pages/RoutesPage';
@@ -15,7 +15,7 @@ import PricingDashboardPage from './pages/PricingDashboardPage';
 import MesaNegociacaoPage from './pages/MesaNegociacaoPage';
 import ConfigTaxasPage from './pages/ConfigTaxasPage';
 import { Logo } from './components/Logo';
-import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw, TrendingUp } from 'lucide-react';
+import { User, CheckCircle2, ArrowRight, Target, HardHat, RefreshCw, TrendingUp, Truck } from 'lucide-react';
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { runWithRetry } from './services/geminiService';
 
@@ -33,6 +33,7 @@ const App: React.FC = () => {
     else if (role === UserRole.FIELD_SALES) setCurrentPage(Page.DASHBOARD);
     else if (role === UserRole.ESTRATEGIA) setCurrentPage(Page.METAS);
     else if (role === UserRole.PRICING_MANAGER) setCurrentPage(Page.PRICING_DASHBOARD);
+    else if (role === UserRole.LOGISTICA) setCurrentPage(Page.LOGISTICA_DASHBOARD);
     else setCurrentPage(Page.DASHBOARD_GERAL);
   };
 
@@ -121,7 +122,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-4 w-full">
-            {[UserRole.INSIDE_SALES, UserRole.FIELD_SALES, UserRole.GESTOR, UserRole.ESTRATEGIA, UserRole.PRICING_MANAGER].map((role) => (
+            {[UserRole.INSIDE_SALES, UserRole.FIELD_SALES, UserRole.GESTOR, UserRole.ESTRATEGIA, UserRole.PRICING_MANAGER, UserRole.LOGISTICA].map((role) => (
               <button
                 key={role}
                 onClick={() => handleLogin(role)}
@@ -131,6 +132,7 @@ const App: React.FC = () => {
                   <div className={`text-white p-2 rounded-xl mr-4 bg-white/10 group-hover:bg-white group-hover:text-brand-primary transition-colors shadow-sm`}>
                     {role === UserRole.ESTRATEGIA ? <Target size={20} strokeWidth={2.5} /> : 
                      role === UserRole.PRICING_MANAGER ? <TrendingUp size={20} strokeWidth={2.5} /> :
+                     role === UserRole.LOGISTICA ? <Truck size={20} strokeWidth={2.5} /> :
                      <User size={20} strokeWidth={2.5} />}
                   </div>
                   <span className="font-bold text-base text-white tracking-wide">{role}</span>
@@ -222,6 +224,24 @@ const App: React.FC = () => {
                 </span>
                 <p className="text-brand-gray-600 mb-6 leading-relaxed text-sm md:text-base">
                     Estamos desenvolvendo a interface para input e gestão de metas da equipe.
+                </p>
+              </div>
+           </div>
+        )}
+
+        {(currentPage === Page.LOGISTICA_DASHBOARD) && (
+           <div className="flex flex-col items-center justify-center h-[70vh] text-gray-400 animate-fade-in">
+              <div className="bg-white p-8 md:p-12 rounded-3xl text-center max-w-lg shadow-xl border border-brand-gray-100 relative overflow-hidden mx-4">
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-brand-gray-200 via-brand-primary to-brand-gray-200"></div>
+                <div className="w-24 h-24 bg-brand-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Truck className="text-brand-primary animate-pulse" size={48} />
+                </div>
+                <h2 className="text-2xl font-bold mb-3 text-brand-gray-900">Módulo de Logística</h2>
+                <span className="inline-block bg-yellow-100 text-yellow-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide mb-6 border border-yellow-200">
+                    Em Construção
+                </span>
+                <p className="text-brand-gray-600 mb-6 leading-relaxed text-sm md:text-base">
+                    Estamos desenvolvendo a interface para gestão de entregas, roteirização avançada e controle de estoque de POS.
                 </p>
               </div>
            </div>
