@@ -125,13 +125,13 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
 
     return (
         <div className="animate-fade-in relative">
-            <header className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6">
+            <header className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6 no-print">
                 <div>
                     <h2 className="text-xl font-bold text-brand-gray-900 tracking-tight">Gerador de Proposta</h2>
                     <p className="text-brand-gray-600 text-sm mt-1">Selecione a faixa de faturamento para gerar as condições comerciais.</p>
                 </div>
                 <div className="flex gap-2">
-                    <button className="flex items-center gap-2 bg-white border border-brand-gray-200 text-brand-gray-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-brand-gray-50 transition-colors shadow-sm">
+                    <button onClick={() => window.print()} className="flex items-center gap-2 bg-white border border-brand-gray-200 text-brand-gray-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-brand-gray-50 transition-colors shadow-sm">
                         <Printer size={16} /> Imprimir
                     </button>
                     <button className="flex items-center gap-2 bg-brand-gray-900 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-black transition-colors shadow-lg">
@@ -141,8 +141,8 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
             </header>
             
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                 {/* LEFT COLUMN: CONTROLS (4 Cols) */}
-                 <div className="lg:col-span-4 space-y-6">
+                 {/* LEFT COLUMN: CONTROLS (4 Cols) - HIDDEN ON PRINT */}
+                 <div className="lg:col-span-4 space-y-6 no-print">
                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-gray-100">
                           <h3 className="font-bold text-lg text-brand-gray-900 mb-6 flex items-center gap-2">
                                <Calculator className="w-5 h-5 text-brand-primary" />
@@ -222,14 +222,14 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
                      </div>
                  </div>
 
-                 {/* RIGHT COLUMN: PREVIEW (8 Cols) */}
-                 <div className="lg:col-span-8 flex justify-center bg-gray-100 rounded-2xl p-4 md:p-8 overflow-hidden shadow-inner border border-gray-200">
+                 {/* RIGHT COLUMN: PREVIEW (8 Cols) - CENTERED ON PRINT */}
+                 <div className="lg:col-span-8 flex justify-center print-only-container">
                       
                       {/* --- PROPOSAL DOCUMENT --- */}
-                      <div className="bg-white w-full max-w-[600px] shadow-2xl relative flex flex-col min-h-[800px] transform transition-transform hover:scale-[1.01] duration-500 origin-top">
+                      <div className="bg-white w-full max-w-[600px] shadow-2xl relative flex flex-col min-h-[800px] transform transition-transform hover:scale-[1.01] duration-500 origin-top print:shadow-none print:transform-none">
                             
                             {/* HEADER - BRANDING */}
-                            <div className="bg-[#1A1B1E] h-28 flex items-center justify-between px-8 relative overflow-hidden shrink-0">
+                            <div className="bg-[#1A1B1E] h-28 flex items-center justify-between px-8 relative overflow-hidden shrink-0 print:bg-[#1A1B1E] print-color-adjust">
                                 {/* Logo Wrapper */}
                                 <div className="relative z-10 text-white transform scale-90 origin-left">
                                     <Logo className="text-white" />
@@ -324,7 +324,7 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
 
                                 <div className="border border-brand-gray-200 rounded-xl overflow-hidden shadow-sm flex-1">
                                     {/* Table Header */}
-                                    <div className="bg-brand-gray-900 flex text-white text-xs font-bold uppercase tracking-wider">
+                                    <div className="bg-brand-gray-900 flex text-white text-xs font-bold uppercase tracking-wider print:bg-black">
                                         <div className="w-1/2 py-3 px-6 border-r border-white/10">Modalidade / Parcela</div>
                                         <div className="w-1/2 py-3 px-6 text-right">Taxa (%)</div>
                                     </div>
@@ -388,7 +388,7 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
 
             {/* --- APPROVAL REQUEST MODAL --- */}
             {isApprovalModalOpen && (
-                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in no-print">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                         <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white">
                             <h3 className="font-bold text-lg flex items-center gap-2">
@@ -448,8 +448,8 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
 
     return (
         <div className="bg-[#F8F9FC] min-h-screen">
-            {/* Header Tabs */}
-            <div className="sticky top-0 z-30 bg-white border-b border-brand-gray-200 shadow-sm">
+            {/* Header Tabs - HIDDEN ON PRINT */}
+            <div className="sticky top-0 z-30 bg-white border-b border-brand-gray-200 shadow-sm no-print">
                 <div className="max-w-7xl mx-auto px-4 md:px-8">
                     <div className="flex gap-8 overflow-x-auto">
                         <button 

@@ -47,6 +47,12 @@ interface SimplesSimulationData {
     anticipationRate: number; 
 }
 
+// Helper for safe number parsing
+const safeFloat = (value: string) => {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? 0 : parsed;
+};
+
 const ConfigTaxasPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'FULL' | 'SIMPLES'>('FULL');
 
@@ -221,23 +227,29 @@ const ConfigTaxasPage: React.FC = () => {
         };
 
         return (
-            <tr className="hover:bg-brand-gray-50 border-b border-brand-gray-100 last:border-0">
+            <tr className="hover:bg-brand-gray-50 border-b border-brand-gray-100 last:border-0 transition-colors">
                 <td className="px-4 py-3 text-sm font-bold text-brand-gray-700">{label}</td>
                 <td className="px-4 py-2 text-center">
-                    <input 
-                        type="number" step="0.01"
-                        className="w-20 text-center border border-blue-200 rounded py-1.5 text-sm font-bold text-blue-700 bg-blue-50 focus:ring-1 focus:ring-blue-500 outline-none"
-                        value={bucket.rate}
-                        onChange={(e) => updateBucket('rate', parseFloat(e.target.value))}
-                    />
+                    <div className="relative inline-block w-20">
+                        <input 
+                            type="number" step="0.01"
+                            className="w-full text-center border border-transparent hover:border-blue-200 rounded py-1.5 text-sm font-bold text-blue-700 bg-transparent hover:bg-blue-50 focus:bg-blue-50 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                            value={bucket.rate}
+                            onChange={(e) => updateBucket('rate', safeFloat(e.target.value))}
+                        />
+                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-blue-300 pointer-events-none">%</span>
+                    </div>
                 </td>
                 <td className="px-4 py-2 text-center">
-                    <input 
-                        type="number" step="1"
-                        className="w-16 text-center border border-yellow-200 rounded py-1.5 text-sm font-medium text-yellow-800 bg-yellow-50 focus:ring-1 focus:ring-yellow-500 outline-none"
-                        value={bucket.concentration}
-                        onChange={(e) => updateBucket('concentration', parseFloat(e.target.value))}
-                    />
+                    <div className="relative inline-block w-16">
+                        <input 
+                            type="number" step="1"
+                            className="w-full text-center border border-transparent hover:border-yellow-200 rounded py-1.5 text-sm font-medium text-yellow-800 bg-transparent hover:bg-yellow-50 focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-500 outline-none transition-all"
+                            value={bucket.concentration}
+                            onChange={(e) => updateBucket('concentration', safeFloat(e.target.value))}
+                        />
+                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-yellow-400 pointer-events-none">%</span>
+                    </div>
                 </td>
                 <td className="px-4 py-3 text-right text-xs text-gray-500 font-mono">
                     {totalCost.toFixed(2)}%
@@ -250,16 +262,16 @@ const ConfigTaxasPage: React.FC = () => {
     };
 
     // --- REUSABLE CARD INPUT COMPONENT ---
-    const ConfigCard = ({ label, value, onChange, prefix }: { label: string, value: number, onChange: (val: number) => void, prefix?: string }) => (
-        <div className="bg-white border border-brand-gray-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all">
-            <label className="block text-[10px] font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 truncate" title={label}>
+    const ConfigCard = ({ label, value, onChange }: { label: string, value: number, onChange: (val: number) => void }) => (
+        <div className="bg-white border border-brand-gray-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all group">
+            <label className="block text-[10px] font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 truncate group-hover:text-brand-primary transition-colors" title={label}>
                 {label}
             </label>
             <div className="flex items-center justify-center">
                 <input 
                     type="number" step="0.01"
                     value={value}
-                    onChange={(e) => onChange(parseFloat(e.target.value))}
+                    onChange={(e) => onChange(safeFloat(e.target.value))}
                     className="w-full text-center text-xl font-bold text-brand-gray-900 bg-transparent outline-none p-0 focus:text-brand-primary transition-colors"
                 />
             </div>
@@ -280,7 +292,7 @@ const ConfigTaxasPage: React.FC = () => {
 
     return (
         <div className="max-w-7xl mx-auto space-y-6 pb-20">
-            <header className="flex flex-col md:flex-row justify-between items-end gap-4">
+            <header className="flex flex-col md:flex-row justify-between items-end gap-4 no-print">
                 <div>
                     <h1 className="text-2xl font-bold text-brand-gray-900 flex items-center gap-2">
                         <Settings className="w-6 h-6 text-brand-primary" />
@@ -288,17 +300,17 @@ const ConfigTaxasPage: React.FC = () => {
                     </h1>
                     <p className="text-brand-gray-600 mt-1 text-sm">Definição de custos base e simulação de modelos comerciais.</p>
                 </div>
-                <div className="flex bg-brand-gray-100 p-1 rounded-xl">
+                <div className="flex bg-brand-gray-200 p-1 rounded-xl">
                     <button 
                         onClick={() => setActiveTab('FULL')}
-                        className={`flex items-center px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'FULL' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-500 hover:text-brand-gray-800'}`}
+                        className={`flex items-center px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'FULL' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
                     >
                         <Layers className="w-4 h-4 mr-2" />
                         Modelo Full
                     </button>
                     <button 
                         onClick={() => setActiveTab('SIMPLES')}
-                        className={`flex items-center px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'SIMPLES' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-500 hover:text-brand-gray-800'}`}
+                        className={`flex items-center px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'SIMPLES' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
                     >
                         <PieChart className="w-4 h-4 mr-2" />
                         Modelo Simples
@@ -309,7 +321,7 @@ const ConfigTaxasPage: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 
                 {/* LEFT: Configuração de Custos (Comum) - Coluna Estreita */}
-                <div className="lg:col-span-3 space-y-6">
+                <div className="lg:col-span-3 space-y-6 no-print">
                     <div className="bg-brand-gray-50 rounded-xl shadow-inner border border-brand-gray-200 p-5">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-brand-gray-900 flex items-center gap-2 text-sm uppercase tracking-wide">
@@ -393,7 +405,7 @@ const ConfigTaxasPage: React.FC = () => {
                                             <input 
                                                 type="number" 
                                                 value={fullSim.tpv} 
-                                                onChange={e => setFullSim({...fullSim, tpv: parseFloat(e.target.value)})} 
+                                                onChange={e => setFullSim({...fullSim, tpv: safeFloat(e.target.value)})} 
                                                 className="w-full pl-6 border border-brand-gray-300 rounded py-1 text-xs font-bold focus:border-brand-primary outline-none"
                                             />
                                         </div>
@@ -418,9 +430,9 @@ const ConfigTaxasPage: React.FC = () => {
                                         <Layers className="w-4 h-4" />
                                         Cenário de Mercado
                                     </h4>
-                                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
                                         <table className="w-full text-xs">
-                                            <thead className="bg-gray-100 text-gray-600 font-bold">
+                                            <thead className="bg-gray-100 text-gray-600 font-bold border-b border-gray-200">
                                                 <tr>
                                                     <th className="px-3 py-2 text-left w-16">Parc.</th>
                                                     <th className="px-3 py-2 text-center">Mix (%)</th>
@@ -429,22 +441,22 @@ const ConfigTaxasPage: React.FC = () => {
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
                                                 {fullSim.rows.map((row, idx) => (
-                                                    <tr key={row.id} className="hover:bg-gray-50">
+                                                    <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                                                         <td className="px-3 py-2 font-bold text-gray-700">{row.label}</td>
                                                         <td className="px-3 py-1">
                                                             <input 
                                                                 type="number" step="0.1"
-                                                                className="w-full text-center bg-yellow-50 border border-yellow-100 rounded py-1 font-medium text-yellow-800 focus:ring-1 focus:ring-yellow-400 outline-none"
+                                                                className="w-full text-center bg-transparent hover:bg-yellow-50 focus:bg-yellow-50 border border-transparent hover:border-yellow-200 rounded py-1 font-medium text-yellow-800 focus:ring-1 focus:ring-yellow-400 outline-none transition-all"
                                                                 value={row.mix}
-                                                                onChange={(e) => updateRow(idx, 'mix', parseFloat(e.target.value))}
+                                                                onChange={(e) => updateRow(idx, 'mix', safeFloat(e.target.value))}
                                                             />
                                                         </td>
                                                         <td className="px-3 py-1">
                                                             <input 
                                                                 type="number" step="0.01"
-                                                                className="w-full text-center border border-gray-200 rounded py-1 text-gray-600 focus:border-gray-400 outline-none"
+                                                                className="w-full text-center border border-transparent hover:border-gray-200 rounded py-1 text-gray-600 focus:border-gray-400 bg-transparent hover:bg-gray-50 focus:bg-white outline-none transition-all"
                                                                 value={row.concRate}
-                                                                onChange={(e) => updateRow(idx, 'concRate', parseFloat(e.target.value))}
+                                                                onChange={(e) => updateRow(idx, 'concRate', safeFloat(e.target.value))}
                                                             />
                                                         </td>
                                                     </tr>
@@ -460,9 +472,9 @@ const ConfigTaxasPage: React.FC = () => {
                                         <ArrowRight className="w-4 h-4" />
                                         Proposta Pagmotors
                                     </h4>
-                                    <div className="border border-brand-primary/20 rounded-lg overflow-hidden bg-white">
+                                    <div className="border border-brand-primary/20 rounded-lg overflow-hidden bg-white shadow-sm">
                                         <table className="w-full text-xs">
-                                            <thead className="bg-brand-primary/5 text-brand-primary font-bold">
+                                            <thead className="bg-brand-primary/5 text-brand-primary font-bold border-b border-brand-primary/10">
                                                 <tr>
                                                     <th className="px-3 py-2 text-left w-16">Parc.</th>
                                                     <th className="px-3 py-2 text-center">Taxa Prop. (%)</th>
@@ -486,14 +498,14 @@ const ConfigTaxasPage: React.FC = () => {
                                                     let spread = row.propRate - cost;
                                                     
                                                     return (
-                                                        <tr key={row.id} className="hover:bg-brand-gray-50">
+                                                        <tr key={row.id} className="hover:bg-brand-gray-50 transition-colors">
                                                             <td className="px-3 py-2 font-bold text-brand-gray-800">{row.label}</td>
                                                             <td className="px-3 py-1">
                                                                 <input 
                                                                     type="number" step="0.01"
-                                                                    className="w-full text-center border border-brand-primary/30 rounded py-1 font-bold text-brand-primary focus:ring-1 focus:ring-brand-primary outline-none"
+                                                                    className="w-full text-center border border-transparent hover:border-brand-primary/30 rounded py-1 font-bold text-brand-primary bg-transparent hover:bg-brand-primary/5 focus:bg-white focus:ring-1 focus:ring-brand-primary outline-none transition-all"
                                                                     value={row.propRate}
-                                                                    onChange={(e) => updateRow(idx, 'propRate', parseFloat(e.target.value))}
+                                                                    onChange={(e) => updateRow(idx, 'propRate', safeFloat(e.target.value))}
                                                                 />
                                                             </td>
                                                             <td className={`px-3 py-2 text-right font-mono font-medium ${spread < 0 ? 'text-red-500' : 'text-green-600'}`}>
@@ -513,7 +525,7 @@ const ConfigTaxasPage: React.FC = () => {
 
                     {/* --- MODELO SIMPLES SIMULATOR --- */}
                     {activeTab === 'SIMPLES' && (
-                        <div className="bg-white rounded-xl shadow-md border border-brand-gray-200 overflow-hidden animate-fade-in h-full">
+                        <div className="bg-white rounded-xl shadow-md border border-brand-gray-200 overflow-hidden animate-fade-in h-full flex flex-col">
                             {/* Existing Simples Content */}
                             <div className="bg-blue-600 p-4 border-b border-blue-700 flex justify-between items-center text-white">
                                 <h3 className="font-bold flex items-center gap-2">
@@ -534,7 +546,7 @@ const ConfigTaxasPage: React.FC = () => {
                                             type="number" step="0.01" 
                                             className="w-32 bg-white border border-blue-300 rounded px-2 py-1 text-sm font-bold text-blue-900 outline-none focus:ring-1 focus:ring-blue-500"
                                             value={simplesSim.anticipationRate}
-                                            onChange={(e) => setSimplesSim({...simplesSim, anticipationRate: parseFloat(e.target.value)})}
+                                            onChange={(e) => setSimplesSim({...simplesSim, anticipationRate: safeFloat(e.target.value)})}
                                         />
                                         <span className="text-xs ml-1 text-blue-600">% a.m.</span>
                                     </div>
@@ -544,10 +556,10 @@ const ConfigTaxasPage: React.FC = () => {
                                 </div>
 
                                 {/* TABLE STRUCTURE from Image */}
-                                <div className="overflow-x-auto border border-brand-gray-200 rounded-lg">
+                                <div className="overflow-x-auto border border-brand-gray-200 rounded-lg shadow-sm">
                                     <table className="w-full text-left">
                                         <thead>
-                                            <tr className="bg-brand-gray-100 text-xs text-gray-500 uppercase">
+                                            <tr className="bg-brand-gray-100 text-xs text-gray-500 uppercase font-bold border-b border-brand-gray-200">
                                                 <th className="px-4 py-3 bg-blue-100 text-blue-800 border-b border-blue-200 w-1/5">Simples (Agenda)</th>
                                                 <th className="px-4 py-3 bg-blue-50 text-blue-700 border-b border-blue-200 text-center w-1/5">Taxa (%)</th>
                                                 <th className="px-4 py-3 bg-yellow-100 text-yellow-800 border-b border-yellow-200 text-center w-1/5">Concentração</th>

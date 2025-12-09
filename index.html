@@ -104,6 +104,27 @@
         background-color: #e5e7eb;
         z-index: 1;
       }
+
+      /* PRINT STYLES - Hide Sidebar/Header when printing */
+      @media print {
+        @page { margin: 0; size: auto; }
+        body { background-color: white; }
+        nav, header, aside, .no-print { display: none !important; }
+        .print-only-container { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            margin: 0; 
+            padding: 0;
+            box-shadow: none !important;
+            border: none !important;
+        }
+        /* Expand content to full width */
+        main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+        /* Hide scrollbars */
+        ::-webkit-scrollbar { display: none; }
+      }
     </style>
   <script type="importmap">
 {
