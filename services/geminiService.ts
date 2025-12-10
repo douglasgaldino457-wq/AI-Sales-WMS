@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Visit, ClientBaseRow } from "../types";
 
@@ -145,5 +146,69 @@ export const getGeographicInsights = async (clients: ClientBaseRow[]): Promise<s
   } catch (error) {
     console.error("Gemini Geo Error:", error);
     return "Erro ao analisar o território.";
+  }
+};
+
+// --- NEW: Document Analysis for Cadastro ---
+export const analyzeDocument = async (base64Data: string, docType: 'IDENTITY' | 'ADDRESS' | 'BANK_PROOF') => {
+  const ai = getAI();
+  if (!ai) throw new Error("IA indisponível.");
+
+  let prompt = "";
+  
+  if (docType === 'IDENTITY') {
+    prompt = `
+      Analise este documento de identificação (RG ou CNH).
+      Extraia os seguintes dados em formato JSON:
+      {
+        "name": "Nome Completo",
+        "docNumber": "Número do CPF ou RG"
+      }
+      Se não conseguir ler, retorne campos vazios.
+    `;
+  } else if (docType === 'ADDRESS') {
+    prompt = `
+      Analise este comprovante de endereço.
+      Extraia o endereço completo em formato JSON:
+      {
+        "fullAddress": "Rua, Número, Bairro, Cidade - UF, CEP"
+      }
+      Se não conseguir ler, retorne campos vazios.
+    `;
+  } else if (docType === 'BANK_PROOF') {
+    prompt = `
+      Analise este comprovante bancário, cartão ou cheque.
+      Extraia os dados bancários em formato JSON:
+      {
+        "bankName": "Nome do Banco",
+        "agency": "Agência (sem dígito)",
+        "account": "Conta (com dígito)",
+        "holder": "Nome do Titular"
+      }
+      Se não conseguir ler, retorne campos vazios.
+    `;
+  }
+
+  try {
+    const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+      model: 'gemini-2.5-flash', // Multimodal model
+      contents: {
+        parts: [
+          { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json"
+      }
+    }));
+
+    if (response.text) {
+        return JSON.parse(response.text);
+    }
+    return null;
+  } catch (error) {
+    console.error("Document Analysis Error:", error);
+    throw error;
   }
 };

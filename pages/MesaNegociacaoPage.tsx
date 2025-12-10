@@ -4,7 +4,7 @@ import { ManualDemand, PricingRequestData } from '../types';
 import { appStore } from '../services/store';
 import { 
     CheckCircle2, X, Search, Filter, AlertTriangle, FileText, ChevronRight, 
-    Calculator, DollarSign, ArrowRight, User, Eye, Image as ImageIcon, Edit3
+    Calculator, DollarSign, ArrowRight, User, Eye, Image as ImageIcon, Edit3, Download
 } from 'lucide-react';
 
 const MesaNegociacaoPage: React.FC = () => {
@@ -377,19 +377,43 @@ const MesaNegociacaoPage: React.FC = () => {
                 )}
 
                 {/* Evidence Modal */}
-                {showEvidence && (
-                    <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-8 animate-fade-in">
-                        <div className="bg-white rounded-xl overflow-hidden max-w-4xl w-full max-h-full flex flex-col">
+                {showEvidence && selectedRequest?.pricingData?.evidenceUrl && (
+                    <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8 animate-fade-in">
+                        <div className="bg-white rounded-xl overflow-hidden max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl relative">
                             <div className="p-4 bg-brand-gray-900 flex justify-between items-center text-white shrink-0">
-                                <h3 className="font-bold">Evidência Anexada</h3>
-                                <button onClick={() => setShowEvidence(false)}><X size={20} /></button>
+                                <h3 className="font-bold flex items-center gap-2">
+                                    <ImageIcon className="w-4 h-4" /> Evidência Anexada
+                                </h3>
+                                <button onClick={() => setShowEvidence(false)} className="hover:text-red-400 transition-colors"><X size={20} /></button>
                             </div>
-                            <div className="flex-1 bg-brand-gray-100 flex items-center justify-center p-4">
-                                <div className="text-center text-brand-gray-400">
+                            <div className="flex-1 bg-brand-gray-900 flex items-center justify-center p-1 overflow-hidden relative group">
+                                {/* Use actual image with fallback */}
+                                <img 
+                                    src={selectedRequest.pricingData.evidenceUrl} 
+                                    alt="Evidência" 
+                                    className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                        const fallback = document.getElementById('evidence-fallback');
+                                        if (fallback) fallback.style.display = 'block';
+                                    }}
+                                />
+                                
+                                {/* Fallback if image fails or for demonstration */}
+                                <div id="evidence-fallback" className="hidden text-center text-brand-gray-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
                                     <ImageIcon className="w-16 h-16 mx-auto mb-2 opacity-50" />
-                                    <p>Simulação de Imagem da Concorrência</p>
-                                    <p className="text-xs">(Arquivo não encontrado no mock)</p>
+                                    <p>Não foi possível carregar a imagem.</p>
                                 </div>
+                            </div>
+                            <div className="p-3 bg-brand-gray-800 text-center">
+                                <a 
+                                    href={selectedRequest.pricingData.evidenceUrl} 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    className="text-xs text-brand-gray-400 hover:text-white flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    <Download className="w-3 h-3" /> Abrir original em nova aba
+                                </a>
                             </div>
                         </div>
                     </div>

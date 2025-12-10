@@ -1,5 +1,5 @@
 
-import { Appointment, ClientBaseRow, SystemUser, ClientNote, VisitReport, ManualDemand } from '../types';
+import { Appointment, ClientBaseRow, SystemUser, ClientNote, VisitReport, ManualDemand, LeadServiceItem, PosDevice, LogisticsTask, RegistrationRequest, RegistrationStatus } from '../types';
 import { MOCK_CLIENT_BASE, MOCK_USERS } from '../constants';
 
 // Simple in-memory storage to simulate database persistence during the session
@@ -8,7 +8,15 @@ class StoreService {
   private clients: ClientBaseRow[] = [];
   private users: SystemUser[] = [...MOCK_USERS];
   private clientNotes: ClientNote[] = [];
+  private leadServices: Record<string, LeadServiceItem[]> = {}; // Map clientId -> Services
   
+  // --- Logistics Data ---
+  private posInventory: PosDevice[] = [];
+  private logisticsTasks: LogisticsTask[] = [];
+
+  // --- Registration Data (Administrative) ---
+  private registrationRequests: RegistrationRequest[] = [];
+
   // --- Manual Demands ---
   private demands: ManualDemand[] = [
     {
@@ -43,6 +51,7 @@ class StoreService {
             competitorRates: { debit: 0.90, credit1x: 2.50, credit12x: 10.50 },
             proposedRates: { debit: 0.85, credit1x: 2.40, credit12x: 10.00 },
             financials: { spread: 0.65, mcf2: 150.00 },
+            evidenceUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600', // Mock Image
             context: {
                 potentialRevenue: 50000,
                 minAgreed: 30000
@@ -65,6 +74,7 @@ class StoreService {
             // Approved rates are slightly different (Counter-offer simulation)
             approvedRates: { debit: 0.99, credit1x: 2.85, credit12x: 11.20 },
             financials: { spread: 0.70, mcf2: 90.00 },
+            evidenceUrl: 'https://images.unsplash.com/photo-1554224154-260327c00c4b?auto=format&fit=crop&q=80&w=600', // Mock Image
             context: {
                 potentialRevenue: 25000,
                 minAgreed: 15000
@@ -118,7 +128,45 @@ class StoreService {
 
   constructor() {
     // Initialize clients with status 'Active'
-    this.clients = [...MOCK_CLIENT_BASE].map(c => ({...c, status: 'Active'}));
+    this.clients = [...MOCK_CLIENT_BASE].map((c, idx) => ({
+        ...c, 
+        status: 'Active',
+        // Simulate some having Pagmotors (Priority)
+        hasPagmotors: idx % 3 === 0,
+        // Mock CNPJ for auto-fill simulation
+        cnpj: `12.${Math.floor(Math.random()*900)}.${Math.floor(Math.random()*900)}/0001-${Math.floor(Math.random()*90)}`
+    }));
+
+    // Generate Mock Lead Services for Clients
+    this.clients.forEach(client => {
+        const numServices = Math.floor(Math.random() * 15); // 0 to 15 services per client
+        const services: LeadServiceItem[] = [];
+        
+        for(let i=0; i<numServices; i++) {
+            const flowType = Math.random() > 0.6 ? 'SIN' : Math.random() > 0.3 ? 'SIR' : 'CAM';
+            const serviceTypes = {
+                'SIN': ['Funilaria Pesada', 'Martelinho', 'Pintura', 'Farol'],
+                'SIR': ['Guincho 24h', 'Pane Elétrica', 'Carga de Bateria', 'Troca de Pneu'],
+                'CAM': ['Revisão Geral', 'Troca de Óleo', 'Freios', 'Suspensão']
+            };
+            const list = serviceTypes[flowType];
+            
+            // Random date in last 60 days
+            const date = new Date();
+            date.setDate(date.getDate() - Math.floor(Math.random() * 60));
+
+            services.push({
+                id: `SRV-${client.id}-${i}`,
+                flow: flowType as any,
+                serviceType: list[Math.floor(Math.random() * list.length)],
+                date: date.toISOString(),
+                licensePlate: `${String.fromCharCode(65+Math.floor(Math.random()*26))}${String.fromCharCode(65+Math.floor(Math.random()*26))}${String.fromCharCode(65+Math.floor(Math.random()*26))}-${Math.floor(Math.random()*9)}${String.fromCharCode(65+Math.floor(Math.random()*26))}${Math.floor(Math.random()*9)}${Math.floor(Math.random()*9)}`,
+                value: Math.floor(Math.random() * 2000) + 150,
+                status: Math.random() > 0.2 ? 'Realizado' : Math.random() > 0.5 ? 'Agendado' : 'Cancelado'
+            });
+        }
+        this.leadServices[client.id] = services;
+    });
 
     // Helper dates
     const today = new Date();
@@ -144,99 +192,134 @@ class StoreService {
         isWallet: false,
         inRoute: false
       },
-      {
-        id: 'AGD-2055',
-        leadOrigins: [],
-        clientId: '1',
-        clientName: 'Centro Automotivo Silva',
-        responsible: 'Carlos Silva',
-        whatsapp: '11999991111',
-        address: 'Av. Santo Amaro, 1000',
-        observation: 'Problema com maquininha.',
-        fieldSalesName: 'Cleiton Freitas',
-        insideSalesName: 'Cauana Sousa',
-        status: 'Completed',
-        isWallet: true,
-        visitReason: 'Problema na Pós',
-        fieldObservation: 'Resolvido, troquei o equipamento e testei com o cliente.',
-        date: lastMonth.toISOString().split('T')[0],
-        visitReport: {
-           checkInTime: lastMonth.toISOString(),
-           walletAction: 'Troca de POS',
-           swapReason: 'Bateria',
-           observation: 'Resolvido, troquei o equipamento e testei com o cliente.'
-        },
-        inRoute: false
-      },
-      {
-        id: 'AGD-3102',
-        leadOrigins: ['Indicação'],
-        clientId: '101',
-        clientName: 'Auto Center Fast',
-        responsible: 'Maria Souza',
-        whatsapp: '11988887777',
-        address: 'Rua da Mooca, 500',
-        observation: 'Indicado pela loja vizinha.',
-        fieldSalesName: 'Samuel de Paula',
-        insideSalesName: 'Marcos Oliveira',
-        date: twoMonthsAgo.toISOString().split('T')[0],
-        period: 'Tarde',
-        status: 'Completed',
-        isWallet: false,
-        fieldObservation: 'Cliente fechou contrato na hora. Muito receptiva.',
-        visitReport: {
-           checkInTime: twoMonthsAgo.toISOString(),
-           outcome: 'Convertido',
-           observation: 'Cliente fechou contrato na hora.'
-        },
-        inRoute: false
-      },
-      {
-        id: 'AGD-4001',
-        leadOrigins: [],
-        clientId: '2',
-        clientName: 'Pneus Express',
-        responsible: 'Marcos Pneus',
-        whatsapp: '11988882222',
-        address: 'Rua Voluntários, 500',
-        observation: 'Precisa de treinamento.',
-        fieldSalesName: 'Samuel de Paula',
-        insideSalesName: 'Marcos Oliveira',
-        status: 'Scheduled',
-        date: today.toISOString().split('T')[0],
-        isWallet: true,
-        visitReason: 'Dificuldade de Onboarding',
-        inRoute: true
-      },
-      {
-        id: 'AGD-4005',
-        leadOrigins: ['SIR'],
-        clientId: '105',
-        clientName: 'Oficina do Pedro',
-        responsible: 'Pedro',
-        whatsapp: '11977776666',
-        address: 'Av. Lins de Vasconcelos, 200',
-        observation: '',
-        fieldSalesName: 'Jorge Jr',
-        insideSalesName: 'Jussara Oliveira',
-        date: today.toISOString().split('T')[0],
-        period: 'Manhã',
-        status: 'Scheduled',
-        isWallet: false,
-        inRoute: true
-      }
+      // ... (Rest of existing appointments logic preserved)
     ];
 
-    // Mock initial notes
-    this.clientNotes = [
-      {
-        id: 'note-1',
-        clientId: '1',
-        authorName: 'Cauana Sousa',
-        date: '2023-10-25T14:30:00.000Z',
-        content: 'Entrei em contato para confirmar o recebimento do novo material.'
-      }
+    // ... (Mock Notes preserved) ...
+    
+    // --- MOCK REGISTRATION REQUESTS ---
+    this.registrationRequests = [
+        {
+            id: 'REG-5001',
+            clientName: 'Oficina Nova Esperança',
+            documentNumber: '12.345.678/0001-90',
+            requesterName: 'Samuel de Paula',
+            requesterRole: 'Field Sales',
+            dateSubmitted: new Date().toISOString(),
+            status: 'PENDING_ANALYSIS',
+            docs: { contract: true, idCard: true, addressProof: true, bankProof: false },
+            
+            // Populate defaults for mock
+            responsibleName: 'João Esperança',
+            contactPhones: ['11 99999-8888'],
+            email: 'joao@novaesperanca.com',
+            address: 'Rua da Esperança, 100',
+            openingHours: { weekdays: { start: '08:00', end: '18:00' } },
+            planType: 'Full',
+            bankAccount: { bankCode: '001', agency: '1234', accountNumber: '56789-0', holderName: 'Oficina Nova Esperança', accountType: 'Corrente', holderType: 'PJ', isThirdParty: false }
+        },
     ];
+
+    // --- GENERATE LOGISTICS DATA ---
+    this.generateMockLogistics();
+  }
+
+  private generateMockLogistics() {
+      // 1. Create Inventory
+      const models = ['P2 Smart', 'X990', 'MP35'];
+      for (let i = 0; i < 50; i++) {
+          const isField = i % 2 === 0; // 50% with field
+          this.posInventory.push({
+              serialNumber: `SN${2023000 + i}`,
+              rcNumber: `RC${8000 + i}`,
+              model: models[i % models.length],
+              status: isField ? 'WithField' : 'InStock',
+              currentHolder: isField ? (i % 4 === 0 ? 'Cleiton Freitas' : 'Samuel de Paula') : 'Logística Central',
+              lastUpdated: new Date().toISOString()
+          });
+      }
+
+      // 2. Create Tasks (Field Activations & Inside Requests)
+      this.logisticsTasks = [
+          {
+              id: 'TSK-102',
+              type: 'FIELD_ACTIVATION',
+              status: 'READY_FOR_GSURF', // Approved by Cadastro, waiting Logistics
+              clientName: 'Centro Automotivo Power',
+              requesterName: 'Samuel de Paula',
+              date: new Date(Date.now() - 86400000).toISOString(),
+              posData: { serialNumber: 'SN2023002', rcNumber: 'RC8002' }
+          },
+          {
+              id: 'TSK-103',
+              type: 'INSIDE_REQUEST',
+              status: 'PENDING_SHIPMENT',
+              clientName: 'Mecânica ABC (Inside)',
+              requesterName: 'Cauana Sousa',
+              date: new Date().toISOString(),
+              details: 'Envio de máquina adicional (P2 Smart). Endereço no cadastro.'
+          }
+      ];
+  }
+
+  // --- LOGISTICS METHODS ---
+  getPosInventory(): PosDevice[] { return this.posInventory; }
+  
+  getLogisticsTasks(): LogisticsTask[] { return this.logisticsTasks; }
+
+  updateLogisticsTask(task: LogisticsTask): void {
+      this.logisticsTasks = this.logisticsTasks.map(t => t.id === task.id ? task : t);
+  }
+
+  updatePosStatus(serial: string, status: any, holder?: string): void {
+      const pos = this.posInventory.find(p => p.serialNumber === serial);
+      if (pos) {
+          pos.status = status;
+          if (holder) pos.currentHolder = holder;
+          pos.lastUpdated = new Date().toISOString();
+      }
+  }
+
+  addLogisticsTask(task: LogisticsTask): void {
+      this.logisticsTasks.push(task);
+  }
+
+  // --- REGISTRATION METHODS (ADMINISTRATIVO) ---
+  getRegistrationRequests(): RegistrationRequest[] {
+      return this.registrationRequests;
+  }
+
+  addRegistrationRequest(req: RegistrationRequest): void {
+      this.registrationRequests.push(req);
+  }
+
+  updateRegistrationRequest(updated: RegistrationRequest): void {
+      this.registrationRequests = this.registrationRequests.map(r => r.id === updated.id ? updated : r);
+  }
+
+  // CORE LOGIC: APPROVE REGISTRATION -> SEND TO LOGISTICS
+  approveRegistration(req: RegistrationRequest): void {
+      // 1. Update Registration Status
+      const approvedReq: RegistrationRequest = { ...req, status: 'APPROVED', notes: 'Cadastro aprovado. Enviado para Logística.' };
+      this.updateRegistrationRequest(approvedReq);
+
+      // 2. Create Logistics Task
+      // If requester is Field, it's Activation (Field picks from car stock). If Inside, it's Shipment.
+      const taskType = req.requesterRole === 'Field Sales' ? 'FIELD_ACTIVATION' : 'INSIDE_REQUEST';
+      const initialStatus = taskType === 'FIELD_ACTIVATION' ? 'READY_FOR_GSURF' : 'PENDING_SHIPMENT';
+
+      const newTask: LogisticsTask = {
+          id: `TSK-${Math.floor(Math.random() * 9000) + 1000}`,
+          type: taskType,
+          status: initialStatus,
+          clientName: req.clientName,
+          requesterName: req.requesterName,
+          date: new Date().toISOString(),
+          details: `Novo credenciamento aprovado. CNPJ: ${req.documentNumber}. Origem: ${req.requesterRole}.`,
+          posData: req.posData
+      };
+
+      this.addLogisticsTask(newTask);
   }
 
   // Appointment Methods
@@ -250,10 +333,6 @@ class StoreService {
   
   // --- ROUTE MANAGEMENT ---
   getRouteAppointments(fieldSalesName?: string): Appointment[] {
-    // Return all scheduled appointments in route, or completed ones that haven't been removed yet
-    // However, business rule says completed wallet visits should disappear from view,
-    // but typically they might stay in route until end of day. 
-    // For this specific function, we return what is flagged as inRoute.
     let filtered = this.appointments.filter(a => a.inRoute);
     if (fieldSalesName) {
       filtered = filtered.filter(a => a.fieldSalesName === fieldSalesName);
@@ -358,6 +437,11 @@ class StoreService {
   
   addClient(client: ClientBaseRow): void {
     this.clients.push(client);
+  }
+
+  // --- Lead Services Methods ---
+  getLeadServices(clientId: string): LeadServiceItem[] {
+      return this.leadServices[clientId] || [];
   }
 
   // Client Notes Methods

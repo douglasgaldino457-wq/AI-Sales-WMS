@@ -6,7 +6,7 @@ import {
     Download, ChevronUp, User
 } from 'lucide-react';
 import { appStore } from '../services/store';
-import { ManualDemand } from '../types';
+import { ManualDemand, RegistrationRequest } from '../types';
 import { Page } from '../types';
 
 const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu' }) => {
@@ -89,16 +89,49 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
     };
 
     const handleMoveToCadastro = (demand: ManualDemand) => {
-        if (confirm(`O cliente aceitou a proposta?\n\nIsso irá concluir a demanda e iniciar o cadastro.`)) {
+        if (confirm(`O cliente aceitou a proposta?\n\nIsso irá concluir a demanda de Pricing e enviar os dados para o Time Administrativo (Cadastro).`)) {
+            // 1. Update Pricing Demand
             const updated: ManualDemand = {
                 ...demand,
                 status: 'Concluído',
                 result: 'Cliente aceitou proposta. Enviado para cadastro.'
             };
             appStore.updateDemand(updated);
+
+            // 2. Create Registration Request
+            const regReq: RegistrationRequest = {
+                id: `REG-${Math.floor(Math.random() * 9000) + 1000}`,
+                clientName: demand.clientName,
+                documentNumber: '00.000.000/0001-00', // Mock, would come from earlier data
+                requesterName: currentUser,
+                requesterRole: currentUser.includes('Cleiton') || currentUser.includes('Samuel') ? 'Field Sales' : 'Inside Sales', // Simple mock logic
+                dateSubmitted: new Date().toISOString(),
+                status: 'PENDING_ANALYSIS',
+                docs: { contract: false, idCard: false, addressProof: false, bankProof: false }, // Reset for Admin
+                pricingDemandId: demand.id,
+                notes: `Origem: Negociação Aprovada (ID: ${demand.id}). Taxas Especiais.`,
+                
+                // Fields required by RegistrationRequest type
+                responsibleName: 'A definir',
+                contactPhones: [],
+                email: 'pendente@cadastro.com',
+                address: 'Endereço a preencher',
+                openingHours: { weekdays: { start: '08:00', end: '18:00' } },
+                planType: 'Full',
+                bankAccount: {
+                    bankCode: '',
+                    agency: '',
+                    accountNumber: '',
+                    holderName: '',
+                    accountType: 'Corrente',
+                    holderType: 'PJ',
+                    isThirdParty: false
+                }
+            };
+            appStore.addRegistrationRequest(regReq);
+
             refreshData();
-            // Simulate navigation
-            alert("Redirecionando para Módulo de Cadastro (Em Construção)...");
+            alert("Sucesso! Os dados foram enviados para o perfil Administrativo.");
         }
     };
 
@@ -265,7 +298,7 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
                                                                     onClick={() => handleMoveToCadastro(demand)}
                                                                     className="flex-[1.5] bg-brand-gray-900 hover:bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg"
                                                                 >
-                                                                    <User className="w-4 h-4" /> Cliente Aceitou (Cadastro)
+                                                                    <User className="w-4 h-4" /> Cliente Aceitou (Enviar Cadastro)
                                                                 </button>
                                                             </div>
                                                         </div>

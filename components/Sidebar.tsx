@@ -20,7 +20,9 @@ import {
   HelpCircle,
   TrendingUp,
   Percent,
-  Truck
+  Truck,
+  Activity,
+  FileCheck
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -43,6 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         items = [
           { icon: LayoutDashboard, label: 'Dashboard', page: Page.DASHBOARD },
           { icon: Calendar, label: 'Agendamentos', page: Page.AGENDAMENTOS },
+          { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
           { icon: BadgePercent, label: 'Pricing & Pedidos', page: Page.PRICING },
           { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
@@ -53,6 +56,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: LayoutDashboard, label: 'Dashboard', page: Page.DASHBOARD },
           { icon: Calendar, label: 'Minha Agenda', page: Page.AGENDAMENTOS },
           { icon: Map, label: 'Rota', page: Page.ROTAS },
+          { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
           { icon: BadgePercent, label: 'Pricing & Pedidos', page: Page.PRICING },
           { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
@@ -62,6 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         items = [
           { icon: LayoutDashboard, label: 'Dashboard Geral', page: Page.DASHBOARD_GERAL },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+          { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
           { icon: MapPinned, label: 'Mapa de Gestão', page: Page.MAPA_GESTAO },
           { icon: BadgePercent, label: 'Pricing & Pedidos', page: Page.PRICING },
           { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
@@ -72,8 +77,8 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         items = [
           { icon: LayoutDashboard, label: 'Dashboard Geral', page: Page.DASHBOARD_GERAL },
           { icon: Target, label: 'Metas & KPI', page: Page.METAS },
+          { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
-          { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
         ];
         break;
       case UserRole.PRICING_MANAGER:
@@ -86,7 +91,12 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
       case UserRole.LOGISTICA:
         items = [
           { icon: LayoutDashboard, label: 'Painel Logístico', page: Page.LOGISTICA_DASHBOARD },
-          { icon: Map, label: 'Monitoramento Rotas', page: Page.ROTAS },
+          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+        ];
+        break;
+      case UserRole.ADMIN:
+        items = [
+          { icon: FileCheck, label: 'Painel de Cadastro', page: Page.CADASTRO },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
         ];
         break;
@@ -97,48 +107,55 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
     return items;
   };
 
-  // 2. Bottom Navigation Items (Mobile Quick Access) - UPDATED WITH CADASTRO
+  // 2. Bottom Navigation Items (Mobile Quick Access)
+  // Ensure Dashboard is CENTRAL (Odd number of items preferred: 3 or 5)
   const getBottomNavItems = () => {
     switch (role) {
       case UserRole.FIELD_SALES:
         return [
           { icon: Calendar, label: 'Agenda', page: Page.AGENDAMENTOS },
           { icon: Map, label: 'Rota', page: Page.ROTAS },
-          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, // Central Button
+          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, // Central
+          { icon: Activity, label: 'Leads', page: Page.PAINEL_LEADS },
           { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
         ];
       case UserRole.INSIDE_SALES:
         return [
           { icon: Calendar, label: 'Agenda', page: Page.AGENDAMENTOS },
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
-          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, // Central Button
+          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, // Central
+          { icon: Activity, label: 'Leads', page: Page.PAINEL_LEADS },
           { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
         ];
       case UserRole.GESTOR:
         return [
           { icon: MapPinned, label: 'Mapa', page: Page.MAPA_GESTAO },
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
-          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true }, // Central Button
+          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true }, // Central
+          { icon: Activity, label: 'Leads', page: Page.PAINEL_LEADS },
           { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
         ];
       case UserRole.ESTRATEGIA:
         return [
           { icon: Target, label: 'Metas', page: Page.METAS },
-          { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
-          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true },
-          { icon: Settings, label: 'Config', page: Page.CONFIGURACAO },
+          { icon: Activity, label: 'Leads', page: Page.PAINEL_LEADS },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true }, // Central (3 items)
         ];
       case UserRole.PRICING_MANAGER:
         return [
           { icon: TrendingUp, label: 'Mesa', page: Page.MESA_NEGOCIACAO },
           { icon: Percent, label: 'Config', page: Page.CONFIG_TAXAS },
-          { icon: LayoutDashboard, label: 'Dash', page: Page.PRICING_DASHBOARD, isCentral: true },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.PRICING_DASHBOARD, isCentral: true }, // Central (3 items)
         ];
       case UserRole.LOGISTICA:
         return [
-          { icon: Map, label: 'Rotas', page: Page.ROTAS },
-          { icon: LayoutDashboard, label: 'Dash', page: Page.LOGISTICA_DASHBOARD, isCentral: true },
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.LOGISTICA_DASHBOARD, isCentral: true },
+        ];
+      case UserRole.ADMIN:
+        return [
+          { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
+          { icon: FileCheck, label: 'Cadastro', page: Page.CADASTRO, isCentral: true },
         ];
       default:
         return [];
@@ -161,7 +178,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
 
         <div className="p-6 relative shrink-0 z-10">
           <div className="mb-6 flex justify-center">
-             <Logo className="text-white scale-[0.85] origin-center" />
+             <Logo className="scale-[0.85] origin-center" />
           </div>
           
           {/* User Info Badge - Glassy */}
@@ -235,25 +252,25 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
          </button>
       </div>
 
-      {/* --- MOBILE TOP HEADER (Clean) --- */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white/90 backdrop-blur-lg z-40 px-5 py-3 shadow-sm border-b border-gray-100 flex justify-between items-center h-16 transition-all">
+      {/* --- MOBILE TOP HEADER (Dark Theme for White Logo) --- */}
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-brand-gray-900/95 backdrop-blur-lg z-40 px-5 py-3 shadow-md border-b border-white/10 flex justify-between items-center h-16 transition-all">
          {/* Left: Menu Toggle */}
          <button 
             onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2.5 text-gray-700 hover:text-brand-primary bg-gray-50 rounded-xl active:scale-95 transition-all"
+            className="p-2.5 text-gray-400 hover:text-white bg-white/5 rounded-xl active:scale-95 transition-all border border-white/10"
          >
             <Menu size={22} strokeWidth={2.5} />
          </button>
 
-         {/* Center: Logo (Now using dark text on white header) */}
+         {/* Center: Logo (Now White) */}
          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <Logo className="scale-[0.8] origin-center text-brand-gray-900" />
+            <Logo className="scale-[0.8] origin-center" />
          </div>
          
          {/* Right: Quick Logout */}
          <button 
             onClick={onLogout}
-            className="p-2.5 text-gray-400 hover:text-red-500 transition-colors bg-gray-50 rounded-xl"
+            className="p-2.5 text-gray-400 hover:text-red-400 transition-colors bg-white/5 rounded-xl border border-white/10"
             title="Sair"
          >
             <LogOut size={22} strokeWidth={2.5} />
@@ -271,7 +288,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
                     const isActive = activePage === item.page;
                     const isCentral = (item as any).isCentral;
                     // Adjusted width logic for dynamic item count
-                    const widthClass = bottomItems.length >= 5 ? 'w-1/5' : bottomItems.length === 3 ? 'w-1/3' : 'w-1/4';
+                    const widthClass = bottomItems.length >= 5 ? 'w-1/5' : bottomItems.length === 3 ? 'w-1/3' : bottomItems.length === 2 ? 'w-1/2' : 'w-1/4';
 
                     // CENTRAL BUTTON RENDER (Floating effect above bar)
                     if (isCentral) {

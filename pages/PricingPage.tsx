@@ -6,7 +6,7 @@ import {
     Smartphone, CreditCard, Download, Printer, Share2, Zap, Calendar, AlertCircle,
     Table, List, PieChart, LayoutList, Send, AlertTriangle, ArrowRight, X
 } from 'lucide-react';
-import { Logo } from '../components/Logo';
+import { PagmotorsLogo } from '../components/Logo';
 import ResultadosPage from './ResultadosPage';
 import ConfigTaxasPage from './ConfigTaxasPage';
 import { appStore } from '../services/store';
@@ -191,7 +191,7 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
                                                     : 'bg-white border-transparent text-gray-500 hover:bg-gray-50'}`}
                                          >
                                             <Zap size={18} className={rangePlan === 'Full' ? 'fill-current' : ''} />
-                                            FULL (D+1)
+                                            FULL
                                          </button>
                                          <button 
                                             onClick={() => setRangePlan('Simples')}
@@ -232,7 +232,7 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
                             <div className="bg-[#1A1B1E] h-28 flex items-center justify-between px-8 relative overflow-hidden shrink-0 print:bg-[#1A1B1E] print-color-adjust">
                                 {/* Logo Wrapper */}
                                 <div className="relative z-10 text-white transform scale-90 origin-left">
-                                    <Logo className="text-white" />
+                                    <PagmotorsLogo className="text-white" />
                                 </div>
                                 
                                 <div className="relative z-10 text-right">
@@ -316,7 +316,7 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
                                     <h3 className="text-lg font-bold text-brand-gray-900">Condições Comerciais</h3>
                                     <div className="text-right">
                                         <span className="text-[10px] text-brand-gray-400 font-bold uppercase block">Enquadramento</span>
-                                        <span className="text-xs font-mono font-bold text-brand-gray-700 bg-brand-gray-100 px-2 py-0.5 rounded">
+                                        <span className="text-xl font-bold text-brand-primary bg-brand-primary/5 px-3 py-1 rounded border border-brand-primary/10 tracking-tight">
                                             {selectedRange.label}
                                         </span>
                                     </div>
@@ -358,6 +358,16 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
                                 )}
                             </div>
 
+                            {/* Card Brands - Compact & Small */}
+                            <div className="px-8 py-3 flex items-center justify-center gap-4 border-t border-dashed border-gray-100 mt-2">
+                                <span className="text-[8px] text-gray-400 font-bold uppercase mr-1">Aceitamos:</span>
+                                <img src="https://logodownload.org/wp-content/uploads/2016/10/visa-logo-1.png" alt="Visa" className="h-3 object-contain opacity-60 grayscale hover:grayscale-0 transition-all" />
+                                <img src="https://logodownload.org/wp-content/uploads/2014/07/mastercard-logo.png" alt="Mastercard" className="h-5 object-contain opacity-60 grayscale hover:grayscale-0 transition-all" />
+                                <img src="https://logodownload.org/wp-content/uploads/2017/04/elo-logo.png" alt="Elo" className="h-3 object-contain opacity-60 grayscale hover:grayscale-0 transition-all" />
+                                <img src="https://logodownload.org/wp-content/uploads/2016/10/american-express-logo.png" alt="Amex" className="h-5 object-contain opacity-60 grayscale hover:grayscale-0 transition-all" />
+                                <img src="https://logodownload.org/wp-content/uploads/2015/03/hipercard-logo.png" alt="Hipercard" className="h-3 object-contain opacity-60 grayscale hover:grayscale-0 transition-all" />
+                            </div>
+
                             {/* FOOTER - CONSULTANT */}
                             <div className="mt-auto bg-white border-t border-brand-gray-200 p-6 flex items-center justify-between">
                                 <div className="flex items-center gap-4">
@@ -380,7 +390,7 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
                             
                             {/* Legal Strip */}
                             <div className="bg-brand-gray-900 text-white/30 text-[8px] p-2 text-center uppercase tracking-[0.2em]">
-                                Documento Confidencial • Webmotors Serviços Financeiros
+                                Documento Confidencial • Uma solução Webmotors
                             </div>
                       </div>
                  </div>
@@ -440,7 +450,7 @@ const ProposalGenerator: React.FC<{ role: UserRole | null }> = ({ role }) => {
             )}
         </div>
     );
-}
+};
 
 // --- MAIN PRICING PAGE (WITH TABS) ---
 const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
