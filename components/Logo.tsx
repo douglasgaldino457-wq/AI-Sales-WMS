@@ -1,17 +1,24 @@
 
 import React from 'react';
 
+interface PagmotorsLogoProps {
+  className?: string;
+  variant?: 'default' | 'white'; // default = Círculo Vermelho (fundo claro), white = Círculo Branco (fundo vermelho)
+}
+
 // Logo Secundário - Exclusivo para Propostas Comerciais (Pagmotors)
-export const PagmotorsLogo: React.FC<{ className?: string }> = ({ className = "" }) => {
+export const PagmotorsLogo: React.FC<PagmotorsLogoProps> = ({ className = "", variant = 'default' }) => {
+  const isWhite = variant === 'white';
+
   return (
     <div className={`flex items-center gap-3 text-current ${className}`}>
-      {/* Icon: White Circle with 3 equal vertical lines and horizontal connecting them (Red Lines) */}
-      <div className="relative w-10 h-10 bg-white rounded-full flex items-center justify-center shrink-0 shadow-sm">
+      {/* Icon Circle */}
+      <div className={`relative w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm ${isWhite ? 'bg-white' : 'bg-brand-primary'}`}>
          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M5 12H19" stroke="#F3123C" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M5 5V19" stroke="#F3123C" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M12 5V19" stroke="#F3123C" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M19 5V19" stroke="#F3123C" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M5 12H19" stroke={isWhite ? "#F3123C" : "white"} strokeWidth="3" strokeLinecap="round"/>
+            <path d="M5 5V19" stroke={isWhite ? "#F3123C" : "white"} strokeWidth="3" strokeLinecap="round"/>
+            <path d="M12 5V19" stroke={isWhite ? "#F3123C" : "white"} strokeWidth="3" strokeLinecap="round"/>
+            <path d="M19 5V19" stroke={isWhite ? "#F3123C" : "white"} strokeWidth="3" strokeLinecap="round"/>
          </svg>
       </div>
       

@@ -5,7 +5,7 @@ import {
     CheckCircle2, User, Phone, Mail, DollarSign, Calculator, 
     Smartphone, CreditCard, Download, Printer, Share2, Zap, Calendar, AlertCircle,
     Table, List, PieChart, LayoutList, Send, AlertTriangle, ArrowRight, X, Loader2, Star, ShieldCheck, Rocket, Lock,
-    Award, ThumbsUp, FileText, UploadCloud, Image as ImageIcon, Search, Briefcase, FileInput, Trash2, Sparkles
+    Award, ThumbsUp, FileText, UploadCloud, Image as ImageIcon, Search, Briefcase, FileInput, Trash2, Sparkles, Image
 } from 'lucide-react';
 import { PagmotorsLogo } from '../components/Logo';
 import { appStore } from '../services/store';
@@ -220,17 +220,17 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
     const getBenefitsList = (plan: string) => {
         if (plan === 'Full') {
             return [
-                { icon: Zap, text: "Pagamento D+0", sub: "Receba tudo no mesmo dia" },
-                { icon: Rocket, text: "Prioridade Leads", sub: "Mais fluxo da Webmotors" },
-                { icon: ShieldCheck, text: "Taxa Garantida", sub: "Sem surpresas na fatura" },
-                { icon: Award, text: "Suporte VIP", sub: "Atendimento exclusivo" },
+                { icon: Zap, text: "Pagamento D+0", sub: "Receba o valor total das vendas no mesmo dia." },
+                { icon: Rocket, text: "Prioridade Leads", sub: "Mais fluxo da Webmotors direcionado para você." },
+                { icon: ShieldCheck, text: "Taxa Padrão", sub: "Taxa única para todas as bandeiras de cartão" },
+                { icon: Award, text: "Suporte VIP", sub: "Atendimento exclusivo e dedicado para seu negócio." },
             ];
         } else {
              return [
-                { icon: Calendar, text: "Pagamento Agenda", sub: "Receba conforme a parcela" },
-                { icon: Rocket, text: "Prioridade Leads", sub: "Mais fluxo da Webmotors" },
-                { icon: ShieldCheck, text: "Taxa Garantida", sub: "Sem surpresas na fatura" },
-                { icon: ThumbsUp, text: "Antecipação Flex", sub: "Disponível a 3.95% a.m" }
+                { icon: Calendar, text: "Pagamento Agenda", sub: "Fluxo de caixa programado conforme parcelamento." },
+                { icon: Rocket, text: "Prioridade Leads", sub: "Mais fluxo da Webmotors direcionado para você." },
+                { icon: ShieldCheck, text: "Taxa Padrão", sub: "Taxa única para todas as bandeiras de cartão" },
+                { icon: ThumbsUp, text: "Antecipação Flex", sub: "Disponível a 3.95% a.m quando precisar." }
             ];
         }
     };
@@ -266,16 +266,757 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
         setJustification('');
     };
 
-    const handleDownloadPDF = async () => {
+    const handleDownloadImage = async () => {
         if (!printRef.current) return;
         setIsGeneratingPdf(true);
 
         try {
             // @ts-ignore
             const html2canvas = window.html2canvas;
-            // @ts-ignore
-            const { jsPDF } = window.jspdf;
 
-            if (!html2canvas || !jsPDF) {
-                alert("Bibliotecas de PDF não carregadas. Tente recarregar a página.");
-                return
+            if (!html2canvas) {
+                alert("Bibliotecas de Imagem não carregadas. Tente recarregar a página.");
+                return;
+            }
+
+            const canvas = await html2canvas(printRef.current, {
+                scale: 2, 
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff',
+                width: 794, // Force A4 width in px (approx at 96 DPI)
+                height: 1123, // Force A4 height in px
+                windowWidth: 1200
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            
+            const link = document.createElement('a');
+            link.download = `Proposta_${rangeClientName || 'Pagmotors'}.png`;
+            link.href = imgData;
+            link.click();
+
+        } catch (error) {
+            console.error("Erro ao gerar Imagem:", error);
+            alert("Houve um erro ao gerar a imagem.");
+        } finally {
+            setIsGeneratingPdf(false);
+        }
+    };
+
+    // --- QUOTE LOGIC (NEW TAB) ---
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            setEvidenceFiles(Array.from(e.target.files));
+        }
+    };
+
+    const handleAnalyzeEvidence = async () => {
+        if (evidenceFiles.length === 0) {
+            alert("Anexe pelo menos uma imagem ou PDF.");
+            return;
+        }
+        setAiProcessing(true);
+
+        try {
+            // Convert files to Base64
+            const base64Promises = evidenceFiles.map(file => {
+                return new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = error => reject(error);
+                });
+            });
+
+            const base64Files = await Promise.all(base64Promises);
+            // Remove data:image... prefix for API
+            const cleanBase64 = base64Files.map(s => s.split(',')[1]);
+
+            // If simulation mode, pass the value
+            const simValue = quoteForm.evidenceMode === 'SIMULATION' ? parseFloat(quoteForm.simulationValue.replace(/\D/g,''))/100 : undefined;
+
+            const result = await extractRatesFromEvidence(cleanBase64, quoteForm.plan, simValue);
+            
+            if (result) {
+                // Pre-fill extracted rates
+                setExtractedRates(result);
+            } else {
+                alert("Não foi possível extrair as taxas. Tente uma imagem mais clara.");
+            }
+
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao processar evidências com IA.");
+        } finally {
+            setAiProcessing(false);
+        }
+    };
+
+    const handleSubmitQuote = () => {
+        if (!quoteForm.tradeName || !quoteForm.document) {
+            alert("Preencha os dados do cliente.");
+            return;
+        }
+        
+        // Mock Demand Creation
+        const demand = {
+            id: `COT-${Math.floor(Math.random() * 10000)}`,
+            clientName: quoteForm.tradeName,
+            type: 'Negociação de Taxas',
+            date: new Date().toISOString(),
+            status: 'Em Análise' as const, 
+            requester: role === UserRole.FIELD_SALES ? 'Cleiton Freitas' : 'Usuário Atual',
+            description: `Solicitação via Cotação de Taxas. Adquirente atual: ${quoteForm.acquirer}. Plano: ${quoteForm.plan}.`,
+            pricingData: {
+                // Map extracted/edited rates
+                competitorRates: { 
+                    debit: extractedRates?.debit || 0, 
+                    credit1x: extractedRates?.credit1x || 0, 
+                    credit12x: extractedRates?.credit12x || 0 
+                }, 
+                proposedRates: { debit: 0, credit1x: 0, credit12x: 0 }, // Placeholder for Mesa to fill
+                context: {
+                    potentialRevenue: parseFloat(quoteForm.tpvPotential.replace(/\D/g,'')) / 100, 
+                    minAgreed: parseFloat(quoteForm.minAgreed.replace(/\D/g,'')) / 100
+                },
+                evidenceUrl: 'https://via.placeholder.com/300' // Mock for now
+            }
+        };
+
+        appStore.addDemand(demand);
+        setActiveTab('REQUESTS');
+        setQuoteForm({ ...quoteForm, tradeName: '', document: '' });
+        setExtractedRates(null);
+        setEvidenceFiles([]);
+    };
+
+    const rates = getRangeRates(rangePlan, selectedRange.id);
+
+    return (
+        <div className="space-y-6">
+            {/* TABS HEADER */}
+            <header className="flex flex-col md:flex-row justify-between items-end gap-4 no-print">
+                <div>
+                    <h1 className="text-2xl font-bold text-brand-gray-900">Pricing & Propostas</h1>
+                    <p className="text-brand-gray-600 text-sm">Geração de propostas e acompanhamento de negociações.</p>
+                </div>
+                <div className="flex bg-brand-gray-200 p-1 rounded-xl overflow-x-auto">
+                    <button
+                        onClick={() => setActiveTab('RANGE')}
+                        className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'RANGE' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
+                    >
+                        <Calculator className="w-4 h-4 mr-2" />
+                        Taxa Range
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('QUOTE')}
+                        className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'QUOTE' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
+                    >
+                        <Briefcase className="w-4 h-4 mr-2" />
+                        Cotação de Taxas
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('REQUESTS')}
+                        className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'REQUESTS' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
+                    >
+                        <FileText className="w-4 h-4 mr-2" />
+                        Minhas Solicitações
+                    </button>
+                </div>
+            </header>
+
+            {/* TAB CONTENT: REQUESTS */}
+            {activeTab === 'REQUESTS' && (
+                <ResultadosPage currentUser={role === UserRole.FIELD_SALES ? 'Cleiton Freitas' : role === UserRole.INSIDE_SALES ? 'Cauana Sousa' : 'Usuário Atual'} />
+            )}
+
+            {/* TAB CONTENT: COTAÇÃO DE TAXAS (NEW) */}
+            {activeTab === 'QUOTE' && (
+                <div className="animate-fade-in bg-white rounded-2xl shadow-sm border border-brand-gray-100 overflow-hidden">
+                    <div className="p-6 border-b border-brand-gray-100 bg-brand-gray-50/50 flex justify-between items-center">
+                        <h2 className="text-xl font-bold text-brand-gray-900 flex items-center gap-2">
+                            <Briefcase className="w-6 h-6 text-brand-primary" />
+                            Nova Cotação Personalizada
+                        </h2>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2">
+                        {/* LEFT: FORM INPUTS */}
+                        <div className="p-6 space-y-6 border-r border-brand-gray-100">
+                            {/* Client Info */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Buscar Cliente (CNPJ ou ID)</label>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            className="flex-1 border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                            value={quoteForm.document}
+                                            onChange={e => setQuoteForm({...quoteForm, document: e.target.value})}
+                                            placeholder="00.000.000/0000-00"
+                                        />
+                                        <button className="bg-brand-gray-100 text-brand-gray-600 px-3 rounded-lg hover:bg-brand-gray-200">
+                                            <Search className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Nome Fantasia *</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                        value={quoteForm.tradeName}
+                                        onChange={e => setQuoteForm({...quoteForm, tradeName: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Potencial TPV (R$)</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm"
+                                        placeholder="0,00"
+                                        value={quoteForm.tpvPotential}
+                                        onChange={e => {
+                                            const v = e.target.value.replace(/\D/g, "");
+                                            const fmt = (parseInt(v || '0') / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                            setQuoteForm({...quoteForm, tpvPotential: fmt});
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Mínimo Acordado (R$)</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm"
+                                        placeholder="0,00"
+                                        value={quoteForm.minAgreed}
+                                        onChange={e => {
+                                            const v = e.target.value.replace(/\D/g, "");
+                                            const fmt = (parseInt(v || '0') / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                            setQuoteForm({...quoteForm, minAgreed: fmt});
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Segmentation */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-brand-gray-100">
+                                <div>
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Adquirente Atual</label>
+                                    <select 
+                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                                        value={quoteForm.acquirer}
+                                        onChange={e => setQuoteForm({...quoteForm, acquirer: e.target.value})}
+                                    >
+                                        {ACQUIRERS.map(acq => <option key={acq} value={acq}>{acq}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Tipo de EC</label>
+                                    <div className="flex bg-brand-gray-100 p-1 rounded-lg">
+                                        <button 
+                                            onClick={() => setQuoteForm({...quoteForm, type: 'Oficina'})}
+                                            className={`flex-1 text-xs py-1.5 rounded font-bold transition-all ${quoteForm.type === 'Oficina' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-500'}`}
+                                        >Oficina</button>
+                                        <button 
+                                            onClick={() => setQuoteForm({...quoteForm, type: 'Revenda'})}
+                                            className={`flex-1 text-xs py-1.5 rounded font-bold transition-all ${quoteForm.type === 'Revenda' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-500'}`}
+                                        >Revenda</button>
+                                    </div>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Modelo de Taxas (Alvo)</label>
+                                    <div className="flex bg-brand-gray-100 p-1 rounded-lg">
+                                        <button 
+                                            onClick={() => setQuoteForm({...quoteForm, plan: 'Full'})}
+                                            className={`flex-1 text-xs py-1.5 rounded font-bold transition-all ${quoteForm.plan === 'Full' ? 'bg-white shadow text-green-600' : 'text-brand-gray-500'}`}
+                                        >FULL (D+0)</button>
+                                        <button 
+                                            onClick={() => setQuoteForm({...quoteForm, plan: 'Simples'})}
+                                            className={`flex-1 text-xs py-1.5 rounded font-bold transition-all ${quoteForm.plan === 'Simples' ? 'bg-white shadow text-blue-600' : 'text-brand-gray-500'}`}
+                                        >SIMPLES (Agenda)</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Evidence Upload */}
+                            <div className="pt-4 border-t border-brand-gray-100">
+                                <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Anexar Evidências (IA)</label>
+                                
+                                <div className="flex gap-4 mb-3">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input 
+                                            type="radio" name="evidenceMode" 
+                                            checked={quoteForm.evidenceMode === 'RATE'}
+                                            onChange={() => setQuoteForm({...quoteForm, evidenceMode: 'RATE'})}
+                                            className="text-brand-primary focus:ring-brand-primary"
+                                        />
+                                        <span className="text-sm">Leitura por Taxa Explícita</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input 
+                                            type="radio" name="evidenceMode" 
+                                            checked={quoteForm.evidenceMode === 'SIMULATION'}
+                                            onChange={() => setQuoteForm({...quoteForm, evidenceMode: 'SIMULATION'})}
+                                            className="text-brand-primary focus:ring-brand-primary"
+                                        />
+                                        <span className="text-sm">Leitura por Simulação</span>
+                                    </label>
+                                </div>
+
+                                {quoteForm.evidenceMode === 'SIMULATION' && (
+                                    <div className="mb-3 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                        <label className="block text-xs font-bold text-yellow-800 mb-1">Valor Total da Venda Simulada (R$)</label>
+                                        <input 
+                                            type="text" 
+                                            className="w-full border border-yellow-300 rounded px-2 py-1 text-sm"
+                                            placeholder="Ex: 1.000,00"
+                                            value={quoteForm.simulationValue}
+                                            onChange={e => {
+                                                const v = e.target.value.replace(/\D/g, "");
+                                                const fmt = (parseInt(v || '0') / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                                setQuoteForm({...quoteForm, simulationValue: fmt});
+                                            }}
+                                        />
+                                        <p className="text-[10px] text-yellow-700 mt-1">* A IA irá calcular a taxa reversa baseada neste valor e no líquido/parcela da imagem.</p>
+                                    </div>
+                                )}
+
+                                <div className="border-2 border-dashed border-brand-gray-300 rounded-xl p-6 flex flex-col items-center justify-center bg-brand-gray-50 hover:bg-brand-gray-100 transition-colors cursor-pointer" onClick={() => fileInputRefQuote.current?.click()}>
+                                    <UploadCloud className="w-8 h-8 text-brand-gray-400 mb-2" />
+                                    <p className="text-sm text-brand-gray-600 font-medium">Clique para selecionar Imagens ou PDF</p>
+                                    <p className="text-xs text-brand-gray-400">Suporta múltiplos arquivos</p>
+                                    <input 
+                                        type="file" 
+                                        multiple 
+                                        className="hidden" 
+                                        ref={fileInputRefQuote} 
+                                        onChange={handleFileUpload}
+                                        accept="image/*,.pdf"
+                                    />
+                                </div>
+                                {evidenceFiles.length > 0 && (
+                                    <div className="mt-2 space-y-1">
+                                        {evidenceFiles.map((f, i) => (
+                                            <div key={i} className="flex justify-between items-center text-xs bg-brand-gray-100 px-2 py-1 rounded">
+                                                <span className="truncate max-w-[200px]">{f.name}</span>
+                                                <button onClick={() => setEvidenceFiles(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500"><Trash2 size={12} /></button>
+                                            </div>
+                                        ))}
+                                        <button 
+                                            type="button" 
+                                            onClick={handleAnalyzeEvidence}
+                                            disabled={aiProcessing}
+                                            className="w-full mt-2 bg-brand-gray-900 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors"
+                                        >
+                                            {aiProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                            {aiProcessing ? 'IA Analisando...' : 'Extrair Taxas com IA'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* RIGHT: RATE TABLE RESULTS */}
+                        <div className="p-6 bg-brand-gray-50 flex flex-col h-full">
+                            <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
+                                <Table className="w-5 h-5 text-brand-primary" />
+                                Tabela de Taxas (Alvo)
+                            </h3>
+                            
+                            <div className="flex-1 bg-white rounded-xl border border-brand-gray-200 overflow-hidden shadow-sm flex flex-col">
+                                <div className="overflow-y-auto flex-1">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-brand-gray-100 text-brand-gray-600 font-bold text-xs uppercase">
+                                            <tr>
+                                                <th className="px-4 py-2">Modalidade</th>
+                                                <th className="px-4 py-2 text-center">Atual (IA)</th>
+                                                <th className="px-4 py-2 text-center">Proposta</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-brand-gray-100">
+                                            {/* Render rows based on Plan Type */}
+                                            {quoteForm.plan === 'Full' ? (
+                                                ['Débito', '1x', '2x', '3x', '4x', '5x', '6x', '7x', '8x', '9x', '10x', '11x', '12x', '18x'].map(label => {
+                                                    // Map label to key for extractedRates
+                                                    const key = label === 'Débito' ? 'debit' : label === '1x' ? 'credit1x' : `credit${label}`;
+                                                    const extractedVal = extractedRates ? extractedRates[key] : null;
+                                                    
+                                                    return (
+                                                        <tr key={label}>
+                                                            <td className="px-4 py-2 font-bold text-brand-gray-700 text-xs">{label}</td>
+                                                            <td className="px-4 py-2 text-center">
+                                                                <input 
+                                                                    className={`w-16 text-center text-xs border rounded py-1 ${extractedVal ? 'bg-green-50 border-green-200 text-green-700 font-bold' : 'bg-gray-50 border-gray-200'}`}
+                                                                    value={extractedVal ? extractedVal.toFixed(2) : ''}
+                                                                    placeholder="-"
+                                                                    readOnly
+                                                                />
+                                                            </td>
+                                                            <td className="px-4 py-2 text-center">
+                                                                <input className="w-16 text-center text-xs border border-brand-gray-300 rounded py-1 focus:border-brand-primary outline-none" placeholder="0.00" />
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            ) : (
+                                                ['Débito', '1x', '2x - 6x', '7x - 12x', '13x - 18x'].map(label => {
+                                                    // Simple buckets mapping for demo
+                                                    let val = null;
+                                                    if(extractedRates) {
+                                                        if(label === 'Débito') val = extractedRates.debit;
+                                                        else if(label === '1x') val = extractedRates.credit1x;
+                                                        else if(label.includes('6x')) val = extractedRates.credit6x; // Approximation
+                                                    }
+                                                    return (
+                                                        <tr key={label}>
+                                                            <td className="px-4 py-2 font-bold text-brand-gray-700 text-xs">{label}</td>
+                                                            <td className="px-4 py-2 text-center">
+                                                                <input 
+                                                                    className={`w-16 text-center text-xs border rounded py-1 ${val ? 'bg-green-50 border-green-200 text-green-700 font-bold' : 'bg-gray-50 border-gray-200'}`}
+                                                                    value={val ? val.toFixed(2) : ''}
+                                                                    placeholder="-"
+                                                                    readOnly
+                                                                />
+                                                            </td>
+                                                            <td className="px-4 py-2 text-center">
+                                                                <input className="w-16 text-center text-xs border border-brand-gray-300 rounded py-1 focus:border-brand-primary outline-none" placeholder="0.00" />
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {extractedRates?.notes && (
+                                    <div className="p-3 bg-yellow-50 text-[10px] text-yellow-800 border-t border-yellow-100">
+                                        <strong>Nota IA:</strong> {extractedRates.notes}
+                                    </div>
+                                )}
+                            </div>
+
+                            <button 
+                                onClick={handleSubmitQuote}
+                                className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-xl font-bold mt-4 shadow-lg transition-transform hover:-translate-y-1 flex items-center justify-center gap-2"
+                            >
+                                <Send className="w-4 h-4" /> Enviar Cotação para Mesa
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB CONTENT: GENERATOR (Original Content - Taxa Range) */}
+            {activeTab === 'RANGE' && (
+                <div className="animate-fade-in relative">
+                    <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6 no-print">
+                        {/* Subheader removed to avoid duplication, controls moved to main header or kept below */}
+                        <div className="w-full flex justify-end gap-2">
+                            <button onClick={() => window.print()} className="flex items-center gap-2 bg-white border border-brand-gray-200 text-brand-gray-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-brand-gray-50 transition-colors shadow-sm">
+                                <Printer size={16} /> Imprimir
+                            </button>
+                            <button 
+                                onClick={handleDownloadImage}
+                                disabled={isGeneratingPdf}
+                                className="flex items-center gap-2 bg-brand-gray-900 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-black transition-colors shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {isGeneratingPdf ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={16} />}
+                                {isGeneratingPdf ? 'Gerando...' : 'Baixar Imagem'}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        {/* LEFT COLUMN: CONTROLS */}
+                        <div className="lg:col-span-4 space-y-6 no-print order-1 lg:order-1">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-gray-100 sticky top-4">
+                                <h3 className="font-bold text-lg text-brand-gray-900 mb-6 flex items-center gap-2">
+                                    <Calculator className="w-5 h-5 text-brand-primary" />
+                                    Configuração
+                                </h3>
+                                
+                                <div className="space-y-5">
+                                    <div>
+                                            <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Nome do Cliente</label>
+                                            <input 
+                                                type="text" 
+                                                className="w-full border border-brand-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all"
+                                                placeholder="Ex: Oficina do João"
+                                                value={rangeClientName}
+                                                onChange={(e) => setRangeClientName(e.target.value)}
+                                            />
+                                    </div>
+                                    
+                                    <div>
+                                            <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Faixa de TPV (Tabela Range)</label>
+                                            <div className="relative">
+                                                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-400" />
+                                                <select 
+                                                    className="w-full pl-10 border border-brand-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none font-bold text-brand-gray-800 bg-white appearance-none"
+                                                    value={selectedRangeId}
+                                                    onChange={(e) => setSelectedRangeId(Number(e.target.value))}
+                                                >
+                                                    {TPV_RANGES.map(range => (
+                                                        <option key={range.id} value={range.id}>{range.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <p className="text-[10px] text-brand-gray-400 mt-1 ml-1">
+                                                * Selecione a faixa para aplicar as taxas pré-aprovadas.
+                                            </p>
+                                    </div>
+
+                                    <div>
+                                            <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Modelo de Taxas</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button 
+                                                    onClick={() => setRangePlan('Full')}
+                                                    className={`py-3 px-2 text-xs font-bold rounded-xl transition-all border-2 flex flex-col items-center justify-center gap-1
+                                                        ${rangePlan === 'Full' 
+                                                            ? 'bg-green-50 border-green-500 text-green-700 shadow-sm' 
+                                                            : 'bg-white border-transparent text-gray-500 hover:bg-gray-50'}`}
+                                                >
+                                                    <Zap size={18} className={rangePlan === 'Full' ? 'fill-current' : ''} />
+                                                    FULL
+                                                </button>
+                                                <button 
+                                                    onClick={() => setRangePlan('Simples')}
+                                                    className={`py-3 px-2 text-xs font-bold rounded-xl transition-all border-2 flex flex-col items-center justify-center gap-1
+                                                        ${rangePlan === 'Simples' 
+                                                            ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' 
+                                                            : 'bg-white border-transparent text-gray-500 hover:bg-gray-50'}`}
+                                                >
+                                                    <Calendar size={18} className={rangePlan === 'Simples' ? 'fill-current' : ''} />
+                                                    SIMPLES (Agenda)
+                                                </button>
+                                            </div>
+                                        </div>
+                                </div>
+
+                                <div className="mt-8 pt-6 border-t border-brand-gray-100">
+                                    <button 
+                                            onClick={() => setIsApprovalModalOpen(true)}
+                                            className="w-full py-3 bg-brand-gray-50 text-brand-gray-700 border border-brand-gray-200 rounded-xl font-bold text-xs hover:bg-brand-gray-100 hover:text-brand-primary transition-colors flex items-center justify-center gap-2 group"
+                                    >
+                                            <AlertTriangle className="w-4 h-4 text-yellow-500 group-hover:text-brand-primary transition-colors" />
+                                            Solicitação de Aprovação
+                                    </button>
+                                    <p className="text-[10px] text-center text-brand-gray-400 mt-2 leading-tight">
+                                        Use quando o EC faturar <strong>menos</strong> que a faixa selecionada, mas necessitar das taxas daquele range.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* RIGHT COLUMN: PREVIEW AREA */}
+                        <div className="lg:col-span-8 flex justify-center items-start overflow-hidden bg-gray-100/50 p-2 md:p-4 rounded-3xl border border-gray-200 order-2 lg:order-2">
+                            
+                            {/* --- A4 DOCUMENT CONTAINER --- */}
+                            <div 
+                                ref={printRef} 
+                                className="bg-white shadow-2xl relative flex flex-col shrink-0 origin-top transform 
+                                        scale-[0.42] xs:scale-[0.5] sm:scale-[0.6] md:scale-[0.7] lg:scale-[0.75] 2xl:scale-100 
+                                        transition-transform duration-500 print:transform-none print:shadow-none"
+                                style={{ width: '210mm', minHeight: '297mm', height: '297mm' }}
+                            >
+                                    
+                                    {/* HEADER - BRANDING (RED) */}
+                                    <div className="bg-gradient-to-r from-brand-primary to-brand-dark h-32 flex items-center justify-between px-12 relative overflow-hidden shrink-0">
+                                        {/* Logo Wrapper */}
+                                        <div className="relative z-10 text-white transform scale-110 origin-left">
+                                            <PagmotorsLogo className="text-white" variant="white" />
+                                        </div>
+                                        
+                                        <div className="relative z-10 text-right text-white">
+                                            <h2 className="text-2xl font-bold uppercase tracking-widest">Proposta Comercial</h2>
+                                            <p className="text-sm font-medium tracking-wide mt-1 opacity-80">Soluções de Pagamento</p>
+                                        </div>
+
+                                        <div className="absolute -right-10 -top-20 w-80 h-80 bg-white opacity-5 rounded-full blur-3xl"></div>
+                                    </div>
+
+                                    {/* MAIN CONTENT AREA */}
+                                    <div className="flex-1 px-12 py-8 flex flex-col gap-6">
+                                        
+                                        {/* 1. Intro & Hero */}
+                                        <div className="flex items-center justify-between border-b border-gray-100 pb-6 gap-6">
+                                            <div className="text-left flex-1">
+                                                <div className="inline-block px-4 py-1.5 rounded-full bg-brand-light/10 text-brand-primary text-xs font-bold uppercase tracking-wider border border-brand-light/20 mb-3">
+                                                    Plano {rangePlan}
+                                                </div>
+                                                <h1 className="text-4xl font-bold text-brand-gray-900 leading-tight mb-2">
+                                                    {rangeClientName || 'Sua Empresa'}
+                                                </h1>
+                                                <p className="text-brand-gray-500 text-sm leading-relaxed max-w-lg">
+                                                    Condições exclusivas para acelerar o crescimento do seu negócio com a tecnologia Pagmotors.
+                                                </p>
+                                                <div className="mt-3 text-xs text-brand-gray-400 font-bold uppercase">
+                                                    Data: {new Date().toLocaleDateString('pt-BR')}
+                                                </div>
+                                            </div>
+                                            <div className="w-32 shrink-0">
+                                                 <img 
+                                                    src="https://cdn3d.iconscout.com/3d/premium/thumb/card-machine-5360096-4490060.png" 
+                                                    alt="Maquininha" 
+                                                    className="w-full h-auto object-contain"
+                                                    crossOrigin="anonymous"
+                                                 />
+                                            </div>
+                                        </div>
+
+                                        {/* NEW LAYOUT: 2 Columns Side-by-Side */}
+                                        <div className="flex flex-row gap-8 mt-2 items-start h-full">
+                                            
+                                            {/* LEFT COLUMN: BENEFITS (Larger Cards) */}
+                                            <div className="w-5/12 flex flex-col gap-4">
+                                                {getBenefitsList(rangePlan).map((benefit, idx) => (
+                                                    <div key={idx} className="bg-brand-gray-50 rounded-2xl p-5 border border-brand-gray-100 shadow-sm flex flex-col items-start gap-3">
+                                                        <div className="bg-white p-3 rounded-xl text-brand-primary shadow-sm border border-brand-gray-100 shrink-0">
+                                                            <benefit.icon className="w-8 h-8" strokeWidth={2} />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-base font-bold text-brand-gray-900 leading-tight mb-1">{benefit.text}</p>
+                                                            <p className="text-xs text-brand-gray-500 leading-relaxed">{benefit.sub}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* RIGHT COLUMN: RATES TABLE (Compact) */}
+                                            <div className="w-7/12 flex flex-col">
+                                                <div className="mb-4 flex items-center justify-between px-1">
+                                                    <h3 className="text-base font-bold text-brand-gray-900 border-l-4 border-brand-primary pl-3">
+                                                        Taxas Aprovadas
+                                                    </h3>
+                                                    <span className="text-[10px] font-bold text-brand-gray-500 bg-gray-100 px-2 py-1 rounded uppercase tracking-wide">
+                                                        {rangePlan === 'Simples' ? selectedRange.label.replace('Full', 'Simples') : selectedRange.label}
+                                                    </span>
+                                                </div>
+
+                                                <div className="border border-brand-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                                    {/* Table Header */}
+                                                    <div className="bg-brand-gray-900 flex text-white text-xs font-bold uppercase tracking-wider py-3">
+                                                        <div className="w-2/3 px-5">Modalidade</div>
+                                                        <div className="w-1/3 px-5 text-right">Taxa</div>
+                                                    </div>
+                                                    
+                                                    {/* Table Body - Sequential */}
+                                                    <div className="bg-white divide-y divide-brand-gray-100">
+                                                        {rates.map((row, idx) => (
+                                                            <div key={idx} className={`flex items-center justify-between px-5 py-2 ${row.highlight ? 'bg-brand-primary/5' : idx % 2 === 0 ? 'bg-white' : 'bg-brand-gray-50/50'}`}>
+                                                                <div className={`text-xs ${row.highlight ? 'font-bold text-brand-primary' : 'font-medium text-brand-gray-700'}`}>
+                                                                    {row.label}
+                                                                </div>
+                                                                <div className={`text-sm font-mono font-bold ${row.highlight ? 'text-brand-primary' : 'text-brand-gray-900'}`}>
+                                                                    {row.rate.toFixed(2)}%
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Disclaimer for Simples */}
+                                                {rangePlan === 'Simples' && (
+                                                    <div className="mt-4 flex items-center justify-center gap-2 text-xs text-brand-gray-500 bg-white border border-dashed border-brand-gray-300 p-3 rounded-lg">
+                                                        <AlertCircle className="w-4 h-4 text-brand-primary" />
+                                                        <span>Taxa Antecipação: <strong>3.95% a.m.</strong></span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Brands - Centered and Spaced */}
+                                        <div className="border-t border-gray-100 pt-6 mt-auto">
+                                            <BrandIcons />
+                                        </div>
+                                    </div>
+
+                                    {/* FOOTER */}
+                                    <div className="bg-white px-12 py-8 flex items-center justify-between shrink-0 mt-auto">
+                                        <div className="flex items-center gap-5">
+                                            <div className="w-16 h-16 bg-brand-gray-50 rounded-full border border-gray-100 flex items-center justify-center text-brand-primary">
+                                                <User className="w-8 h-8" strokeWidth={1.5} />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-brand-gray-400 font-bold uppercase tracking-wider mb-1">Consultor Responsável</p>
+                                                <p className="text-xl font-bold text-brand-gray-900 leading-none">Cleiton Freitas</p>
+                                                <div className="flex flex-col gap-1 text-sm text-brand-gray-600 mt-2">
+                                                    <span className="flex items-center gap-2"><Phone size={14} className="text-brand-primary"/> (11) 98940-7547</span>
+                                                    <span className="flex items-center gap-2"><Mail size={14} className="text-brand-primary"/> cleiton.freitas@car10.com.br</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right opacity-80">
+                                            <img src="https://logodownload.org/wp-content/uploads/2019/08/webmotors-logo-2.png" alt="Webmotors" className="h-8 grayscale" crossOrigin="anonymous" />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Legal Strip */}
+                                    <div className="bg-black text-white/60 text-[10px] p-3 text-center font-medium tracking-wide">
+                                        CAR10 TECNOLOGIA E INFORMAÇÃO S/A  - CNPJ: 20.273.297/0001-76
+                                    </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* --- APPROVAL REQUEST MODAL --- */}
+                    {isApprovalModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in no-print">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                                <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white">
+                                    <h3 className="font-bold text-lg flex items-center gap-2">
+                                        <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                                        Solicitação de Exceção
+                                    </h3>
+                                    <button onClick={() => setIsApprovalModalOpen(false)} className="text-brand-gray-400 hover:text-white"><X size={20}/></button>
+                                </div>
+                                
+                                <div className="p-6 space-y-4">
+                                    <p className="text-sm text-brand-gray-600 bg-yellow-50 p-3 rounded-lg border border-yellow-100">
+                                        Você selecionou a faixa <strong>{selectedRange.label}</strong>, mas o cliente não atinge esse faturamento? Preencha o volume real para análise da mesa.
+                                    </p>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Volume Real (R$)</label>
+                                        <div className="relative">
+                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-400" />
+                                            <input 
+                                                type="text" 
+                                                className="w-full pl-10 border border-brand-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none font-bold text-brand-gray-800"
+                                                placeholder="0,00"
+                                                value={realTpv}
+                                                onChange={(e) => setRealTpv(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Justificativa</label>
+                                        <textarea 
+                                            className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none resize-none h-24"
+                                            placeholder="Por que devemos aprovar essa exceção?"
+                                            value={justification}
+                                            onChange={(e) => setJustification(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <button 
+                                        onClick={handleSendApproval}
+                                        className="w-full bg-brand-primary text-white py-3 rounded-xl font-bold mt-2 hover:bg-brand-dark transition-colors flex items-center justify-center gap-2 shadow-md"
+                                    >
+                                        <Send className="w-4 h-4" />
+                                        Enviar para Mesa
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default PricingPage;
