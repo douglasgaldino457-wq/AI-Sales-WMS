@@ -96,7 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         break;
       case UserRole.ADMIN:
         items = [
-          { icon: FileCheck, label: 'Painel de Cadastro', page: Page.CADASTRO },
+          { icon: FileCheck, label: 'Gestão de Cadastros', page: Page.CADASTRO },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
         ];
         break;

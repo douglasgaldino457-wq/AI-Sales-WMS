@@ -212,3 +212,75 @@ export const analyzeDocument = async (base64Data: string, docType: 'IDENTITY' | 
     throw error;
   }
 };
+
+// --- NEW: Pricing Evidence Analysis ---
+export const extractRatesFromEvidence = async (
+    filesBase64: string[], 
+    planType: 'Full' | 'Simples', 
+    simulationValue?: number
+) => {
+    const ai = getAI();
+    if (!ai) throw new Error("IA indisponível.");
+
+    const prompt = `
+        Você é um especialista em Pricing e Adquirência de Cartões.
+        Analise as imagens fornecidas (prints de taxas, relatórios de vendas ou simulações de maquininha).
+        
+        OBJETIVO:
+        Extrair as taxas que estão sendo aplicadas (Custo Efetivo Total para o lojista).
+        
+        CONTEXTO:
+        - O usuário selecionou o plano de destino: ${planType}.
+        - ${simulationValue ? `O usuário informou que a evidência é uma SIMULAÇÃO de uma venda no valor de R$ ${simulationValue}. Se a imagem mostrar o valor líquido ou o valor da parcela, calcule a taxa reversa: Taxa = 1 - (ValorLiquido / ${simulationValue}).` : "A evidência deve conter as taxas explícitas (Ex: MDR + Antecipação ou Taxa Final)."}
+        
+        REGRAS DE NEGÓCIO:
+        1. Se a evidência mostrar "MDR" (Taxa adm) e "Antecipação" (a.m.) separadas:
+           - Se o plano destino for 'Full': Calcule a taxa total para cada parcela (MDR + (Antecipação * Meses)).
+           - Se o plano destino for 'Simples': Retorne MDR e Antecipação separadamente se possível, ou agrupe.
+        2. Se a evidência mostrar "Juros Cliente" (Repasse): A taxa do lojista é apenas o MDR base (geralmente baixa). Identifique se é Juros Lojista ou Cliente.
+        3. Preencha os campos vazios com null se não encontrar.
+
+        RETORNO ESPERADO (JSON):
+        {
+            "debit": number,
+            "credit1x": number,
+            "credit2x": number,
+            "credit3x": number,
+            "credit4x": number,
+            "credit5x": number,
+            "credit6x": number,
+            "credit7x": number,
+            "credit8x": number,
+            "credit9x": number,
+            "credit10x": number,
+            "credit11x": number,
+            "credit12x": number,
+            "credit18x": number,
+            "notes": "Breve explicação de como chegou nos valores (ex: 'Detectado simulação Juros Lojista...')"
+        }
+        
+        Se encontrar intervalos (ex: 2x-6x), replique o valor para todas as parcelas do intervalo.
+    `;
+
+    try {
+        const parts: any[] = [];
+        filesBase64.forEach(b64 => {
+            parts.push({ inlineData: { mimeType: 'image/jpeg', data: b64 } });
+        });
+        parts.push({ text: prompt });
+
+        const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts },
+            config: { responseMimeType: "application/json" }
+        }));
+
+        if (response.text) {
+            return JSON.parse(response.text);
+        }
+        return null;
+    } catch (error) {
+        console.error("Pricing AI Error:", error);
+        throw error;
+    }
+};

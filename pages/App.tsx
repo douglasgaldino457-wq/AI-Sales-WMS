@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserRole, Page } from '../types';
+import { UserRole, Page } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import RoutesPage from './pages/RoutesPage';
