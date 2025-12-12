@@ -1,7 +1,9 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { 
     HelpCircle, BookOpen, Send, Bot, User, MessageSquare, 
-    ChevronRight, Sparkles, Youtube, FileText, BadgePercent, Map, Users, Settings, MapPinned
+    ChevronRight, Sparkles, Youtube, FileText, BadgePercent, Map, Users, Settings, MapPinned,
+    CheckCircle2
 } from 'lucide-react';
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { UserRole } from '../types';
@@ -38,6 +40,7 @@ const HelpPage: React.FC<HelpPageProps> = ({ role }) => {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [ticketSent, setTicketSent] = useState(false);
 
     // --- Role-Based Tutorials Configuration ---
     const getTutorials = (): Tutorial[] => {
@@ -226,6 +229,15 @@ const HelpPage: React.FC<HelpPageProps> = ({ role }) => {
         handleSendMessage(tutorial.query);
     };
 
+    const handleOpenTicket = () => {
+        setTicketSent(true);
+        // Simulate ticket creation
+        setTimeout(() => {
+            alert("Chamado #9023 aberto com sucesso! A equipe de TI entrará em contato.");
+            setTicketSent(false);
+        }, 1500);
+    };
+
     return (
         <div className="h-[calc(100vh-6rem)] flex flex-col lg:flex-row gap-6">
             
@@ -265,8 +277,13 @@ const HelpPage: React.FC<HelpPageProps> = ({ role }) => {
                     <div className="relative z-10">
                         <h3 className="font-bold text-lg mb-2">Precisa de suporte humano?</h3>
                         <p className="text-xs text-gray-400 mb-4">Se o assistente virtual não resolver, abra um chamado para TI.</p>
-                        <button className="bg-white text-brand-gray-900 px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-100 transition-colors">
-                            Abrir Chamado
+                        <button 
+                            onClick={handleOpenTicket}
+                            disabled={ticketSent}
+                            className="bg-white text-brand-gray-900 px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-100 transition-colors flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {ticketSent ? 'Abrindo...' : 'Abrir Chamado'}
+                            {ticketSent && <CheckCircle2 className="w-3 h-3 text-green-500"/>}
                         </button>
                     </div>
                     <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary rounded-full blur-3xl opacity-20 transform translate-x-10 -translate-y-10"></div>

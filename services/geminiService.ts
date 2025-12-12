@@ -149,7 +149,7 @@ export const getGeographicInsights = async (clients: ClientBaseRow[]): Promise<s
   }
 };
 
-// --- NEW: Document Analysis for Cadastro ---
+// --- UPDATED: Document Analysis with Fraud Detection ---
 export const analyzeDocument = async (base64Data: string, docType: 'IDENTITY' | 'ADDRESS' | 'BANK_PROOF') => {
   const ai = getAI();
   if (!ai) throw new Error("IA indisponível.");
@@ -158,40 +158,62 @@ export const analyzeDocument = async (base64Data: string, docType: 'IDENTITY' | 
   
   if (docType === 'IDENTITY') {
     prompt = `
+      Atue como um analista de prevenção a fraudes (KYC).
       Analise este documento de identificação (RG ou CNH).
-      Extraia os seguintes dados em formato JSON:
+      
+      1. Extraia os dados:
+         - Nome Completo
+         - Número do CPF ou RG
+         - Data de Validade (se existir)
+      
+      2. Validação de Segurança:
+         - O documento parece estar vencido? (Considere a data de hoje ${new Date().toLocaleDateString()})
+         - Existem sinais visuais de montagem, fontes diferentes ou adulteração?
+      
+      Retorne APENAS o JSON no seguinte formato:
       {
         "name": "Nome Completo",
-        "docNumber": "Número do CPF ou RG"
+        "docNumber": "Número do Documento",
+        "expiryDate": "dd/mm/aaaa",
+        "isExpired": boolean,
+        "isSuspicious": boolean,
+        "suspicionReason": "Texto curto explicando se houver suspeita, ou null"
       }
-      Se não conseguir ler, retorne campos vazios.
     `;
   } else if (docType === 'ADDRESS') {
     prompt = `
+      Atue como um analista de Backoffice.
       Analise este comprovante de endereço.
-      Extraia o endereço completo em formato JSON:
+      
+      1. Extraia o endereço completo.
+      2. Verifique se a data de emissão é recente (últimos 90 dias).
+      
+      Retorne APENAS o JSON:
       {
-        "fullAddress": "Rua, Número, Bairro, Cidade - UF, CEP"
+        "fullAddress": "Rua, Número, Bairro, Cidade - UF, CEP",
+        "issueDate": "dd/mm/aaaa",
+        "isRecent": boolean
       }
-      Se não conseguir ler, retorne campos vazios.
     `;
   } else if (docType === 'BANK_PROOF') {
     prompt = `
+      Atue como um analista bancário.
       Analise este comprovante bancário, cartão ou cheque.
-      Extraia os dados bancários em formato JSON:
+      Extraia os dados com precisão.
+      
+      Retorne APENAS o JSON:
       {
         "bankName": "Nome do Banco",
         "agency": "Agência (sem dígito)",
         "account": "Conta (com dígito)",
         "holder": "Nome do Titular"
       }
-      Se não conseguir ler, retorne campos vazios.
     `;
   }
 
   try {
     const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash', // Multimodal model
+      model: 'gemini-2.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: base64Data } },

@@ -22,7 +22,16 @@ import {
   Percent,
   Truck,
   Activity,
-  FileCheck
+  FileCheck,
+  Inbox,
+  Key,
+  CheckCircle2,
+  ClipboardList,
+  Package,
+  ShieldCheck,
+  FileText,
+  LifeBuoy,
+  UserCog
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -36,7 +45,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogout }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // 1. Main Sidebar Menu Items (Drawer/Desktop) - REORDERED
+  // 1. Main Sidebar Menu Items (Drawer/Desktop)
   const getMenuItems = () => {
     let items: {icon: any, label: string, page: Page}[] = [];
 
@@ -73,14 +82,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
         ];
         break;
-      case UserRole.ESTRATEGIA:
-        items = [
-          { icon: LayoutDashboard, label: 'Dashboard Geral', page: Page.DASHBOARD_GERAL },
-          { icon: Target, label: 'Metas & KPI', page: Page.METAS },
-          { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
-          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
-        ];
-        break;
       case UserRole.PRICING_MANAGER:
         items = [
           { icon: LayoutDashboard, label: 'Dashboard Pricing', page: Page.PRICING_DASHBOARD },
@@ -90,14 +91,18 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         break;
       case UserRole.LOGISTICA:
         items = [
-          { icon: LayoutDashboard, label: 'Painel Logístico', page: Page.LOGISTICA_DASHBOARD },
-          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+          { icon: LayoutDashboard, label: 'Dashboard Logística', page: Page.LOGISTICA_DASHBOARD },
+          { icon: Key, label: 'Ativações (Gsurf)', page: Page.LOGISTICA_ATIVACOES },
+          { icon: LifeBuoy, label: 'Suporte & IA', page: Page.LOGISTICA_SUPORTE },
         ];
         break;
       case UserRole.ADMIN:
         items = [
-          { icon: FileCheck, label: 'Gestão de Cadastros', page: Page.CADASTRO },
+          { icon: LayoutDashboard, label: 'Dashboard Gestão', page: Page.DASHBOARD },
+          { icon: FileCheck, label: 'Cadastros & Demandas', page: Page.ADMIN_DEMANDS },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
+          { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
         ];
         break;
     }
@@ -108,7 +113,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
   };
 
   // 2. Bottom Navigation Items (Mobile Quick Access)
-  // Ensure Dashboard is CENTRAL (Odd number of items preferred: 3 or 5)
   const getBottomNavItems = () => {
     switch (role) {
       case UserRole.FIELD_SALES:
@@ -135,12 +139,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
           { icon: Activity, label: 'Leads', page: Page.PAINEL_LEADS },
           { icon: BadgePercent, label: 'Pricing', page: Page.PRICING },
         ];
-      case UserRole.ESTRATEGIA:
-        return [
-          { icon: Target, label: 'Metas', page: Page.METAS },
-          { icon: Activity, label: 'Leads', page: Page.PAINEL_LEADS },
-          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true }, // Central (3 items)
-        ];
       case UserRole.PRICING_MANAGER:
         return [
           { icon: TrendingUp, label: 'Mesa', page: Page.MESA_NEGOCIACAO },
@@ -149,13 +147,15 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         ];
       case UserRole.LOGISTICA:
         return [
-          { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
+          { icon: Key, label: 'Ativações', page: Page.LOGISTICA_ATIVACOES },
           { icon: LayoutDashboard, label: 'Dash', page: Page.LOGISTICA_DASHBOARD, isCentral: true },
+          { icon: LifeBuoy, label: 'Suporte', page: Page.LOGISTICA_SUPORTE },
         ];
       case UserRole.ADMIN:
         return [
-          { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
-          { icon: FileCheck, label: 'Cadastro', page: Page.CADASTRO, isCentral: true },
+          { icon: FileCheck, label: 'Demandas', page: Page.ADMIN_DEMANDS },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, // Central
+          { icon: Users, label: 'Clientes', page: Page.BASE_CLIENTES },
         ];
       default:
         return [];
@@ -228,7 +228,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
         
         {/* Footer Area */}
         <div className="p-4 border-t border-white/5 bg-black/20 text-center z-10">
-            <p className="text-[10px] text-gray-600 font-mono">Build v1.4.0 • 2025</p>
+            <p className="text-[10px] text-gray-600 font-mono">Build v1.5.0 • 2025</p>
         </div>
     </div>
   );
@@ -242,7 +242,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
 
       {/* --- DESKTOP TOP RIGHT LOGOUT (Positioned Absolute - Non-sticky) --- */}
       <div className="hidden md:flex absolute top-6 right-8 z-[60] items-center gap-3 animate-fade-in">
-         {/* Badge removed as requested */}
          <button 
             onClick={onLogout}
             className="bg-white text-gray-400 hover:text-brand-primary hover:bg-red-50 p-2.5 rounded-2xl shadow-sm border border-white transition-all hover:scale-110 group relative"
@@ -280,14 +279,10 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activePage, onNavigate, onLogou
       {/* --- MOBILE BOTTOM NAV (Fixed Full Width Bar) --- */}
       {bottomItems.length > 0 && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
-            {/* 
-                Use solid background to prevent transparency issues.
-            */}
             <div className="bg-brand-gray-900 border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] flex justify-between items-end h-[4.5rem] px-4 pb-2 relative">
                 {bottomItems.map((item, idx) => {
                     const isActive = activePage === item.page;
                     const isCentral = (item as any).isCentral;
-                    // Adjusted width logic for dynamic item count
                     const widthClass = bottomItems.length >= 5 ? 'w-1/5' : bottomItems.length === 3 ? 'w-1/3' : bottomItems.length === 2 ? 'w-1/2' : 'w-1/4';
 
                     // CENTRAL BUTTON RENDER (Floating effect above bar)

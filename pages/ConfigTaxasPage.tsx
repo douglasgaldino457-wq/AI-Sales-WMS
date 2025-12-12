@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Settings, Save, Calculator, RefreshCw, TrendingUp, AlertCircle, DollarSign, Layers, PieChart, ArrowRight } from 'lucide-react';
+import { Settings, Save, Calculator, RefreshCw, TrendingUp, AlertCircle, DollarSign, Layers, PieChart, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { CurrencyInput } from '../components/CurrencyInput'; // Added Import
 
 interface CostStructure {
     debitCost: number;
@@ -55,6 +56,7 @@ const safeFloat = (value: string) => {
 
 const ConfigTaxasPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'FULL' | 'SIMPLES'>('FULL');
+    const [successMsg, setSuccessMsg] = useState<string|null>(null);
 
     // --- CUSTOS GERAIS ---
     const [costs, setCosts] = useState<CostStructure>({
@@ -113,6 +115,12 @@ const ConfigTaxasPage: React.FC = () => {
         competitor: { takeRateVal: 0, takeRatePct: 0, mcf2Val: 0, mcf2Pct: 0, spread: 0 },
         pagmotors: { takeRateVal: 0, takeRatePct: 0, mcf2Val: 0, mcf2Pct: 0, spread: 0 }
     });
+
+    const handleSaveCosts = () => {
+        // Here we would typically save to backend
+        setSuccessMsg("Custos de Interchange atualizados!");
+        setTimeout(() => setSuccessMsg(null), 3000);
+    };
 
     // --- CÁLCULO MODELO FULL (Linha a Linha) ---
     useEffect(() => {
@@ -291,7 +299,17 @@ const ConfigTaxasPage: React.FC = () => {
     const totalMix = fullSim.rows.reduce((acc, row) => acc + row.mix, 0);
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6 pb-20">
+        <div className="max-w-7xl mx-auto space-y-6 pb-20 relative">
+            {/* Success Toast */}
+            {successMsg && (
+                <div className="fixed top-4 right-4 z-50 animate-fade-in-down">
+                    <div className="bg-brand-gray-900 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3">
+                        <CheckCircle2 className="text-green-400 w-5 h-5" />
+                        <span className="font-medium">{successMsg}</span>
+                    </div>
+                </div>
+            )}
+
             <header className="flex flex-col md:flex-row justify-between items-end gap-4 no-print">
                 <div>
                     <h1 className="text-2xl font-bold text-brand-gray-900 flex items-center gap-2">
@@ -328,7 +346,11 @@ const ConfigTaxasPage: React.FC = () => {
                                 <TrendingUp className="w-4 h-4 text-brand-primary" />
                                 Custos Interchange
                             </h3>
-                            <button className="text-brand-primary hover:bg-brand-primary/10 p-1.5 rounded transition-colors" title="Salvar Custos">
+                            <button 
+                                onClick={handleSaveCosts}
+                                className="text-brand-primary hover:bg-brand-primary/10 p-1.5 rounded transition-colors active:scale-90" 
+                                title="Salvar Custos"
+                            >
                                 <Save className="w-4 h-4" />
                             </button>
                         </div>
@@ -401,12 +423,10 @@ const ConfigTaxasPage: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-bold text-brand-gray-500 uppercase">TPV Simulado:</span>
                                         <div className="relative w-32">
-                                            <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-brand-gray-400" />
-                                            <input 
-                                                type="number" 
+                                            <CurrencyInput
                                                 value={fullSim.tpv} 
-                                                onChange={e => setFullSim({...fullSim, tpv: safeFloat(e.target.value)})} 
-                                                className="w-full pl-6 border border-brand-gray-300 rounded py-1 text-xs font-bold focus:border-brand-primary outline-none"
+                                                onChange={val => setFullSim({...fullSim, tpv: val})} 
+                                                className="w-full border border-brand-gray-300 rounded py-1 text-xs font-bold focus:border-brand-primary outline-none"
                                             />
                                         </div>
                                     </div>

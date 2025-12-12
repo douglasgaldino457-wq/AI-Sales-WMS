@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { appStore } from '../services/store';
 import { ClientBaseRow, UserRole } from '../types';
 import { getGeographicInsights } from '../services/geminiService';
-import { Map, Filter, Search, Sparkles, MapPin, AlertTriangle, User } from 'lucide-react';
+import { Map, Filter, Search, Sparkles, MapPin, AlertTriangle, User, ZoomIn, ZoomOut } from 'lucide-react';
 
 // Colors for consultants to visualize territories
 const CONSULTANT_COLORS = [
@@ -30,6 +30,9 @@ const MapaGestaoPage: React.FC = () => {
   
   // Map Tooltip State
   const [hoveredClient, setHoveredClient] = useState<ClientBaseRow | null>(null);
+  
+  // Zoom State
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   useEffect(() => {
     const data = appStore.getClients();
@@ -69,6 +72,13 @@ const MapaGestaoPage: React.FC = () => {
   const getConsultantColor = (name: string) => {
     const index = consultantList.indexOf(name);
     return CONSULTANT_COLORS[index % CONSULTANT_COLORS.length] || '#696977';
+  };
+
+  const handleZoom = (delta: number) => {
+      setZoomLevel(prev => {
+          const newZoom = prev + delta;
+          return Math.min(Math.max(newZoom, 1), 4); // Clamp between 1x and 4x
+      });
   };
 
   return (
@@ -181,64 +191,70 @@ const MapaGestaoPage: React.FC = () => {
 
       {/* Interactive Map Visualizer */}
       <div className="flex-1 bg-brand-gray-200 rounded-2xl border-4 border-white shadow-xl relative overflow-hidden group">
-         {/* Map Background (Simulated Dark Mode Vector Map) */}
-         <div className="absolute inset-0 bg-[#242f3e] opacity-90">
-            {/* Simulated Roads/Grid */}
-            <svg className="w-full h-full" width="100%" height="100%">
-               <defs>
-                  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                     <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#3d4959" strokeWidth="1"/>
-                  </pattern>
-               </defs>
-               <rect width="100%" height="100%" fill="url(#grid)" />
-               {/* Decorative "Major Roads" */}
-               <path d="M 0 50 Q 200 300 400 200 T 800 350" fill="none" stroke="#4a5b6e" strokeWidth="3" />
-               <path d="M 100 0 Q 150 400 300 600" fill="none" stroke="#4a5b6e" strokeWidth="3" />
-            </svg>
+         {/* ZOOMABLE CONTAINER */}
+         <div 
+            className="w-full h-full relative transition-transform duration-300 ease-out"
+            style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }}
+         >
+             {/* Map Background (Simulated Dark Mode Vector Map) */}
+             <div className="absolute inset-0 bg-[#242f3e] opacity-90">
+                {/* Simulated Roads/Grid */}
+                <svg className="w-full h-full" width="100%" height="100%">
+                   <defs>
+                      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                         <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#3d4959" strokeWidth="1"/>
+                      </pattern>
+                   </defs>
+                   <rect width="100%" height="100%" fill="url(#grid)" />
+                   {/* Decorative "Major Roads" */}
+                   <path d="M 0 50 Q 200 300 400 200 T 800 350" fill="none" stroke="#4a5b6e" strokeWidth="3" />
+                   <path d="M 100 0 Q 150 400 300 600" fill="none" stroke="#4a5b6e" strokeWidth="3" />
+                </svg>
+             </div>
+             
+             {/* Markers Layer */}
+             <div className="absolute inset-0 p-10">
+                {filteredClients.map((client) => {
+                   // Normalize Coordinates to % for CSS positioning within the container
+                   // Base: -23.5505 (Lat), -46.6333 (Lng). Spread approx 0.15 deg.
+                   const latBase = -23.5505;
+                   const lngBase = -46.6333;
+                   const range = 0.20; // Zoom level simulation
+
+                   const yPercent = 50 + ((client.latitude! - latBase) / range) * 100;
+                   const xPercent = 50 + ((client.longitude! - lngBase) / range) * 100;
+
+                   // Clamp to view
+                   if (yPercent < 0 || yPercent > 100 || xPercent < 0 || xPercent > 100) return null;
+
+                   const consultantName = selectedType === 'FIELD' ? client.fieldSales : client.insideSales;
+                   const color = getConsultantColor(consultantName);
+
+                   return (
+                      <div 
+                        key={client.id}
+                        className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform hover:scale-150 z-10"
+                        style={{ top: `${yPercent}%`, left: `${xPercent}%` }}
+                        onMouseEnter={() => setHoveredClient(client)}
+                        onMouseLeave={() => setHoveredClient(null)}
+                      >
+                         <div className="relative group">
+                            <div 
+                               className="w-3 h-3 rounded-full border border-white shadow-sm"
+                               style={{ backgroundColor: color }}
+                            ></div>
+                            {/* Pulse effect for outliers (Simulated) */}
+                            {client.regiaoAgrupada === 'Zona Norte' && consultantName.includes('Samuel') && (
+                               <span className="absolute -inset-1 rounded-full animate-ping opacity-75 bg-red-500"></span>
+                            )}
+                         </div>
+                      </div>
+                   );
+                })}
+             </div>
          </div>
-         
-         {/* Markers Layer */}
-         <div className="absolute inset-0 p-10">
-            {filteredClients.map((client) => {
-               // Normalize Coordinates to % for CSS positioning within the container
-               // Base: -23.5505 (Lat), -46.6333 (Lng). Spread approx 0.15 deg.
-               const latBase = -23.5505;
-               const lngBase = -46.6333;
-               const range = 0.20; // Zoom level simulation
 
-               const yPercent = 50 + ((client.latitude! - latBase) / range) * 100;
-               const xPercent = 50 + ((client.longitude! - lngBase) / range) * 100;
-
-               // Clamp to view
-               if (yPercent < 0 || yPercent > 100 || xPercent < 0 || xPercent > 100) return null;
-
-               const consultantName = selectedType === 'FIELD' ? client.fieldSales : client.insideSales;
-               const color = getConsultantColor(consultantName);
-
-               return (
-                  <div 
-                    key={client.id}
-                    className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform hover:scale-150 z-10"
-                    style={{ top: `${yPercent}%`, left: `${xPercent}%` }}
-                    onMouseEnter={() => setHoveredClient(client)}
-                    onMouseLeave={() => setHoveredClient(null)}
-                  >
-                     <div className="relative group">
-                        <div 
-                           className="w-3 h-3 rounded-full border border-white shadow-sm"
-                           style={{ backgroundColor: color }}
-                        ></div>
-                        {/* Pulse effect for outliers (Simulated) */}
-                        {client.regiaoAgrupada === 'Zona Norte' && consultantName.includes('Samuel') && (
-                           <span className="absolute -inset-1 rounded-full animate-ping opacity-75 bg-red-500"></span>
-                        )}
-                     </div>
-                  </div>
-               );
-            })}
-         </div>
-
-         {/* Hover Tooltip */}
+         {/* Hover Tooltip - Needs to be OUTSIDE the Zoom Container to avoid scaling issues */}
          {hoveredClient && (
             <div className="absolute top-4 right-4 bg-white p-4 rounded-xl shadow-2xl z-20 w-64 animate-fade-in border border-brand-gray-100">
                <h4 className="font-bold text-brand-gray-900 mb-1">{hoveredClient.nomeEc}</h4>
@@ -263,9 +279,24 @@ const MapaGestaoPage: React.FC = () => {
          )}
          
          {/* Map Controls UI */}
-         <div className="absolute bottom-6 right-6 flex flex-col gap-2">
-            <button className="bg-white p-2 rounded-lg shadow text-brand-gray-700 hover:bg-brand-gray-50 font-bold text-xl">+</button>
-            <button className="bg-white p-2 rounded-lg shadow text-brand-gray-700 hover:bg-brand-gray-50 font-bold text-xl">-</button>
+         <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-20">
+            <button 
+                onClick={() => handleZoom(0.5)} 
+                className="bg-white p-2 rounded-lg shadow text-brand-gray-700 hover:bg-brand-gray-50 hover:text-brand-primary font-bold transition-colors"
+                title="Aumentar Zoom"
+            >
+                <ZoomIn className="w-5 h-5" />
+            </button>
+            <button 
+                onClick={() => handleZoom(-0.5)} 
+                className="bg-white p-2 rounded-lg shadow text-brand-gray-700 hover:bg-brand-gray-50 hover:text-brand-primary font-bold transition-colors"
+                title="Diminuir Zoom"
+            >
+                <ZoomOut className="w-5 h-5" />
+            </button>
+            <div className="bg-black/50 text-white text-[10px] py-1 px-2 rounded-lg text-center mt-1 backdrop-blur-sm">
+                {zoomLevel}x
+            </div>
          </div>
       </div>
     </div>

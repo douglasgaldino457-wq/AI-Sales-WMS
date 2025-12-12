@@ -107,7 +107,7 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
                 requesterRole: currentUser.includes('Cleiton') || currentUser.includes('Samuel') ? 'Field Sales' : 'Inside Sales', // Simple mock logic
                 dateSubmitted: new Date().toISOString(),
                 status: 'PENDING_ANALYSIS',
-                docs: { contract: false, idCard: false, addressProof: false, bankProof: false }, // Reset for Admin
+                docs: { contract: false, idCard: false, addressProof: false }, // Reset for Admin. Removed bankProof: false
                 pricingDemandId: demand.id,
                 notes: `Origem: Negociação Aprovada (ID: ${demand.id}). Taxas Especiais.`,
                 
@@ -118,7 +118,7 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
                 address: 'Endereço a preencher',
                 openingHours: { weekdays: { start: '08:00', end: '18:00' } },
                 planType: 'Full',
-                bankAccount: {
+                bankAccounts: [{
                     bankCode: '',
                     agency: '',
                     accountNumber: '',
@@ -126,12 +126,12 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
                     accountType: 'Corrente',
                     holderType: 'PJ',
                     isThirdParty: false
-                }
+                }] // Changed to bankAccounts array
             };
             appStore.addRegistrationRequest(regReq);
 
             refreshData();
-            alert("Sucesso! Os dados foram enviados para o perfil Administrativo.");
+            alert("Sucesso! Os dados foram enviados para o perfil Gestão de Cadastros.");
         }
     };
 

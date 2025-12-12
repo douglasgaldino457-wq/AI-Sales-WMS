@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { UserRole, Appointment, SystemUser } from '../types';
+import { UserRole, Appointment, SystemUser, Page } from '../types';
 import { 
   PieChart, Pie, Cell, Legend, Tooltip, TooltipProps, ResponsiveContainer
 } from 'recharts';
@@ -16,6 +16,7 @@ import {
 
 interface DashboardProps {
   role: UserRole;
+  onNavigate?: (page: Page) => void;
 }
 
 const COLORS = ['#F3123C', '#2E2D37', '#FF3A64', '#696977', '#AEAEBA'];
@@ -35,10 +36,11 @@ interface ConsultantStats {
   type: UserRole;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ role }) => {
+const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
   const [insight, setInsight] = useState<string>('');
   const [loadingAI, setLoadingAI] = useState(false);
   const [isInsightModalOpen, setIsInsightModalOpen] = useState(false);
+  const [planExecuted, setPlanExecuted] = useState(false);
   
   // Real-time data state
   const [appointments, setAppointments] = useState(appStore.getAppointments());
@@ -50,9 +52,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
   // Filter States for Inside Sales (Legacy Logic preserved)
   const [cardFilter, setCardFilter] = useState<'ALL' | 'COMPLETED' | 'SCHEDULED' | 'CONVERTED'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
-  const [consultantFilter, setConsultantFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [typeFilter, setTypeFilter] = useState('ALL');
   
   // Field Sales Specific State
   const [detailedMetricView, setDetailedMetricView] = useState<'ALL' | 'COMPLETED' | 'SCHEDULED' | 'CONVERTED' | null>('ALL');
@@ -147,16 +146,13 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
     if (appointments.length > 0) fetchInsight();
   }, [role, appointments, selectedMonth, teamView]);
 
-  const handleSort = (key: keyof Appointment | 'clientName') => {
-      let direction: 'asc' | 'desc' = 'asc';
-      if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
-      setSortConfig({ key, direction });
-  };
-
-  const getTypeLabel = (appt: Appointment) => {
-      if (appt.isWallet) return { label: 'Gestão', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' };
-      if (appt.leadOrigins.includes('Prospecção')) return { label: 'Prospecção', color: 'bg-blue-100 text-blue-800 border-blue-200' };
-      return { label: 'Novo', color: 'bg-brand-light/10 text-brand-primary border-brand-light/20' };
+  const handleExecutePlan = () => {
+      setPlanExecuted(true);
+      setTimeout(() => {
+          alert("Plano tático adicionado à sua agenda e lembretes!");
+          setIsInsightModalOpen(false);
+          setPlanExecuted(false);
+      }, 1500);
   };
 
   // --- VISUAL COMPONENTS ---
@@ -233,10 +229,12 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
               
               <div className="p-6 bg-white border-t border-gray-100 flex justify-end">
                   <button 
-                     onClick={() => setIsInsightModalOpen(false)}
-                     className="px-8 py-3 bg-brand-gray-900 text-white rounded-xl font-bold hover:scale-105 transition-transform shadow-lg"
+                     onClick={handleExecutePlan}
+                     disabled={loadingAI || planExecuted}
+                     className="px-8 py-3 bg-brand-gray-900 text-white rounded-xl font-bold hover:scale-105 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
                   >
-                     Executar Plano
+                     {planExecuted ? <CheckCircle2 className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                     {planExecuted ? 'Agendado!' : 'Executar Plano'}
                   </button>
               </div>
            </div>
@@ -273,11 +271,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
   if (role === UserRole.FIELD_SALES) {
       const todayStr = new Date().toISOString().split('T')[0];
       
-      // Calculate Stats based on Today's Agenda (as implies by "Total Agenda")
-      // OR based on filtering. 
-      // The original design had "Total Agenda" = 5, "Pendentes" = 3.
-      // Usually Field Sales cares about "Today". 
-      // Let's filter appointments for Today to generate the KPIs.
       const todaysAppointments = appointments.filter(appt => appt.date === todayStr);
       
       const total = todaysAppointments.length;
@@ -334,7 +327,10 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
                         </div>
                     ) : (
                         displayedAppointments.map(appt => {
-                            const typeInfo = getTypeLabel(appt);
+                            let typeInfo = { label: 'Novo', color: 'bg-brand-light/10 text-brand-primary border-brand-light/20' };
+                            if (appt.isWallet) typeInfo = { label: 'Gestão', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' };
+                            else if (appt.leadOrigins.includes('Prospecção')) typeInfo = { label: 'Prospecção', color: 'bg-blue-100 text-blue-800 border-blue-200' };
+
                             return (
                                 <div key={appt.id} onClick={() => setSelectedAppointment(appt)} className="p-5 hover:bg-gray-50 transition-colors cursor-pointer group flex items-center justify-between">
                                     <div className="flex items-center gap-4">
@@ -382,6 +378,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
       );
   }
 
+  // ... (Keep existing code for Inside Sales and Gestor views exactly as is, just ensured Imports are correct)
   // --- INSIDE SALES VIEW ---
   if (role === UserRole.INSIDE_SALES) {
       // Logic for Inside Sales Dashboard
@@ -389,7 +386,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
       const completedVisits = appointments.filter(a => a.status === 'Completed').length;
       const pendingVisits = appointments.filter(a => a.status === 'Scheduled').length;
       
-      // Filter logic preserved but simplified for display
       const filteredList = appointments.filter(a => {
          if (cardFilter === 'COMPLETED' && a.status !== 'Completed') return false;
          if (cardFilter === 'SCHEDULED' && a.status !== 'Scheduled') return false;
@@ -527,7 +523,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
             </div>
 
             <div className="tech-card rounded-2xl p-6 flex flex-col justify-center items-center text-center">
-                 {/* Added explicit styles for width/height/position/min-width to avoid chart resize errors */}
                  <div style={{ width: 192, height: 192, position: 'relative', minWidth: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>

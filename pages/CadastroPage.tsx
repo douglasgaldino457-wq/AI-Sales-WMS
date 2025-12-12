@@ -4,10 +4,15 @@ import {
     FileCheck, Search, Filter, AlertCircle, CheckCircle2, X, 
     FileText, User, Calendar, ExternalLink, ArrowRight, Loader2,
     Building2, MapPin, Phone, Mail, Clock, DollarSign, CreditCard,
-    Camera, Image as ImageIcon, Briefcase, Plus, Trash2, Smartphone, Save, UploadCloud, ShieldCheck
+    Camera, Image as ImageIcon, Briefcase, Plus, Trash2, Smartphone, Save, UploadCloud, ShieldCheck,
+    PieChart as PieChartIcon, BarChart3, ChevronDown, Eye, Send, AlertTriangle, BadgePercent, Key, Copy, LayoutDashboard, Inbox, History, FileSearch, Car, FileInput,
+    Store
 } from 'lucide-react';
+import { 
+    PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, AreaChart, Area
+} from 'recharts';
 import { appStore } from '../services/store';
-import { RegistrationRequest, UserRole, RegistrationStatus, BankAccount, ManualDemand, PosDevice } from '../types';
+import { RegistrationRequest, UserRole, RegistrationStatus, BankAccount, ManualDemand, PosDevice, PosRequestItem } from '../types';
 import { AddressAutocomplete } from '../components/AddressAutocomplete';
 import { PagmotorsLogo } from '../components/Logo';
 import { analyzeDocument } from '../services/geminiService';
@@ -15,16 +20,6 @@ import { analyzeDocument } from '../services/geminiService';
 interface CadastroPageProps {
     role?: UserRole | null;
 }
-
-const ESTABLISHMENT_TYPES = [
-    'Funilaria e Pintura', 
-    'Centro Automotivo', 
-    'Mecânica/Elétrica', 
-    'Estética/Lavagem', 
-    'Som e Acessórios', 
-    'Revenda', 
-    'Revenda Motos'
-];
 
 const BANKS = [
     '001 - Banco do Brasil',
@@ -38,967 +33,987 @@ const BANKS = [
     '336 - C6 Bank'
 ];
 
-const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
-    const isAdmin = role === UserRole.ADMIN;
+const POS_MODELS = ['P2 Smart', 'MP35', 'X990', 'L300'];
+
+// --- COMPONENT: FICHA CADASTRAL VIEW (READ ONLY OR PREVIEW) ---
+export const FichaCadastralView: React.FC<{ data: Partial<RegistrationRequest>, onViewDoc: (docType: string) => void }> = ({ data, onViewDoc }) => {
+    return (
+        <div className="bg-white border border-brand-gray-200 rounded-xl overflow-hidden shadow-sm">
+            {/* Header Ficha */}
+            <div className="bg-brand-gray-100 p-4 border-b border-brand-gray-200 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5 text-brand-gray-600" />
+                    <h3 className="font-bold text-brand-gray-800 uppercase tracking-wide text-sm">Ficha Cadastral</h3>
+                </div>
+                <div className="text-xs text-brand-gray-500 font-mono">
+                    ID: {data.id || 'NOVO'}
+                </div>
+            </div>
+
+            <div className="p-6 space-y-8">
+                {/* 1. DADOS DO ESTABELECIMENTO */}
+                <div>
+                    <h4 className="text-xs font-bold text-brand-primary uppercase border-b border-brand-gray-100 pb-2 mb-4 flex items-center gap-2">
+                        <Building2 className="w-4 h-4" /> Dados do Estabelecimento
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="col-span-2 md:col-span-1">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">CNPJ</span>
+                            <span className="font-mono text-brand-gray-900 bg-brand-gray-50 px-2 py-1 rounded block mt-1">{data.documentNumber}</span>
+                        </div>
+                        <div className="col-span-2 md:col-span-3">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Razão Social</span>
+                            <span className="text-brand-gray-900 block mt-1">{data.razaoSocial || data.clientName}</span>
+                        </div>
+                        
+                        {/* New Fields in View */}
+                        <div className="col-span-2 md:col-span-1">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Inscrição Estadual</span>
+                            <span className="text-brand-gray-900 block mt-1 font-mono">{data.inscricaoEstadual || 'Isento'}</span>
+                        </div>
+                        <div className="col-span-2 md:col-span-3">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">CNAE Principal</span>
+                            <span className="text-brand-gray-900 block mt-1">{data.cnae || '-'}</span>
+                        </div>
+
+                        <div className="col-span-2">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Nome Fantasia</span>
+                            <span className="text-brand-gray-900 font-bold block mt-1">{data.clientName}</span>
+                        </div>
+                        <div className="col-span-2">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Volume de Veículos/Mês</span>
+                            <span className="text-brand-gray-900 block mt-1 flex items-center gap-1"><Car size={14}/> {data.monthlyVehicleVolume || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. LOCALIZAÇÃO E CONTATO */}
+                <div>
+                    <h4 className="text-xs font-bold text-brand-primary uppercase border-b border-brand-gray-100 pb-2 mb-4 flex items-center gap-2">
+                        <MapPin className="w-4 h-4" /> Localização e Contato
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="col-span-4">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Endereço Completo</span>
+                            <span className="text-brand-gray-900 block mt-1">{data.address}</span>
+                        </div>
+                        <div className="col-span-2">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Responsável Legal</span>
+                            <span className="text-brand-gray-900 font-bold block mt-1">{data.responsibleName}</span>
+                        </div>
+                        <div className="col-span-2">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Horário de Funcionamento</span>
+                            <div className="text-brand-gray-900 mt-1 text-xs">
+                                <div>Seg-Sex: {data.openingHours?.weekdays?.start} - {data.openingHours?.weekdays?.end}</div>
+                                {data.openingHours?.saturday?.start && <div>Sáb: {data.openingHours?.saturday?.start} - {data.openingHours?.saturday?.end}</div>}
+                            </div>
+                        </div>
+                        <div className="col-span-2">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Telefones</span>
+                            <div className="flex flex-col mt-1">
+                                {data.contactPhones?.map((phone, idx) => <span key={idx} className="text-brand-gray-900">{phone}</span>)}
+                            </div>
+                        </div>
+                        <div className="col-span-2">
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">E-mails</span>
+                            <div className="flex flex-col mt-1">
+                                <span className="text-brand-gray-900 truncate" title={data.email}>{data.email}</span>
+                                {data.contactEmails?.map((em, idx) => <span key={idx} className="text-brand-gray-900 truncate" title={em}>{em}</span>)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. DADOS BANCÁRIOS */}
+                <div>
+                    <h4 className="text-xs font-bold text-brand-primary uppercase border-b border-brand-gray-100 pb-2 mb-4 flex items-center gap-2">
+                        <CreditCard className="w-4 h-4" /> Domicílios Bancários ({data.bankAccounts?.length || 0})
+                    </h4>
+                    <div className="space-y-3">
+                        {data.bankAccounts?.map((acc, idx) => (
+                            <div key={idx} className="bg-brand-gray-50 p-4 rounded-lg border border-brand-gray-200">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-bold text-brand-primary uppercase">Conta {idx + 1}</span>
+                                    {acc.proofFile ? (
+                                        <button onClick={() => onViewDoc('Comprovante Bancário')} className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded flex items-center gap-1 hover:bg-green-200 transition-colors">
+                                            <Eye size={10}/> Ver Comprovante
+                                        </button>
+                                    ) : (
+                                        <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Sem anexo</span>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                        <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Banco</span>
+                                        <span className="text-brand-gray-900 font-bold block mt-1">{acc.bankCode}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Ag/Conta</span>
+                                        <span className="text-brand-gray-900 block mt-1">{acc.agency} / {acc.accountNumber}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Tipo</span>
+                                        <span className="text-brand-gray-900 block mt-1">{acc.accountType} ({acc.holderType})</span>
+                                    </div>
+                                    <div className="col-span-4">
+                                        <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Titular</span>
+                                        <span className="text-brand-gray-900 block mt-1">{acc.holderName}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 4. DADOS COMERCIAIS & PRODUTO */}
+                <div>
+                    <h4 className="text-xs font-bold text-brand-primary uppercase border-b border-brand-gray-100 pb-2 mb-4 flex items-center gap-2">
+                        <Briefcase className="w-4 h-4" /> Produto e Taxas
+                    </h4>
+                    <div className="grid grid-cols-1 gap-4 text-sm">
+                        <div className="flex gap-6 items-center bg-brand-gray-50 p-3 rounded-lg border border-brand-gray-100">
+                            <div>
+                                <span className="block text-[10px] text-brand-gray-400 font-bold uppercase">Plano Selecionado</span>
+                                <span className={`inline-block mt-1 px-3 py-1 rounded text-xs font-bold uppercase ${data.planType === 'Full' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {data.planType}
+                                </span>
+                            </div>
+                            <div className="flex-1">
+                                <span className="block text-[10px] text-brand-gray-400 font-bold uppercase mb-1">Condição Comercial</span>
+                                {data.pricingDemandId ? (
+                                    <div className="bg-purple-50 text-purple-800 text-xs px-3 py-1 rounded border border-purple-200 flex items-center gap-2 w-fit">
+                                        <BadgePercent className="w-3 h-3" />
+                                        <span>Taxas da Negociação <strong>#{data.pricingDemandId}</strong></span>
+                                    </div>
+                                ) : (
+                                    <span className="text-brand-gray-500 text-xs italic">Taxas padrão do plano aplicadas.</span>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <span className="block text-[10px] text-brand-gray-400 font-bold uppercase mb-2">Equipamentos Solicitados</span>
+                            {data.requestedEquipments && data.requestedEquipments.length > 0 ? (
+                                <div className="space-y-2">
+                                    {data.requestedEquipments.map((item, idx) => {
+                                        const linkedAccount = data.bankAccounts && data.bankAccounts[item.linkedAccountIndex || 0];
+                                        return (
+                                            <div key={idx} className="bg-white border border-brand-gray-200 p-3 rounded text-xs shadow-sm">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`p-1.5 rounded text-white font-bold ${item.type === 'STOCK' ? 'bg-blue-600' : 'bg-brand-gray-600'}`}>
+                                                            {item.type === 'STOCK' ? 'EST' : 'LOG'}
+                                                        </div>
+                                                        <span className="font-bold text-brand-gray-800 text-sm">{item.model}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        {item.type === 'STOCK' ? (
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="font-mono text-blue-700 font-bold">S/N: {item.serialNumber}</span>
+                                                                <span className="font-mono text-gray-500">RC: {item.rcNumber}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-brand-gray-500 italic">Solicitar envio</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="border-t border-brand-gray-100 pt-2 mt-1 flex items-center gap-2 text-brand-gray-600">
+                                                    <CreditCard size={12}/> 
+                                                    <span>Domicílio: <strong>{linkedAccount ? `${linkedAccount.bankCode} (Ag ${linkedAccount.agency})` : 'Não vinculado'}</strong></span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-brand-gray-400 italic">Nenhum equipamento selecionado.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* 5. DOCUMENTAÇÃO E FOTOS */}
+                <div>
+                    <h4 className="text-xs font-bold text-brand-primary uppercase border-b border-brand-gray-100 pb-2 mb-4 flex items-center gap-2">
+                        <Camera className="w-4 h-4" /> Documentação e Fotos
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {/* Static Doc List for View */}
+                        <div className={`flex items-center justify-between p-3 rounded-lg border text-xs font-bold ${data.docs?.idCard ? 'bg-white border-green-200 text-green-800 shadow-sm' : 'bg-brand-gray-50 border-brand-gray-200 text-brand-gray-400'}`}>
+                            <span className="flex items-center gap-2">
+                                {data.docs?.idCard ? <CheckCircle2 className="w-4 h-4 text-green-600"/> : <X className="w-4 h-4"/>}
+                                Doc. Identidade
+                            </span>
+                            {data.docs?.idCard && <button onClick={() => onViewDoc('Doc. Identidade')} className="text-blue-600 hover:underline flex items-center"><Eye size={12}/> Ver</button>}
+                        </div>
+
+                        <div className={`flex items-center justify-between p-3 rounded-lg border text-xs font-bold ${data.docs?.addressProof ? 'bg-white border-green-200 text-green-800 shadow-sm' : 'bg-brand-gray-50 border-brand-gray-200 text-brand-gray-400'}`}>
+                            <span className="flex items-center gap-2">
+                                {data.docs?.addressProof ? <CheckCircle2 className="w-4 h-4 text-green-600"/> : <X className="w-4 h-4"/>}
+                                Comp. Endereço
+                            </span>
+                            {data.docs?.addressProof && <button onClick={() => onViewDoc('Comp. Endereço')} className="text-blue-600 hover:underline flex items-center"><Eye size={12}/> Ver</button>}
+                        </div>
+
+                        {/* New Photos View */}
+                        <div className={`flex items-center justify-between p-3 rounded-lg border text-xs font-bold ${data.docs?.facade ? 'bg-white border-green-200 text-green-800 shadow-sm' : 'bg-brand-gray-50 border-brand-gray-200 text-brand-gray-400'}`}>
+                            <span className="flex items-center gap-2">
+                                {data.docs?.facade ? <CheckCircle2 className="w-4 h-4 text-green-600"/> : <X className="w-4 h-4"/>}
+                                Fachada
+                            </span>
+                            {data.docs?.facade && <button onClick={() => onViewDoc('Fachada')} className="text-blue-600 hover:underline flex items-center"><Eye size={12}/> Ver</button>}
+                        </div>
+
+                        <div className={`flex items-center justify-between p-3 rounded-lg border text-xs font-bold ${(data.docs?.interiorFiles?.length || 0) >= 3 ? 'bg-white border-green-200 text-green-800 shadow-sm' : 'bg-brand-gray-50 border-brand-gray-200 text-brand-gray-400'}`}>
+                            <span className="flex items-center gap-2">
+                                {(data.docs?.interiorFiles?.length || 0) >= 3 ? <CheckCircle2 className="w-4 h-4 text-green-600"/> : <X className="w-4 h-4"/>}
+                                Interior ({(data.docs?.interiorFiles?.length || 0)}/3)
+                            </span>
+                            {(data.docs?.interiorFiles?.length || 0) > 0 && <button onClick={() => onViewDoc('Fotos Internas')} className="text-blue-600 hover:underline flex items-center"><Eye size={12}/> Ver</button>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ... (Rest of modal components unchanged) ...
+// --- PREVIEW MODAL COMPONENT ---
+const PreviewModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    isSubmitting: boolean;
+    data: Partial<RegistrationRequest>;
+    onViewDoc: (type: string) => void;
+}> = ({ isOpen, onClose, onConfirm, isSubmitting, data, onViewDoc }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white shrink-0">
+                    <h3 className="font-bold text-lg flex items-center gap-2"><FileCheck className="w-5 h-5" /> Revisão de Cadastro</h3>
+                    <button onClick={onClose} className="text-brand-gray-400 hover:text-white"><X size={20}/></button>
+                </div>
+                <div className="p-0 overflow-y-auto flex-1 bg-gray-50">
+                    <div className="p-6">
+                        <FichaCadastralView data={data} onViewDoc={onViewDoc} />
+                    </div>
+                </div>
+                <div className="p-4 border-t border-brand-gray-200 bg-white flex justify-end gap-3 shrink-0">
+                    <button onClick={onClose} className="px-4 py-2 border border-brand-gray-300 text-brand-gray-600 font-bold rounded-lg hover:bg-brand-gray-50">Voltar e Editar</button>
+                    <button onClick={onConfirm} disabled={isSubmitting} className="px-6 py-2 bg-brand-primary text-white font-bold rounded-lg hover:bg-brand-dark flex items-center gap-2 shadow-lg">
+                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>} Confirmar Envio
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ... (DocViewerModal and RatesModal unchanged) ...
+export const DocViewerModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    docType: string | null;
+}> = ({ isOpen, onClose, docType }) => {
+    if (!isOpen || !docType) return null;
+    return (
+        <div className="fixed inset-0 z-[150] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+                <div className="bg-brand-gray-900 px-4 py-3 flex justify-between items-center text-white">
+                    <h3 className="font-bold text-sm flex items-center gap-2"><ImageIcon className="w-4 h-4" /> {docType}</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={18}/></button>
+                </div>
+                <div className="p-10 flex flex-col items-center justify-center bg-gray-100 min-h-[300px]">
+                    <div className="w-24 h-32 bg-white border border-gray-300 shadow-sm flex items-center justify-center mb-4">
+                        <FileText className="w-10 h-10 text-gray-300" />
+                    </div>
+                    <p className="text-gray-500 text-sm font-medium">Visualização Simulada</p>
+                    <p className="text-xs text-gray-400 text-center mt-1 max-w-xs">
+                        Este é um mockup. No ambiente real, a imagem do documento "{docType}" seria renderizada aqui.
+                    </p>
+                </div>
+                <div className="p-3 border-t border-gray-200 bg-white flex justify-end">
+                    <button onClick={onClose} className="px-4 py-2 bg-brand-gray-100 text-brand-gray-700 font-bold rounded text-xs hover:bg-brand-gray-200">Fechar</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const RatesModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    demand?: ManualDemand;
+}> = ({ isOpen, onClose, demand }) => {
+    if (!isOpen || !demand || !demand.pricingData) return null;
+    const rates = demand.pricingData.approvedRates || demand.pricingData.proposedRates;
     
-    // VIEW STATE: Sales starts on FORM, Admin starts on LIST
+    return (
+        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                <div className="bg-purple-600 px-6 py-4 flex justify-between items-center text-white">
+                    <h3 className="font-bold text-lg flex items-center gap-2"><BadgePercent className="w-5 h-5" /> Taxas Negociadas</h3>
+                    <button onClick={onClose} className="text-purple-200 hover:text-white"><X size={20}/></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 text-center">
+                        <p className="text-purple-800 font-bold text-lg mb-1">{demand.clientName}</p>
+                        <p className="text-purple-600 text-xs uppercase">Demanda #{demand.id}</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center p-3 border rounded-lg bg-gray-50">
+                            <span className="block text-xs font-bold text-gray-500 uppercase">Débito</span>
+                            <span className="block text-xl font-bold text-gray-900">{rates.debit.toFixed(2)}%</span>
+                        </div>
+                        <div className="text-center p-3 border rounded-lg bg-gray-50">
+                            <span className="block text-xs font-bold text-gray-500 uppercase">Crédito 1x</span>
+                            <span className="block text-xl font-bold text-gray-900">{rates.credit1x.toFixed(2)}%</span>
+                        </div>
+                        <div className="text-center p-3 border rounded-lg bg-gray-50">
+                            <span className="block text-xs font-bold text-gray-500 uppercase">Crédito 12x</span>
+                            <span className="block text-xl font-bold text-gray-900">{rates.credit12x.toFixed(2)}%</span>
+                        </div>
+                    </div>
+                    
+                    <button onClick={onClose} className="w-full py-3 bg-gray-100 text-brand-gray-700 font-bold rounded-lg hover:bg-gray-200 transition-colors">
+                        Fechar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
+    // VIEW STATE
     const [viewMode, setViewMode] = useState<'LIST' | 'FORM'>('FORM');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
+    const [showErrors, setShowErrors] = useState(false);
+    
+    // Doc Viewer State
+    const [viewDocType, setViewDocType] = useState<string | null>(null);
 
-    // --- LIST VIEW STATE (Admin & Sales Tracking) ---
-    const [requests, setRequests] = useState<RegistrationRequest[]>([]);
-    const [statusFilter, setStatusFilter] = useState<RegistrationStatus | 'ALL'>('PENDING_ANALYSIS');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedReq, setSelectedReq] = useState<RegistrationRequest | null>(null);
-    const [isApproving, setIsApproving] = useState(false);
-
-    // --- FORM VIEW STATE (New Registration) ---
-    const [clientIdSearch, setClientIdSearch] = useState('');
+    // --- FORM VIEW STATE ---
     const [pricingRequests, setPricingRequests] = useState<ManualDemand[]>([]);
     const [myInventory, setMyInventory] = useState<PosDevice[]>([]);
     
-    // File Upload State
+    // UI Helpers
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [activeUploadDoc, setActiveUploadDoc] = useState<'IDENTITY' | 'ADDRESS' | 'BANK_PROOF' | null>(null);
+    const bankProofRef = useRef<HTMLInputElement>(null);
+    const [activeUploadDoc, setActiveUploadDoc] = useState<'IDENTITY' | 'ADDRESS' | 'FACADE' | 'INTERIOR' | null>(null);
     const [analyzingDoc, setAnalyzingDoc] = useState<string | null>(null);
     
-    // Form Data
+    // Mock Loaders
+    const [cnpjLoading, setCnpjLoading] = useState(false);
+
+    // Initial Form State
     const [formData, setFormData] = useState<Partial<RegistrationRequest>>({
         contactPhones: [''],
-        openingHours: { weekdays: { start: '08:00', end: '18:00' } },
-        bankAccount: { 
-            isThirdParty: false, 
-            accountType: 'Corrente', 
-            holderType: 'PJ',
-            bankCode: '', agency: '', accountNumber: '', holderName: '' 
-        },
-        docs: { contract: false, idCard: false, addressProof: false, bankProof: false },
-        planType: 'Full'
+        contactEmails: [],
+        openingHours: { weekdays: { start: '08:00', end: '18:00' }, saturday: { start: '', end: '' } },
+        bankAccounts: [], // Array of BankAccount
+        docs: { idCard: false, addressProof: false, contract: false }, // Contract legacy key handling
+        planType: 'Full',
+        requestedEquipments: []
     });
 
-    // Mock AI States
-    const [cnpjLoading, setCnpjLoading] = useState(false);
-    const [posAiValidating, setPosAiValidating] = useState(false);
+    // Temporary states for complex adds
+    const [newEquip, setNewEquip] = useState<{type: 'STOCK' | 'REQUEST', model: string, serial: string, rc: string, accountIndex: number}>({
+        type: 'REQUEST', model: 'P2 Smart', serial: '', rc: '', accountIndex: 0
+    });
+
+    const [newBank, setNewBank] = useState<BankAccount>({
+        tempId: Math.random().toString(),
+        bankCode: '', agency: '', accountNumber: '', holderName: '', holderType: 'PJ', accountType: 'Corrente', isThirdParty: false,
+        proofFile: null
+    });
 
     useEffect(() => {
-        // Set default view based on role only on mount
-        if (isAdmin) setViewMode('LIST');
-        
-        setRequests(appStore.getRegistrationRequests());
-        // Load Pricing Requests for Linkage
-        const myDemands = appStore.getDemands().filter(d => 
-            d.status === 'Aprovado Pricing' || d.status === 'Concluído'
-        );
+        const myDemands = appStore.getDemands().filter(d => d.status === 'Aprovado Pricing' || d.status === 'Concluído');
         setPricingRequests(myDemands);
-
-        // Load Inventory (Mock filtering by current user for Field Sales)
-        // In real app, filter by actual logged in user ID
-        const stock = appStore.getPosInventory().filter(p => 
-            p.status === 'WithField' // Assuming user has stock
-        );
+        const stock = appStore.getPosInventory().filter(p => p.status === 'WithField');
         setMyInventory(stock);
+    }, [isSubmitting]);
 
-    }, [isApproving, isSubmitting, isAdmin]); // Refresh when approved or submitted
+    const selectedPricingDemand = pricingRequests.find(d => d.id === formData.pricingDemandId);
 
-    // --- LIST VIEW LOGIC ---
-    const filteredRequests = requests.filter(req => {
-        const matchesStatus = statusFilter === 'ALL' || req.status === statusFilter;
-        const matchesSearch = 
-            req.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            req.documentNumber.includes(searchTerm) ||
-            req.id.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchesStatus && matchesSearch;
-    });
+    // --- FORM HANDLERS ---
 
-    const handleApprove = async () => {
-        if (!selectedReq) return;
-        setIsApproving(true);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        appStore.approveRegistration(selectedReq);
-        setIsApproving(false);
-        setSelectedReq(null);
-        alert(`Cadastro aprovado! Enviado para a esteira de Logística.`);
+    const handleAddPhone = () => {
+        setFormData(prev => ({...prev, contactPhones: [...(prev.contactPhones || []), '']}));
     };
 
-    const handleReject = () => {
-        if (!selectedReq) return;
-        const reason = prompt("Motivo da rejeição / pendência:");
-        if (reason) {
-            const updated: RegistrationRequest = { ...selectedReq, status: 'MISSING_DOCS', notes: reason };
-            appStore.updateRegistrationRequest(updated);
-            setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
-            setSelectedReq(null);
-        }
+    const handlePhoneChange = (index: number, value: string) => {
+        const newPhones = [...(formData.contactPhones || [])];
+        newPhones[index] = value;
+        setFormData(prev => ({...prev, contactPhones: newPhones}));
     };
 
-    // --- FORM VIEW LOGIC ---
+    const handleAddEmail = () => {
+        setFormData(prev => ({...prev, contactEmails: [...(prev.contactEmails || []), '']}));
+    };
 
-    const handleCnpjSearch = async () => {
-        if (!formData.documentNumber || formData.documentNumber.length < 14) {
-            alert("Digite um CNPJ válido.");
+    const handleEmailChange = (index: number, value: string) => {
+        const newEmails = [...(formData.contactEmails || [])];
+        newEmails[index] = value;
+        setFormData(prev => ({...prev, contactEmails: newEmails}));
+    };
+
+    // --- BANK ACCOUNT MANAGEMENT ---
+    const handleAddBank = () => {
+        if (!newBank.bankCode || !newBank.accountNumber || !newBank.proofFile) {
+            alert("Preencha os dados bancários e anexe o comprovante.");
             return;
         }
+        setFormData(prev => ({
+            ...prev,
+            bankAccounts: [...(prev.bankAccounts || []), { ...newBank, tempId: Math.random().toString() }]
+        }));
+        // Reset
+        setNewBank({
+            tempId: Math.random().toString(),
+            bankCode: '', agency: '', accountNumber: '', holderName: formData.razaoSocial || '', holderType: 'PJ', accountType: 'Corrente', isThirdParty: false, proofFile: null
+        });
+    };
+
+    const handleRemoveBank = (index: number) => {
+        setFormData(prev => ({
+            ...prev,
+            bankAccounts: prev.bankAccounts?.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleBankProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setNewBank(prev => ({ ...prev, proofFile: file }));
+            
+            // Simulating AI Analysis for Bank Proof
+            setAnalyzingDoc('BANK_PROOF');
+            setTimeout(() => {
+                // Mock extracting data
+                setNewBank(prev => ({
+                    ...prev,
+                    agency: '1234',
+                    accountNumber: '56789-0',
+                    holderName: formData.razaoSocial || 'TITULAR IA DETECTADO',
+                    bankCode: '341 - Itaú Unibanco'
+                }));
+                setAnalyzingDoc(null);
+            }, 1500);
+        }
+    };
+
+    // --- EQUIPMENT MANAGEMENT ---
+    const handleAddEquipment = () => {
+        if (formData.bankAccounts?.length === 0) {
+            alert("Adicione pelo menos uma conta bancária antes de vincular máquinas.");
+            return;
+        }
+
+        const item: PosRequestItem = {
+            id: Math.random().toString(36).substr(2, 9),
+            type: newEquip.type,
+            model: newEquip.model,
+            serialNumber: newEquip.type === 'STOCK' ? newEquip.serial : undefined,
+            rcNumber: newEquip.type === 'STOCK' ? newEquip.rc : undefined,
+            linkedAccountIndex: newEquip.accountIndex
+        };
+        
+        if (newEquip.type === 'STOCK' && (!newEquip.serial || !newEquip.rc)) {
+            alert("Para estoque próprio, Serial e RC são obrigatórios.");
+            return;
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            requestedEquipments: [...(prev.requestedEquipments || []), item]
+        }));
+        setNewEquip({ type: 'REQUEST', model: 'P2 Smart', serial: '', rc: '', accountIndex: 0 });
+    };
+
+    const handleRemoveEquipment = (id: string) => {
+        setFormData(prev => ({
+            ...prev,
+            requestedEquipments: prev.requestedEquipments?.filter(i => i.id !== id)
+        }));
+    };
+
+    const handlePricingLink = (demandId: string) => {
+        if (!demandId) {
+            setFormData(prev => ({ ...prev, pricingDemandId: undefined }));
+            return;
+        }
+        setFormData(prev => ({ ...prev, pricingDemandId: demandId }));
+        
+        // Auto-fill client name if empty
+        const demand = pricingRequests.find(d => d.id === demandId);
+        if (demand && !formData.clientName) {
+             setFormData(prev => ({ ...prev, clientName: demand.clientName }));
+        }
+    };
+
+    // --- STYLES & VALIDATION ---
+    const getFieldClass = (value: any, validator?: (v: any) => boolean) => {
+        const isFilled = value && value.toString().trim() !== '';
+        const isValid = validator ? (isFilled && validator(value)) : isFilled;
+        return showErrors && !isValid 
+            ? "border-red-500 focus:border-red-500 bg-red-50 text-red-900 placeholder-red-300" 
+            : "border-brand-gray-300 focus:border-brand-primary bg-white";
+    };
+
+    const getLabelClass = (value: any) => {
+        const isValid = value && value.toString().trim() !== '';
+        return showErrors && !isValid ? "text-red-600 font-extrabold" : "text-brand-gray-500 font-bold";
+    };
+
+    // --- ACTIONS ---
+    const handleCnpjSearch = async () => {
+        if (!formData.documentNumber || formData.documentNumber.length < 14) { alert("CNPJ inválido."); return; }
         setCnpjLoading(true);
         setTimeout(() => {
-            // Mock Receita Federal Data
             setFormData(prev => ({
                 ...prev,
                 razaoSocial: 'AUTO CENTER EXEMPLO LTDA',
-                clientName: 'AUTO CENTER EXEMPLO', // Nome Fantasia
+                clientName: 'AUTO CENTER EXEMPLO',
                 address: 'AVENIDA PAULISTA, 1000 - BELA VISTA - SAO PAULO - SP',
                 cnae: '45.20-0-01 - Serviços de manutenção e reparação mecânica de veículos automotores',
                 inscricaoEstadual: '123.456.789.111',
                 email: 'contato@autocenterexemplo.com.br'
             }));
             setCnpjLoading(false);
-        }, 1500);
+        }, 1000);
     };
 
-    const handlePreFillFromBase = () => {
-        const client = appStore.getClients().find(c => c.id === clientIdSearch || c.cnpj === clientIdSearch);
-        if (client) {
-            setFormData(prev => ({
-                ...prev,
-                clientName: client.nomeEc,
-                documentNumber: client.cnpj || prev.documentNumber, // Assume ClientBase might have CNPJ
-                address: client.endereco,
-                responsibleName: client.responsavel,
-                contactPhones: [client.contato],
-                email: 'cliente@exemplo.com.br' // Mock if missing
-            }));
-            alert("Dados importados da Base de Clientes!");
-        } else {
-            alert("Cliente não encontrado na base.");
-        }
-    };
-
-    const handlePosSelection = (serial: string) => {
-        const pos = myInventory.find(p => p.serialNumber === serial);
-        if (pos) {
-            setFormData(prev => ({
-                ...prev,
-                posData: { serialNumber: pos.serialNumber, rcNumber: pos.rcNumber }
-            }));
-            // Simulate AI Validation of POS Photo
-            setPosAiValidating(true);
-            setTimeout(() => setPosAiValidating(false), 2000);
-        }
-    };
-
-    const handlePricingLink = (demandId: string) => {
-        const demand = pricingRequests.find(d => d.id === demandId);
-        if (demand) {
-            setFormData(prev => ({
-                ...prev,
-                pricingDemandId: demand.id,
-                clientName: demand.clientName, // Auto-sync name
-                // Could verify if plan matches demand type etc.
-            }));
-        }
-    };
-
-    // --- DOCUMENT UPLOAD & AI ANALYSIS ---
-    const triggerUpload = (docType: 'IDENTITY' | 'ADDRESS' | 'BANK_PROOF') => {
+    const triggerUpload = (docType: 'IDENTITY' | 'ADDRESS' | 'FACADE' | 'INTERIOR') => {
         setActiveUploadDoc(docType);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = ''; // Reset
-            fileInputRef.current.click();
+        if (fileInputRef.current) { 
+            // Allow multiple only for Interior
+            if (docType === 'INTERIOR') {
+                fileInputRef.current.setAttribute('multiple', 'true');
+            } else {
+                fileInputRef.current.removeAttribute('multiple');
+            }
+            fileInputRef.current.value = ''; 
+            fileInputRef.current.click(); 
         }
     };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0 || !activeUploadDoc) return;
         
-        const file = e.target.files[0];
+        const files = Array.from(e.target.files);
         setAnalyzingDoc(activeUploadDoc);
-
-        // Convert to Base64
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-            const base64String = reader.result as string;
-            // Remove prefix "data:image/jpeg;base64,"
-            const base64Data = base64String.split(',')[1];
-
-            try {
-                // Call Gemini Service
-                const extractedData = await analyzeDocument(base64Data, activeUploadDoc);
+        
+        setTimeout(() => { // Mock upload
+            setFormData(prev => {
+                const docs = { ...prev.docs };
+                if (activeUploadDoc === 'IDENTITY') { docs.idCard = true; docs.idCardFile = files[0]; }
+                if (activeUploadDoc === 'ADDRESS') { docs.addressProof = true; docs.addressProofFile = files[0]; }
                 
-                if (extractedData) {
-                    setFormData(prev => {
-                        let updated = { ...prev };
-                        let updatedDocs = { ...prev.docs };
-
-                        if (activeUploadDoc === 'IDENTITY') {
-                            if (extractedData.name) updated.responsibleName = extractedData.name;
-                            updatedDocs.idCard = true;
-                        } else if (activeUploadDoc === 'ADDRESS') {
-                            if (extractedData.fullAddress) updated.address = extractedData.fullAddress;
-                            updatedDocs.addressProof = true;
-                        } else if (activeUploadDoc === 'BANK_PROOF') {
-                            updated.bankAccount = {
-                                ...prev.bankAccount!,
-                                holderName: extractedData.holder || prev.bankAccount?.holderName,
-                                agency: extractedData.agency || prev.bankAccount?.agency,
-                                accountNumber: extractedData.account || prev.bankAccount?.accountNumber,
-                                bankCode: prev.bankAccount?.bankCode // AI might not map code perfectly, leave as is or basic mapping
-                            };
-                            updatedDocs.bankProof = true;
-                        }
-                        
-                        return { ...updated, docs: updatedDocs as any };
-                    });
-                    alert("Documento validado com IA! Dados extraídos e preenchidos.");
-                } else {
-                    alert("Não foi possível extrair dados legíveis deste documento. Verifique a imagem.");
+                // NEW: FACADE & INTERIOR
+                if (activeUploadDoc === 'FACADE') { 
+                    docs.facade = true; 
+                    docs.facadeFile = files[0]; 
                 }
-            } catch (err) {
-                console.error(err);
-                alert("Erro ao analisar documento. Tente novamente.");
-            } finally {
-                setAnalyzingDoc(null);
-                setActiveUploadDoc(null);
-            }
-        };
-        reader.readAsDataURL(file);
-    };
+                if (activeUploadDoc === 'INTERIOR') { 
+                    // Append new files to existing array or create new
+                    const currentFiles = docs.interiorFiles || [];
+                    docs.interiorFiles = [...currentFiles, ...files];
+                }
 
-    const handleSubmitRegistration = (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-
-        const newRequest: RegistrationRequest = {
-            id: `REG-${Math.floor(Math.random() * 10000)}`,
-            ...formData as RegistrationRequest,
-            requesterName: 'Usuário Atual', // Mock
-            requesterRole: role === UserRole.INSIDE_SALES ? 'Inside Sales' : 'Field Sales',
-            dateSubmitted: new Date().toISOString(),
-            status: 'PENDING_ANALYSIS',
-            // Ensure docs state is carried over
-            docs: formData.docs || { contract: false, idCard: false, addressProof: false, bankProof: false } 
-        };
-
-        // Simulate API
-        setTimeout(() => {
-            appStore.addRegistrationRequest(newRequest);
-            setIsSubmitting(false);
-            setViewMode('LIST');
-            setFormData({}); // Reset
-            alert("Cadastro enviado com sucesso para o time Administrativo!");
+                return { ...prev, docs };
+            });
+            setAnalyzingDoc(null);
+            setActiveUploadDoc(null);
         }, 1500);
     };
 
-    // --- COMPONENT: SALES LAYOUT (Form + My Envios Tab) ---
-    if (!isAdmin) {
-        return (
-            <div className="max-w-5xl mx-auto space-y-6 pb-20">
-                {/* Header & Tabs */}
-                <header>
-                    <div className="flex justify-between items-center mb-6">
-                        <div>
-                            <h1 className="text-2xl font-bold text-brand-gray-900">Credenciamento</h1>
-                            <p className="text-brand-gray-600 text-sm">Cadastre novos estabelecimentos ou acompanhe o status.</p>
-                        </div>
-                        <div className="hidden sm:block opacity-90">
-                            <PagmotorsLogo className="scale-90 text-brand-gray-900" />
-                        </div>
-                    </div>
+    const handleReview = (e: React.FormEvent) => {
+        e.preventDefault();
+        const required = [
+            formData.documentNumber, formData.clientName, formData.responsibleName, formData.email, 
+            formData.address
+        ];
+        const hasEmpty = required.some(f => !f || f.toString().trim() === '');
+        const hasEquip = formData.requestedEquipments && formData.requestedEquipments.length > 0;
+        const hasBank = formData.bankAccounts && formData.bankAccounts.length > 0;
+        
+        // Updated Doc Validation
+        const hasDocs = formData.docs?.idCard && formData.docs?.addressProof;
+        const hasFacade = !!formData.docs?.facade;
+        const hasInterior = (formData.docs?.interiorFiles?.length || 0) >= 3;
+        
+        if (hasEmpty || !hasEquip || !hasBank || !hasDocs || !hasFacade || !hasInterior) {
+            setShowErrors(true);
+            let msg = "Verifique: Campos obrigatórios.";
+            if(!hasEquip) msg += "\n- Pelo menos 1 equipamento.";
+            if(!hasBank) msg += "\n- Pelo menos 1 conta bancária.";
+            if(!hasDocs) msg += "\n- Docs básicos (RG/CNH + Comp. Endereço).";
+            if(!hasFacade) msg += "\n- Foto da Fachada.";
+            if(!hasInterior) msg += "\n- Mínimo 3 Fotos Internas.";
+            
+            alert(msg);
+            return;
+        }
+        setShowErrors(false);
+        setIsPreviewOpen(true);
+    };
 
-                    <div className="flex space-x-1 bg-brand-gray-200 p-1 rounded-xl w-fit">
-                        <button 
-                            onClick={() => setViewMode('FORM')}
-                            className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'FORM' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
-                        >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Novo Cadastro
-                        </button>
-                        <button 
-                            onClick={() => setViewMode('LIST')}
-                            className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'LIST' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
-                        >
-                            <FileCheck className="w-4 h-4 mr-2" />
-                            Meus Envios
-                        </button>
-                    </div>
-                </header>
+    const handleConfirmSubmit = () => {
+        setIsSubmitting(true);
+        const newRequest: RegistrationRequest = {
+            id: `REG-${Math.floor(Math.random() * 10000)}`,
+            ...formData as RegistrationRequest,
+            requesterName: 'Usuário Atual',
+            requesterRole: role === UserRole.INSIDE_SALES ? 'Inside Sales' : 'Field Sales',
+            dateSubmitted: new Date().toISOString(),
+            status: 'PENDING_ANALYSIS',
+            docs: formData.docs || {}
+        };
+        setTimeout(() => {
+            appStore.addRegistrationRequest(newRequest);
+            setIsSubmitting(false);
+            setIsPreviewOpen(false);
+            setViewMode('LIST');
+            // Reset
+            setFormData({ 
+                contactPhones: [''], openingHours: { weekdays: { start: '08:00', end: '18:00' } }, 
+                bankAccounts: [], 
+                docs: { idCard: false, addressProof: false, contract: false }, planType: 'Full', requestedEquipments: [] 
+            }); 
+            alert("Cadastro enviado com sucesso!");
+        }, 1000);
+    };
 
-                {/* --- TAB CONTENT: FORM --- */}
-                {viewMode === 'FORM' && (
-                    <>
-                        <input 
-                            type="file" 
-                            ref={fileInputRef} 
-                            className="hidden" 
-                            accept="image/*" 
-                            onChange={handleFileChange}
-                        />
+    return (
+        <div className="max-w-5xl mx-auto space-y-6 pb-20">
+            <header className="flex justify-between items-center mb-6">
+                <div><h1 className="text-2xl font-bold text-brand-gray-900">Credenciamento</h1><p className="text-brand-gray-600 text-sm">Novo estabelecimento ou acompanhamento.</p></div>
+                <div className="flex space-x-1 bg-brand-gray-200 p-1 rounded-xl">
+                    <button onClick={() => setViewMode('FORM')} className={`px-4 py-2 rounded-lg text-sm font-bold ${viewMode === 'FORM' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-600'}`}>Novo</button>
+                    <button onClick={() => setViewMode('LIST')} className={`px-4 py-2 rounded-lg text-sm font-bold ${viewMode === 'LIST' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-600'}`}>Histórico</button>
+                </div>
+            </header>
+
+            {viewMode === 'FORM' && (
+                <>
+                    {/* Hidden Inputs for General Docs */}
+                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" onChange={handleFileChange} />
+                    
+                    <form onSubmit={handleReview} className="space-y-8 animate-fade-in">
+                        {showErrors && <div className="bg-red-50 p-4 rounded-xl border border-red-200 text-red-700 text-sm font-bold">Verifique os campos obrigatórios e documentos anexados.</div>}
                         
-                        <form onSubmit={handleSubmitRegistration} className="space-y-8 animate-fade-in">
-                            {/* 1. Identification */}
-                            <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
-                                <h3 className="font-bold text-brand-gray-900 text-lg mb-4 flex items-center gap-2">
-                                    <Building2 className="w-5 h-5 text-brand-primary" /> Identificação do EC
-                                </h3>
+                        {/* 1. Identification */}
+                        <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Building2 className="w-5 h-5 text-brand-primary" /> Identificação</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="relative">
+                                    <label className={`block text-xs uppercase mb-1 ${getLabelClass(formData.documentNumber)}`}>CNPJ *</label>
+                                    <div className="flex gap-2">
+                                        <input required className={`flex-1 rounded-lg px-3 py-2 text-sm border ${getFieldClass(formData.documentNumber)}`} value={formData.documentNumber || ''} onChange={e => setFormData({...formData, documentNumber: e.target.value})} />
+                                        <button type="button" onClick={handleCnpjSearch} className="bg-brand-primary/10 text-brand-primary px-3 py-2 rounded-lg hover:bg-brand-primary/20">{cnpjLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Search className="w-4 h-4"/>}</button>
+                                    </div>
+                                </div>
+                                <div><label className={`block text-xs uppercase mb-1 ${getLabelClass(formData.clientName)}`}>Nome Fantasia *</label><input className={`w-full rounded-lg px-3 py-2 text-sm border ${getFieldClass(formData.clientName)}`} value={formData.clientName || ''} onChange={e => setFormData({...formData, clientName: e.target.value})} /></div>
+                            </div>
+                        </section>
+
+                        {/* 2. Complementary & Operational */}
+                        <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><FileText className="w-5 h-5 text-brand-primary" /> Dados Complementares & Operacional</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div><label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Razão Social</label><input className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm" value={formData.razaoSocial || ''} onChange={e => setFormData({...formData, razaoSocial: e.target.value})} /></div>
                                 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 bg-brand-gray-50 p-4 rounded-lg">
-                                    <div className="md:col-span-2 relative">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Buscar na Base (ID ou CNPJ)</label>
-                                        <div className="flex gap-2">
-                                            <input 
-                                                type="text" 
-                                                className="flex-1 border border-brand-gray-300 rounded-lg px-3 py-2 text-sm"
-                                                placeholder="Se já visitou, busque aqui..."
-                                                value={clientIdSearch}
-                                                onChange={e => setClientIdSearch(e.target.value)}
-                                            />
-                                            <button type="button" onClick={handlePreFillFromBase} className="bg-brand-gray-900 text-white px-4 py-2 rounded-lg text-xs font-bold">Carregar</button>
-                                        </div>
-                                    </div>
-                                </div>
+                                {/* NEW INPUTS for Inscrição and CNAE */}
+                                <div><label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Inscrição Estadual</label><input className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm" value={formData.inscricaoEstadual || ''} onChange={e => setFormData({...formData, inscricaoEstadual: e.target.value})} placeholder="Ex: 123.456.789.111" /></div>
+                                
+                                <div><label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">CNAE Principal</label><input className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm" value={formData.cnae || ''} onChange={e => setFormData({...formData, cnae: e.target.value})} placeholder="Ex: 45.20-0-01" /></div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="relative">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">CNPJ *</label>
-                                        <div className="flex gap-2">
-                                            <input 
-                                                required
-                                                type="text" 
-                                                className="flex-1 border border-brand-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                                                value={formData.documentNumber || ''}
-                                                onChange={e => setFormData({...formData, documentNumber: e.target.value})}
-                                                placeholder="00.000.000/0000-00"
-                                            />
-                                            <button 
-                                                type="button" 
-                                                onClick={handleCnpjSearch}
-                                                disabled={cnpjLoading}
-                                                className="bg-brand-primary/10 text-brand-primary px-3 py-2 rounded-lg text-xs font-bold hover:bg-brand-primary/20 transition-colors flex items-center"
-                                            >
-                                                {cnpjLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Inscrição Estadual</label>
-                                        <input className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50" readOnly value={formData.inscricaoEstadual || ''} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Razão Social</label>
-                                        <input className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50" readOnly value={formData.razaoSocial || ''} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Nome Fantasia *</label>
-                                        <input 
-                                            className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:border-brand-primary outline-none" 
-                                            value={formData.clientName || ''} 
-                                            onChange={e => setFormData({...formData, clientName: e.target.value})}
-                                        />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">CNAE Principal</label>
-                                        <input className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50" readOnly value={formData.cnae || ''} />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Tipo de Estabelecimento *</label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {ESTABLISHMENT_TYPES.map(type => (
-                                                <button
-                                                    key={type}
-                                                    type="button"
-                                                    onClick={() => setFormData({...formData, establishmentType: type})}
-                                                    className={`px-3 py-1.5 rounded-full text-xs border transition-all
-                                                        ${formData.establishmentType === type 
-                                                            ? 'bg-brand-primary text-white border-brand-primary shadow-sm' 
-                                                            : 'bg-white text-brand-gray-600 border-brand-gray-200 hover:border-brand-gray-400'}
-                                                    `}
-                                                >
-                                                    {type}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </section>
+                                <div><label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Volume Veículos/Mês</label><input type="number" className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm" value={formData.monthlyVehicleVolume || ''} onChange={e => setFormData({...formData, monthlyVehicleVolume: Number(e.target.value)})} placeholder="Ex: 50" /></div>
+                            </div>
+                        </section>
 
-                            {/* 2. Contact & Address */}
-                            <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
-                                <h3 className="font-bold text-brand-gray-900 text-lg mb-4 flex items-center gap-2">
-                                    <MapPin className="w-5 h-5 text-brand-primary" /> Contato e Localização
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* 3. Contact & Location */}
+                        <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><MapPin className="w-5 h-5 text-brand-primary" /> Contato e Localização</h3>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label className={`block text-xs uppercase mb-1 ${getLabelClass(formData.responsibleName)}`}>Responsável *</label><input className={`w-full rounded-lg px-3 py-2 text-sm border ${getFieldClass(formData.responsibleName)}`} value={formData.responsibleName || ''} onChange={e => setFormData({...formData, responsibleName: e.target.value})} /></div>
+                                    <div><label className={`block text-xs uppercase mb-1 ${getLabelClass(formData.address)}`}>Endereço *</label><AddressAutocomplete value={formData.address || ''} onChange={val => setFormData({...formData, address: val})} className={getFieldClass(formData.address).replace('bg-white', '')} /></div>
+                                </div>
+                                {/* Multiple Contacts */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Nome do Responsável *</label>
-                                        <input 
-                                            required
-                                            className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:border-brand-primary outline-none" 
-                                            value={formData.responsibleName || ''} 
-                                            onChange={e => setFormData({...formData, responsibleName: e.target.value})}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">E-mail Principal *</label>
-                                        <input 
-                                            type="email"
-                                            required
-                                            className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:border-brand-primary outline-none" 
-                                            value={formData.email || ''} 
-                                            onChange={e => setFormData({...formData, email: e.target.value})}
-                                        />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Telefones (WhatsApp) *</label>
+                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Telefones</label>
                                         {formData.contactPhones?.map((phone, idx) => (
-                                            <div key={idx} className="flex gap-2 mb-2">
-                                                <input 
-                                                    className="flex-1 border border-brand-gray-300 rounded-lg px-3 py-2 text-sm"
-                                                    value={phone}
-                                                    onChange={e => {
-                                                        const newPhones = [...(formData.contactPhones || [])];
-                                                        newPhones[idx] = e.target.value;
-                                                        setFormData({...formData, contactPhones: newPhones});
-                                                    }}
-                                                    placeholder="(00) 00000-0000"
-                                                />
-                                                {idx > 0 && (
-                                                    <button type="button" onClick={() => {
-                                                        const newPhones = formData.contactPhones?.filter((_, i) => i !== idx);
-                                                        setFormData({...formData, contactPhones: newPhones});
-                                                    }} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+                                            <input key={idx} className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm mb-2" value={phone} onChange={e => handlePhoneChange(idx, e.target.value)} placeholder="(00) 00000-0000" />
+                                        ))}
+                                        <button type="button" onClick={handleAddPhone} className="text-xs text-brand-primary font-bold">+ Adicionar Telefone</button>
+                                    </div>
+                                    <div>
+                                        <label className={`block text-xs uppercase mb-1 ${getLabelClass(formData.email)}`}>E-mail Principal *</label>
+                                        <input className={`w-full rounded-lg px-3 py-2 text-sm border ${getFieldClass(formData.email)}`} value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} />
+                                        {formData.contactEmails?.map((email, idx) => (
+                                            <input key={idx} className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm mt-2" value={email} onChange={e => handleEmailChange(idx, e.target.value)} placeholder="E-mail adicional" />
+                                        ))}
+                                        <button type="button" onClick={handleAddEmail} className="text-xs text-brand-primary font-bold mt-2">+ Adicionar E-mail</button>
+                                    </div>
+                                </div>
+                                {/* Opening Hours */}
+                                <div className="bg-brand-gray-50 p-4 rounded-lg border border-brand-gray-200">
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Horário de Funcionamento</label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <span className="text-xs text-gray-500 block mb-1">Segunda a Sexta</span>
+                                            <div className="flex gap-2">
+                                                <input type="time" className="w-full border rounded px-2 py-1 text-sm" value={formData.openingHours?.weekdays.start} onChange={e => setFormData({...formData, openingHours: {...formData.openingHours!, weekdays: {...formData.openingHours!.weekdays, start: e.target.value}}})} />
+                                                <input type="time" className="w-full border rounded px-2 py-1 text-sm" value={formData.openingHours?.weekdays.end} onChange={e => setFormData({...formData, openingHours: {...formData.openingHours!, weekdays: {...formData.openingHours!.weekdays, end: e.target.value}}})} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-gray-500 block mb-1">Sábado (Opcional)</span>
+                                            <div className="flex gap-2">
+                                                <input type="time" className="w-full border rounded px-2 py-1 text-sm" value={formData.openingHours?.saturday?.start} onChange={e => setFormData({...formData, openingHours: {...formData.openingHours!, saturday: {...formData.openingHours!.saturday!, start: e.target.value}}})} />
+                                                <input type="time" className="w-full border rounded px-2 py-1 text-sm" value={formData.openingHours?.saturday?.end} onChange={e => setFormData({...formData, openingHours: {...formData.openingHours!, saturday: {...formData.openingHours!.saturday!, end: e.target.value}}})} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* 4. BANK ACCOUNTS MANAGEMENT (Moved before equipment) */}
+                        <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><CreditCard className="w-5 h-5 text-brand-primary" /> Gestão de Domicílios Bancários</h3>
+                            
+                            {/* List Added Accounts */}
+                            {formData.bankAccounts && formData.bankAccounts.length > 0 && (
+                                <div className="space-y-3 mb-6">
+                                    {formData.bankAccounts.map((acc, idx) => (
+                                        <div key={idx} className="bg-brand-gray-50 p-3 rounded-lg border border-brand-gray-200 flex justify-between items-center">
+                                            <div>
+                                                <p className="font-bold text-sm text-brand-gray-800">{acc.bankCode} - {acc.holderName}</p>
+                                                <p className="text-xs text-brand-gray-500">Ag: {acc.agency} | CC: {acc.accountNumber}</p>
+                                                {acc.proofFile ? (
+                                                    <span className="text-[10px] text-green-600 flex items-center gap-1 mt-1"><CheckCircle2 size={10}/> Comprovante Anexado</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-red-500 flex items-center gap-1 mt-1"><AlertCircle size={10}/> Sem comprovante</span>
                                                 )}
                                             </div>
-                                        ))}
-                                        <button type="button" onClick={() => setFormData({...formData, contactPhones: [...(formData.contactPhones||[]), '']})} className="text-xs text-brand-primary font-bold flex items-center gap-1">
-                                            <Plus className="w-3 h-3" /> Adicionar outro
-                                        </button>
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Endereço Completo (Busca Automática) *</label>
-                                        <AddressAutocomplete 
-                                            value={formData.address || ''}
-                                            onChange={(val) => setFormData({...formData, address: val})}
-                                            required
-                                        />
-                                    </div>
-                                </div>
-                            </section>
-
-                            {/* 3. Operational */}
-                            <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
-                                <h3 className="font-bold text-brand-gray-900 text-lg mb-4 flex items-center gap-2">
-                                    <Clock className="w-5 h-5 text-brand-primary" /> Operacional
-                                </h3>
-                                <div className="flex gap-6 flex-wrap">
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Seg a Sex</label>
-                                        <div className="flex items-center gap-2">
-                                            <input type="time" className="border rounded px-2 py-1 text-sm" value={formData.openingHours?.weekdays.start} onChange={e => setFormData({...formData, openingHours: {...formData.openingHours!, weekdays: {...formData.openingHours!.weekdays, start: e.target.value}}})} />
-                                            <span>até</span>
-                                            <input type="time" className="border rounded px-2 py-1 text-sm" value={formData.openingHours?.weekdays.end} onChange={e => setFormData({...formData, openingHours: {...formData.openingHours!, weekdays: {...formData.openingHours!.weekdays, end: e.target.value}}})} />
-                                        </div>
-                                    </div>
-                                    <div className="flex items-end pb-1">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" className="w-4 h-4 text-brand-primary" onChange={(e) => {
-                                                if (e.target.checked) setFormData({...formData, openingHours: {...formData.openingHours!, saturday: { start: '08:00', end: '12:00' }}});
-                                                else {
-                                                    const { saturday, ...rest } = formData.openingHours!;
-                                                    setFormData({...formData, openingHours: rest as any});
-                                                }
-                                            }} />
-                                            <span className="text-sm font-medium text-brand-gray-700">Abre aos Sábados?</span>
-                                        </label>
-                                    </div>
-                                    {formData.openingHours?.saturday && (
-                                        <div>
-                                            <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Sábado</label>
-                                            <div className="flex items-center gap-2">
-                                                <input type="time" className="border rounded px-2 py-1 text-sm" value={formData.openingHours.saturday.start} onChange={e => setFormData({...formData, openingHours: {...formData.openingHours!, saturday: {...formData.openingHours!.saturday!, start: e.target.value}}})} />
-                                                <span>até</span>
-                                                <input type="time" className="border rounded px-2 py-1 text-sm" value={formData.openingHours.saturday.end} onChange={e => setFormData({...formData, openingHours: {...formData.openingHours!, saturday: {...formData.openingHours!.saturday!, end: e.target.value}}})} />
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="ml-auto">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Volume Mensal (Veículos)</label>
-                                        <input type="number" className="border border-brand-gray-300 rounded px-3 py-1.5 text-sm w-32" value={formData.monthlyVolume} onChange={e => setFormData({...formData, monthlyVolume: Number(e.target.value)})} />
-                                    </div>
-                                </div>
-                            </section>
-
-                            {/* 4. Product & Pricing */}
-                            <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
-                                <h3 className="font-bold text-brand-gray-900 text-lg mb-4 flex items-center gap-2">
-                                    <DollarSign className="w-5 h-5 text-brand-primary" /> Produto e Taxas
-                                </h3>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Vincular Negociação Aprovada</label>
-                                        <select 
-                                            className="w-full border border-brand-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none bg-white"
-                                            onChange={(e) => handlePricingLink(e.target.value)}
-                                            value={formData.pricingDemandId || ''}
-                                        >
-                                            <option value="">Selecione a negociação...</option>
-                                            {pricingRequests.map(d => (
-                                                <option key={d.id} value={d.id}>{d.clientName} - {new Date(d.date).toLocaleDateString()}</option>
-                                            ))}
-                                        </select>
-                                        {formData.pricingDemandId && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Taxas vinculadas com sucesso.</p>}
-                                    </div>
-                                    
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Plano de Recebimento</label>
-                                        <div className="flex bg-brand-gray-100 p-1 rounded-lg">
-                                            <button 
-                                                type="button"
-                                                onClick={() => setFormData({...formData, planType: 'Full'})}
-                                                className={`flex-1 py-1.5 text-sm font-bold rounded transition-colors ${formData.planType === 'Full' ? 'bg-white text-brand-primary shadow' : 'text-brand-gray-500'}`}
-                                            >Full</button>
-                                            <button 
-                                                type="button"
-                                                onClick={() => setFormData({...formData, planType: 'Simples'})}
-                                                className={`flex-1 py-1.5 text-sm font-bold rounded transition-colors ${formData.planType === 'Simples' ? 'bg-white text-brand-primary shadow' : 'text-brand-gray-500'}`}
-                                            >Simples</button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* POS SELECTION */}
-                                <div className="bg-brand-gray-50 p-4 rounded-xl border border-brand-gray-200">
-                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Máquina POS (Estoque do Consultor)</label>
-                                    <div className="flex gap-4 items-end">
-                                        <select 
-                                            className="flex-1 border border-brand-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"
-                                            onChange={(e) => handlePosSelection(e.target.value)}
-                                            value={formData.posData?.serialNumber || ''}
-                                        >
-                                            <option value="">Selecionar equipamento...</option>
-                                            {myInventory.map(pos => (
-                                                <option key={pos.serialNumber} value={pos.serialNumber}>{pos.model} - SN: {pos.serialNumber}</option>
-                                            ))}
-                                        </select>
-                                        <button type="button" className="px-4 py-2 bg-brand-gray-900 text-white rounded-lg text-xs font-bold flex items-center gap-2">
-                                            <Camera className="w-4 h-4" /> Foto da POS (IA)
-                                        </button>
-                                    </div>
-                                    {posAiValidating && <p className="text-xs text-brand-primary mt-2 animate-pulse font-bold">IA Analisando foto da POS...</p>}
-                                    {formData.posData?.serialNumber && !posAiValidating && (
-                                        <div className="mt-2 text-xs flex gap-4 text-brand-gray-600 font-mono">
-                                            <span>SN: {formData.posData.serialNumber}</span>
-                                            <span>RC: {formData.posData.rcNumber}</span>
-                                            <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Validado</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </section>
-
-                            {/* 5. Banking */}
-                            <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
-                                <h3 className="font-bold text-brand-gray-900 text-lg mb-4 flex items-center gap-2">
-                                    <CreditCard className="w-5 h-5 text-brand-primary" /> Dados Bancários
-                                </h3>
-                                
-                                {/* Auto-fill from Receipt using AI */}
-                                <div 
-                                    onClick={() => triggerUpload('BANK_PROOF')}
-                                    className={`mb-6 p-4 border-2 border-dashed border-brand-gray-200 rounded-xl text-center cursor-pointer hover:border-brand-primary hover:bg-brand-gray-50 transition-colors ${analyzingDoc === 'BANK_PROOF' ? 'animate-pulse bg-brand-primary/5 border-brand-primary' : ''}`}
-                                >
-                                    <div className="flex flex-col items-center">
-                                        {analyzingDoc === 'BANK_PROOF' ? <Loader2 className="w-8 h-8 text-brand-primary animate-spin mb-2" /> : <Camera className="w-8 h-8 text-brand-gray-400 mb-2" />}
-                                        <span className="text-sm font-bold text-brand-gray-700">{analyzingDoc === 'BANK_PROOF' ? 'Extraindo dados com IA...' : 'Ler Comprovante Bancário com IA'}</span>
-                                        <span className="text-xs text-brand-gray-400">Preenchimento automático dos dados</span>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                    <div className="md:col-span-1">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Banco</label>
-                                        <select className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm bg-white" 
-                                            value={formData.bankAccount?.bankCode} 
-                                            onChange={e => setFormData({...formData, bankAccount: {...formData.bankAccount!, bankCode: e.target.value}})}
-                                        >
-                                            <option value="">Selecione...</option>
-                                            {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Agência</label>
-                                        <input type="text" className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm" value={formData.bankAccount?.agency} onChange={e => setFormData({...formData, bankAccount: {...formData.bankAccount!, agency: e.target.value}})} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Conta</label>
-                                        <input type="text" className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm" value={formData.bankAccount?.accountNumber} onChange={e => setFormData({...formData, bankAccount: {...formData.bankAccount!, accountNumber: e.target.value}})} />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Nome do Favorecido</label>
-                                        <input type="text" className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm" value={formData.bankAccount?.holderName} onChange={e => setFormData({...formData, bankAccount: {...formData.bankAccount!, holderName: e.target.value}})} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Tipo de Conta</label>
-                                        <div className="flex gap-2 text-sm mt-1">
-                                            <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="accType" checked={formData.bankAccount?.accountType === 'Corrente'} onChange={() => setFormData({...formData, bankAccount: {...formData.bankAccount!, accountType: 'Corrente'}})} /> Corrente</label>
-                                            <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="accType" checked={formData.bankAccount?.accountType === 'Poupança'} onChange={() => setFormData({...formData, bankAccount: {...formData.bankAccount!, accountType: 'Poupança'}})} /> Poupança</label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
-                                    <label className="flex items-center gap-2 cursor-pointer font-bold text-yellow-900">
-                                        <input 
-                                            type="checkbox" 
-                                            className="w-4 h-4 text-brand-primary"
-                                            checked={formData.bankAccount?.isThirdParty}
-                                            onChange={(e) => setFormData({...formData, bankAccount: {...formData.bankAccount!, isThirdParty: e.target.checked}})}
-                                        />
-                                        Conta de Terceiros?
-                                    </label>
-                                    {formData.bankAccount?.isThirdParty && (
-                                        <div className="mt-3 text-xs text-yellow-800 ml-6">
-                                            <p className="mb-2">⚠️ Necessário anexar:</p>
-                                            <ul className="list-disc pl-4 space-y-1">
-                                                <li>Termo de aceite assinado pelo titular da conta.</li>
-                                                <li>Documento (RG/CNH) do titular da conta.</li>
-                                            </ul>
-                                        </div>
-                                    )}
-                                </div>
-                            </section>
-
-                            {/* 6. Documentation & Photos */}
-                            <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
-                                <h3 className="font-bold text-brand-gray-900 text-lg mb-4 flex items-center gap-2">
-                                    <ImageIcon className="w-5 h-5 text-brand-primary" /> Fotos e Documentos (Validação IA)
-                                </h3>
-                                
-                                {/* Placeholder for standard photos */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                                    {['Fachada', 'Interior 1', 'Interior 2', 'Equipe/Recepção'].map(label => (
-                                        <div key={label} className="aspect-square bg-brand-gray-50 border-2 border-dashed border-brand-gray-200 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-brand-gray-100 transition-colors">
-                                            <Camera className="w-8 h-8 text-brand-gray-400 mb-2" />
-                                            <span className="text-xs font-bold text-brand-gray-500">{label}</span>
+                                            <button type="button" onClick={() => handleRemoveBank(idx)} className="text-red-500 hover:text-red-700 p-2"><Trash2 size={16}/></button>
                                         </div>
                                     ))}
                                 </div>
+                            )}
 
-                                {/* Smart Document Uploads */}
-                                <div className="space-y-3">
-                                    <div className={`p-3 border rounded-lg flex justify-between items-center ${formData.docs?.idCard ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
-                                        <span className="text-sm font-medium flex items-center gap-2">
-                                            CNH ou RG do Responsável
-                                            {analyzingDoc === 'IDENTITY' && <span className="text-xs text-brand-primary flex items-center"><Loader2 className="w-3 h-3 animate-spin mr-1"/> IA Lendo...</span>}
-                                            {formData.docs?.idCard && <span className="text-xs text-green-600 flex items-center"><CheckCircle2 className="w-3 h-3 mr-1"/> Validado</span>}
-                                        </span>
-                                        <button type="button" onClick={() => triggerUpload('IDENTITY')} className="text-xs font-bold text-brand-primary border border-brand-primary px-3 py-1 rounded hover:bg-brand-primary hover:text-white transition-colors flex items-center gap-1">
-                                            <UploadCloud className="w-3 h-3" /> Upload & Analisar
-                                        </button>
+                            {/* Add New Account Form */}
+                            <div className="bg-brand-gray-50 p-4 rounded-xl border border-dashed border-brand-gray-300">
+                                <h4 className="text-xs font-bold text-brand-gray-500 uppercase mb-3">Adicionar Nova Conta</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                                    <div className="col-span-2">
+                                        <select className="w-full border rounded p-2 text-sm" value={newBank.bankCode} onChange={e => setNewBank({...newBank, bankCode: e.target.value})}>
+                                            <option value="">Selecione o Banco...</option>
+                                            {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+                                        </select>
                                     </div>
+                                    <input className="w-full border rounded p-2 text-sm" placeholder="Agência" value={newBank.agency} onChange={e => setNewBank({...newBank, agency: e.target.value})} />
+                                    <input className="w-full border rounded p-2 text-sm" placeholder="Conta" value={newBank.accountNumber} onChange={e => setNewBank({...newBank, accountNumber: e.target.value})} />
+                                    <input className="w-full border rounded p-2 text-sm col-span-2" placeholder="Titular" value={newBank.holderName || formData.razaoSocial || ''} onChange={e => setNewBank({...newBank, holderName: e.target.value})} />
+                                    <select className="w-full border rounded p-2 text-sm" value={newBank.accountType} onChange={e => setNewBank({...newBank, accountType: e.target.value as any})}>
+                                        <option value="Corrente">Corrente</option>
+                                        <option value="Poupança">Poupança</option>
+                                    </select>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-3">
+                                        <label className="cursor-pointer bg-white border border-brand-gray-300 text-brand-gray-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-brand-gray-100 flex items-center gap-2">
+                                            <UploadCloud size={14} /> Anexar Comprovante
+                                            <input type="file" className="hidden" accept="image/*,.pdf" ref={bankProofRef} onChange={handleBankProofUpload} />
+                                        </label>
+                                        {newBank.proofFile && <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 size={12}/> {newBank.proofFile.name}</span>}
+                                        {analyzingDoc === 'BANK_PROOF' && <span className="text-xs text-brand-primary animate-pulse">IA Analisando...</span>}
+                                    </div>
+                                    <button type="button" onClick={handleAddBank} className="bg-brand-gray-900 text-white px-4 py-2 rounded text-xs font-bold hover:bg-black">+ Incluir Conta</button>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* 5. Commercial & Equipment (Updated) */}
+                        <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Briefcase className="w-5 h-5 text-brand-primary" /> Comercial & Equipamentos</h3>
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Plano</label>
+                                        <div className="flex bg-brand-gray-100 p-1 rounded-lg">
+                                            <button type="button" onClick={() => setFormData({...formData, planType: 'Full'})} className={`flex-1 py-2 text-sm font-bold rounded ${formData.planType === 'Full' ? 'bg-white text-green-700 shadow' : 'text-gray-500'}`}>FULL</button>
+                                            <button type="button" onClick={() => setFormData({...formData, planType: 'Simples'})} className={`flex-1 py-2 text-sm font-bold rounded ${formData.planType === 'Simples' ? 'bg-white text-blue-700 shadow' : 'text-gray-500'}`}>SIMPLES</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Vincular Negociação</label>
+                                        <select className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.pricingDemandId || ''} onChange={e => handlePricingLink(e.target.value)}>
+                                            <option value="">Sem negociação</option>
+                                            {pricingRequests.map(req => <option key={req.id} value={req.id}>#{req.id} - {req.clientName}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* MULTI POS SECTION */}
+                                <div className="bg-brand-gray-50 p-4 rounded-xl border border-brand-gray-200">
+                                    <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-3">Lista de Equipamentos</label>
+                                    {formData.requestedEquipments && formData.requestedEquipments.length > 0 && (
+                                        <div className="space-y-2 mb-4">
+                                            {formData.requestedEquipments.map((item, idx) => (
+                                                <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-lg border border-brand-gray-200 shadow-sm">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`text-[10px] font-bold px-2 py-1 rounded text-white ${item.type === 'STOCK' ? 'bg-blue-600' : 'bg-brand-gray-600'}`}>
+                                                            {item.type === 'STOCK' ? 'MEU ESTOQUE' : 'SOLICITAR ENVIO'}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-brand-gray-800">{item.model}</p>
+                                                            {item.serialNumber && (
+                                                                <p className="text-[10px] font-mono text-brand-gray-500">
+                                                                    SN: {item.serialNumber} | RC: {item.rcNumber}
+                                                                </p>
+                                                            )}
+                                                            <p className="text-[10px] text-brand-gray-400 mt-0.5">
+                                                                Conta Vinculada: {formData.bankAccounts?.[item.linkedAccountIndex || 0]?.bankCode || 'N/A'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <button type="button" onClick={() => handleRemoveEquipment(item.id)} className="text-brand-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     
-                                    <div className={`p-3 border rounded-lg flex justify-between items-center ${formData.docs?.addressProof ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
-                                        <span className="text-sm font-medium flex items-center gap-2">
-                                            Comprovante de Endereço
-                                            {analyzingDoc === 'ADDRESS' && <span className="text-xs text-brand-primary flex items-center"><Loader2 className="w-3 h-3 animate-spin mr-1"/> IA Lendo...</span>}
-                                            {formData.docs?.addressProof && <span className="text-xs text-green-600 flex items-center"><CheckCircle2 className="w-3 h-3 mr-1"/> Validado</span>}
-                                        </span>
-                                        <button type="button" onClick={() => triggerUpload('ADDRESS')} className="text-xs font-bold text-brand-primary border border-brand-primary px-3 py-1 rounded hover:bg-brand-primary hover:text-white transition-colors flex items-center gap-1">
-                                            <UploadCloud className="w-3 h-3" /> Upload & Analisar
-                                        </button>
-                                    </div>
-
-                                    <div className={`p-3 border rounded-lg flex justify-between items-center ${formData.docs?.contract ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
-                                        <span className="text-sm font-medium">Contrato Social / MEI</span>
-                                        <button type="button" onClick={() => setFormData(prev => ({...prev, docs: {...prev.docs!, contract: true}}))} className="text-xs font-bold text-brand-primary border border-brand-primary px-3 py-1 rounded hover:bg-brand-primary hover:text-white transition-colors">
-                                            {formData.docs?.contract ? 'Reenviar' : 'Upload Manual'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </section>
-
-                            {/* Submit Bar */}
-                            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-brand-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-50 md:pl-80 flex justify-end gap-4">
-                                <button 
-                                    type="button"
-                                    onClick={() => setViewMode('LIST')}
-                                    className="px-6 py-3 rounded-xl font-bold text-brand-gray-600 hover:bg-brand-gray-100 transition-colors"
-                                >
-                                    Cancelar
-                                </button>
-                                <button 
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="px-8 py-3 bg-brand-primary text-white rounded-xl font-bold hover:bg-brand-dark transition-all shadow-lg flex items-center gap-2"
-                                >
-                                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                                    Enviar para Análise
-                                </button>
-                            </div>
-                        </form>
-                    </>
-                )}
-
-                {/* --- TAB CONTENT: LIST --- */}
-                {viewMode === 'LIST' && (
-                    <div className="w-full flex flex-col bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden animate-fade-in">
-                        <div className="p-4 border-b border-brand-gray-100 bg-brand-gray-50/50">
-                            <div className="flex justify-between items-center mb-3">
-                                <h2 className="font-bold text-brand-gray-900 text-lg flex items-center gap-2">
-                                    <FileCheck className="w-5 h-5 text-brand-primary" />
-                                    {isAdmin ? 'Fila de Validação' : 'Meus Envios'}
-                                </h2>
-                            </div>
-                            
-                            <div className="relative mb-3">
-                                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-400" />
-                                <input 
-                                    type="text" 
-                                    placeholder="Buscar cliente..." 
-                                    className="w-full pl-9 pr-4 py-2 border border-brand-gray-300 rounded-lg text-sm focus:border-brand-primary outline-none"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
-                            </div>
-                            <div className="flex gap-2 overflow-x-auto pb-1">
-                                {['PENDING_ANALYSIS', 'MISSING_DOCS', 'APPROVED', 'ALL'].map(status => (
-                                    <button
-                                        key={status}
-                                        onClick={() => setStatusFilter(status as any)}
-                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all border
-                                            ${statusFilter === status 
-                                                ? 'bg-brand-gray-900 text-white border-brand-gray-900' 
-                                                : 'bg-white text-brand-gray-600 border-brand-gray-200 hover:bg-brand-gray-50'}
-                                        `}
-                                    >
-                                        {status === 'PENDING_ANALYSIS' ? 'Pendentes' : status === 'MISSING_DOCS' ? 'Pendência' : status === 'APPROVED' ? 'Aprovados' : 'Todos'}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto divide-y divide-brand-gray-100 max-h-[500px]">
-                            {filteredRequests.length === 0 ? (
-                                <div className="p-8 text-center text-brand-gray-400 text-xs">
-                                    {isAdmin ? 'Nenhum cadastro aguardando validação.' : 'Você ainda não enviou nenhum cadastro.'}
-                                </div>
-                            ) : (
-                                filteredRequests.map(req => (
-                                    <div 
-                                        key={req.id}
-                                        onClick={() => isAdmin && setSelectedReq(req)}
-                                        className={`p-4 transition-colors border-l-4 ${isAdmin ? 'cursor-pointer hover:bg-brand-gray-50' : ''} 
-                                            ${selectedReq?.id === req.id ? 'bg-brand-gray-50 border-l-brand-primary' : 'border-l-transparent'}
-                                        `}
-                                    >
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className="font-bold text-brand-gray-900 text-sm truncate max-w-[150px]">{req.clientName}</span>
-                                            <span className="text-[10px] bg-brand-gray-100 text-brand-gray-500 px-1.5 py-0.5 rounded font-mono">{req.id}</span>
+                                    {/* Add Equipment Form */}
+                                    <div className="bg-white p-3 rounded-lg border border-brand-gray-200 border-dashed space-y-3">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Origem</label>
+                                                <select className="w-full border rounded text-sm py-1.5" value={newEquip.type} onChange={e => setNewEquip({...newEquip, type: e.target.value as any, serial: '', rc: ''})}>
+                                                    <option value="REQUEST">Solicitar à Logística</option>
+                                                    <option value="STOCK">Meu Estoque (Pronta-Entrega)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Modelo</label>
+                                                <select className="w-full border rounded text-sm py-1.5" value={newEquip.model} onChange={e => setNewEquip({...newEquip, model: e.target.value})}>
+                                                    {POS_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                                                </select>
+                                            </div>
                                         </div>
-                                        <div className="text-xs text-brand-gray-500 mb-2">{req.documentNumber}</div>
-                                        <div className="flex justify-between items-center text-[10px]">
-                                            <span className="flex items-center gap-1 text-brand-gray-400">
-                                                <User className="w-3 h-3" /> {req.requesterName}
-                                            </span>
-                                            {req.status === 'PENDING_ANALYSIS' && <span className="text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded font-bold">Aguardando Validação</span>}
-                                            {req.status === 'APPROVED' && <span className="text-green-600 bg-green-100 px-2 py-0.5 rounded font-bold">Aprovado</span>}
-                                            {req.status === 'MISSING_DOCS' && <span className="text-red-600 bg-red-100 px-2 py-0.5 rounded font-bold">Pendência</span>}
-                                        </div>
-                                        {req.status === 'APPROVED' && (
-                                            <div className="mt-2 pt-2 border-t border-brand-gray-100 text-[10px] text-blue-600 font-bold flex items-center gap-1">
-                                                <ArrowRight className="w-3 h-3" />
-                                                Logística: {req.otp ? `OTP Gerado (${req.otp})` : 'Aguardando Gsurf'}
+                                        
+                                        {/* GROUPED: RC, SN and Model (Model above) */}
+                                        {newEquip.type === 'STOCK' && (
+                                            <div className="grid grid-cols-2 gap-3 bg-blue-50 p-2 rounded border border-blue-100">
+                                                <div>
+                                                    <label className="block text-[10px] uppercase font-bold text-blue-700 mb-1">Serial Number</label>
+                                                    <select className="w-full border rounded text-sm py-1.5 font-mono" value={newEquip.serial} onChange={e => {
+                                                        const selectedPos = myInventory.find(p => p.serialNumber === e.target.value);
+                                                        setNewEquip({...newEquip, serial: e.target.value, rc: selectedPos?.rcNumber || '', model: selectedPos?.model || newEquip.model });
+                                                    }}>
+                                                        <option value="">Selecione...</option>
+                                                        {myInventory.map(pos => <option key={pos.serialNumber} value={pos.serialNumber}>{pos.serialNumber}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] uppercase font-bold text-blue-700 mb-1">RC Number</label>
+                                                    <input className="w-full border rounded text-sm py-1.5 font-mono bg-gray-100 text-gray-500" readOnly value={newEquip.rc} placeholder="RC000000" />
+                                                </div>
                                             </div>
                                         )}
+
+                                        <div>
+                                            <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Vincular Conta Bancária *</label>
+                                            <select className="w-full border rounded text-sm py-1.5" value={newEquip.accountIndex} onChange={e => setNewEquip({...newEquip, accountIndex: Number(e.target.value)})}>
+                                                {formData.bankAccounts && formData.bankAccounts.length > 0 ? (
+                                                    formData.bankAccounts.map((acc, idx) => (
+                                                        <option key={idx} value={idx}>Conta {idx+1}: {acc.bankCode} - {acc.accountNumber}</option>
+                                                    ))
+                                                ) : (
+                                                    <option value="">Nenhuma conta cadastrada</option>
+                                                )}
+                                            </select>
+                                        </div>
+
+                                        <button type="button" onClick={handleAddEquipment} className="w-full bg-brand-gray-900 text-white text-xs font-bold py-2 rounded hover:bg-black transition-colors">
+                                            + Adicionar POS
+                                        </button>
                                     </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    // --- ADMIN LIST VIEW (DEFAULT) ---
-    return (
-        <div className="h-[calc(100vh-6rem)] flex flex-col md:flex-row gap-6">
-            
-            {/* LEFT: LIST (For Admin) */}
-            <div className="w-full md:w-1/3 flex flex-col bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden">
-                <div className="p-4 border-b border-brand-gray-100 bg-brand-gray-50/50">
-                    <div className="flex justify-between items-center mb-3">
-                        <h2 className="font-bold text-brand-gray-900 text-lg flex items-center gap-2">
-                            <FileCheck className="w-5 h-5 text-brand-primary" />
-                            Fila de Análise
-                        </h2>
-                    </div>
-                    
-                    <div className="relative mb-3">
-                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-400" />
-                        <input 
-                            type="text" 
-                            placeholder="Buscar cliente..." 
-                            className="w-full pl-9 pr-4 py-2 border border-brand-gray-300 rounded-lg text-sm focus:border-brand-primary outline-none"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                        {['PENDING_ANALYSIS', 'MISSING_DOCS', 'APPROVED', 'ALL'].map(status => (
-                            <button
-                                key={status}
-                                onClick={() => setStatusFilter(status as any)}
-                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all border
-                                    ${statusFilter === status 
-                                        ? 'bg-brand-gray-900 text-white border-brand-gray-900' 
-                                        : 'bg-white text-brand-gray-600 border-brand-gray-200 hover:bg-brand-gray-50'}
-                                `}
-                            >
-                                {status === 'PENDING_ANALYSIS' ? 'Pendentes' : status === 'MISSING_DOCS' ? 'Pendência' : status === 'APPROVED' ? 'Aprovados' : 'Todos'}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto divide-y divide-brand-gray-100">
-                    {filteredRequests.length === 0 ? (
-                        <div className="p-8 text-center text-brand-gray-400 text-xs">
-                            Nenhuma solicitação aguardando validação.
-                        </div>
-                    ) : (
-                        filteredRequests.map(req => (
-                            <div 
-                                key={req.id}
-                                onClick={() => isAdmin && setSelectedReq(req)}
-                                className={`p-4 cursor-pointer hover:bg-brand-gray-50 transition-colors border-l-4
-                                    ${selectedReq?.id === req.id ? 'bg-brand-gray-50 border-l-brand-primary' : 'border-l-transparent'}
-                                `}
-                            >
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className="font-bold text-brand-gray-900 text-sm truncate max-w-[150px]">{req.clientName}</span>
-                                    <span className="text-[10px] bg-brand-gray-100 text-brand-gray-500 px-1.5 py-0.5 rounded font-mono">{req.id}</span>
-                                </div>
-                                <div className="text-xs text-brand-gray-500 mb-2">{req.documentNumber}</div>
-                                <div className="flex justify-between items-center text-[10px]">
-                                    <span className="flex items-center gap-1 text-brand-gray-400">
-                                        <User className="w-3 h-3" /> {req.requesterName}
-                                    </span>
-                                    {req.status === 'PENDING_ANALYSIS' && <span className="text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded font-bold">Aguardando Validação</span>}
-                                    {req.status === 'APPROVED' && <span className="text-green-600 bg-green-100 px-2 py-0.5 rounded font-bold">Aprovado</span>}
-                                    {req.status === 'MISSING_DOCS' && <span className="text-red-600 bg-red-100 px-2 py-0.5 rounded font-bold">Pendência</span>}
                                 </div>
                             </div>
-                        ))
-                    )}
-                </div>
-            </div>
+                        </section>
 
-            {/* RIGHT: WORKSPACE (Admin Only) */}
-            <div className="flex-1 bg-white rounded-xl shadow-lg border border-brand-gray-200 flex flex-col overflow-hidden relative">
-                {selectedReq ? (
-                <>
-                    {/* Header */}
-                    <div className="bg-brand-gray-900 text-white p-6 shrink-0 flex justify-between items-start">
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <h2 className="text-xl font-bold">{selectedReq.clientName}</h2>
-                                <span className="bg-brand-primary text-xs px-2 py-0.5 rounded font-bold">Mesa de Validação</span>
-                            </div>
-                            <div className="flex items-center gap-4 mt-2 text-xs text-brand-gray-300">
-                                <span className="bg-white/10 px-2 py-1 rounded font-mono">{selectedReq.documentNumber}</span>
-                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3"/> Enviado: {new Date(selectedReq.dateSubmitted).toLocaleDateString()}</span>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-xs opacity-60 uppercase block">Solicitante ({selectedReq.requesterRole})</span>
-                            <span className="font-bold text-sm">{selectedReq.requesterName}</span>
-                        </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6">
-                        {/* Detailed Data View for Admin */}
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div className="p-3 bg-brand-gray-50 rounded border">
-                                <p className="text-xs text-brand-gray-500 font-bold">Plano</p>
-                                <p>{selectedReq.planType}</p>
-                            </div>
-                            <div className="p-3 bg-brand-gray-50 rounded border">
-                                <p className="text-xs text-brand-gray-500 font-bold">POS Serial</p>
-                                <p className="font-mono">{selectedReq.posData?.serialNumber || 'N/A'}</p>
-                            </div>
-                            <div className="p-3 bg-brand-gray-50 rounded border col-span-2">
-                                <p className="text-xs text-brand-gray-500 font-bold">Banco</p>
-                                <p>{selectedReq.bankAccount?.bankCode} - Ag: {selectedReq.bankAccount?.agency} CC: {selectedReq.bankAccount?.accountNumber}</p>
-                                {selectedReq.bankAccount?.isThirdParty && <p className="text-xs text-red-500 font-bold mt-1">⚠️ Conta de Terceiros</p>}
-                            </div>
-                        </div>
-
-                        {/* Checklist Section */}
-                        <div className="mb-8">
-                            <h3 className="font-bold text-brand-gray-900 text-sm uppercase tracking-wide mb-4 flex items-center gap-2">
-                                <ShieldCheck className="w-4 h-4 text-brand-primary" />
-                                Validação de Documentos
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* ... Docs Checklist ... */}
-                                <div className="p-4 rounded-xl border flex items-center justify-between cursor-pointer bg-green-50 border-green-200 text-green-800 shadow-sm transition-transform hover:scale-[1.02]">
-                                    <span className="font-medium text-sm">Contrato Social / MEI</span>
-                                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        {/* 6. GENERAL DOCUMENTATION (Contract, ID, etc) */}
+                        <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><FileCheck className="w-5 h-5 text-brand-primary" /> Documentação Geral</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {/* Contract - REMOVED AS PER REQUEST */}
+                                
+                                {/* Identity */}
+                                <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center transition-colors cursor-pointer hover:bg-brand-gray-50 ${formData.docs?.idCard ? 'border-green-300 bg-green-50' : 'border-brand-gray-300'}`} onClick={() => triggerUpload('IDENTITY')}>
+                                    {formData.docs?.idCard ? <CheckCircle2 className="w-8 h-8 text-green-500 mb-2"/> : <User className="w-8 h-8 text-brand-gray-400 mb-2"/>}
+                                    <span className="text-xs font-bold text-brand-gray-600">Doc. Identidade (RG/CNH)</span>
+                                    {analyzingDoc === 'IDENTITY' && <span className="text-[10px] text-brand-primary animate-pulse mt-1">Analisando...</span>}
                                 </div>
-                                <div className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-transform hover:scale-[1.02] ${selectedReq.docs.idCard ? 'bg-green-50 border-green-200 text-green-800' : 'bg-white border-brand-gray-200'}`}>
-                                    <span className="font-medium text-sm">RG/CNH</span>
-                                    {selectedReq.docs.idCard ? <CheckCircle2 className="w-5 h-5 text-green-600" /> : <div className="w-5 h-5 rounded-full border-2 border-brand-gray-300"></div>}
+                                {/* Address */}
+                                <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center transition-colors cursor-pointer hover:bg-brand-gray-50 ${formData.docs?.addressProof ? 'border-green-300 bg-green-50' : 'border-brand-gray-300'}`} onClick={() => triggerUpload('ADDRESS')}>
+                                    {formData.docs?.addressProof ? <CheckCircle2 className="w-8 h-8 text-green-500 mb-2"/> : <MapPin className="w-8 h-8 text-brand-gray-400 mb-2"/>}
+                                    <span className="text-xs font-bold text-brand-gray-600">Comprovante de Endereço</span>
+                                    {analyzingDoc === 'ADDRESS' && <span className="text-[10px] text-brand-primary animate-pulse mt-1">Analisando...</span>}
                                 </div>
-                                <div className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-transform hover:scale-[1.02] ${selectedReq.docs.addressProof ? 'bg-green-50 border-green-200 text-green-800' : 'bg-white border-brand-gray-200'}`}>
-                                    <span className="font-medium text-sm">Compr. Endereço</span>
-                                    {selectedReq.docs.addressProof ? <CheckCircle2 className="w-5 h-5 text-green-600" /> : <div className="w-5 h-5 rounded-full border-2 border-brand-gray-300"></div>}
+                                {/* FACADE PHOTO */}
+                                <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center transition-colors cursor-pointer hover:bg-brand-gray-50 ${formData.docs?.facade ? 'border-green-300 bg-green-50' : 'border-brand-gray-300'}`} onClick={() => triggerUpload('FACADE')}>
+                                    {formData.docs?.facade ? <CheckCircle2 className="w-8 h-8 text-green-500 mb-2"/> : <Store className="w-8 h-8 text-brand-gray-400 mb-2"/>}
+                                    <span className="text-xs font-bold text-brand-gray-600">Foto da Fachada</span>
                                 </div>
-                                <div className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-transform hover:scale-[1.02] ${selectedReq.docs.bankProof ? 'bg-green-50 border-green-200 text-green-800' : 'bg-white border-brand-gray-200'}`}>
-                                    <span className="font-medium text-sm">Compr. Bancário</span>
-                                    {selectedReq.docs.bankProof ? <CheckCircle2 className="w-5 h-5 text-green-600" /> : <div className="w-5 h-5 rounded-full border-2 border-brand-gray-300"></div>}
+                                {/* INTERIOR PHOTOS */}
+                                <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center transition-colors cursor-pointer hover:bg-brand-gray-50 ${(formData.docs?.interiorFiles?.length || 0) >= 3 ? 'border-green-300 bg-green-50' : 'border-brand-gray-300'}`} onClick={() => triggerUpload('INTERIOR')}>
+                                    {(formData.docs?.interiorFiles?.length || 0) >= 3 ? <CheckCircle2 className="w-8 h-8 text-green-500 mb-2"/> : <Camera className="w-8 h-8 text-brand-gray-400 mb-2"/>}
+                                    <span className="text-xs font-bold text-brand-gray-600">Fotos Internas (Min 3)</span>
+                                    {(formData.docs?.interiorFiles?.length || 0) > 0 && <span className="text-[10px] bg-brand-gray-200 px-2 rounded mt-1">{formData.docs?.interiorFiles?.length} enviadas</span>}
                                 </div>
-                                {selectedReq.bankAccount?.isThirdParty && (
-                                    <div className="p-4 rounded-xl border flex items-center justify-between cursor-pointer bg-yellow-50 border-yellow-200 text-yellow-800 transition-transform hover:scale-[1.02]">
-                                        <span className="font-medium text-sm">Termo de Terceiro</span>
-                                        <AlertCircle className="w-5 h-5" />
-                                    </div>
-                                )}
                             </div>
-                        </div>
+                        </section>
 
-                        {selectedReq.notes && (
-                            <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 text-yellow-800 text-sm mb-6">
-                                <span className="font-bold block mb-1">Observações / Pendências:</span>
-                                {selectedReq.notes}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Actions Footer */}
-                    {selectedReq.status !== 'APPROVED' && (
-                        <div className="p-6 bg-brand-gray-50 border-t border-brand-gray-200 flex justify-end gap-3">
-                            <button 
-                                onClick={handleReject}
-                                className="px-6 py-3 border border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-50 transition-colors flex items-center gap-2"
-                            >
-                                <AlertCircle className="w-4 h-4" />
-                                Reportar Pendência
-                            </button>
-                            <button 
-                                onClick={handleApprove}
-                                disabled={isApproving}
-                                className="px-8 py-3 bg-brand-primary text-white font-bold rounded-xl shadow-lg hover:bg-brand-dark transition-all transform hover:-translate-y-1 flex items-center gap-2 disabled:opacity-50"
-                            >
-                                {isApproving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                                Validar e Enviar para Logística
-                            </button>
+                        <div className="flex justify-end pt-4">
+                            <button type="submit" className="bg-brand-primary text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-brand-dark transition-all flex items-center gap-2"><Eye className="w-5 h-5" /> Revisar Cadastro</button>
                         </div>
-                    )}
+                    </form>
                 </>
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-brand-gray-400">
-                        <FileText className="w-16 h-16 mb-4 opacity-20" />
-                        <p className="text-lg font-medium">Selecione um cadastro para validar</p>
-                    </div>
-                )}
-            </div>
+            )}
+
+            {/* List View */}
+            {viewMode === 'LIST' && (
+                <div className="bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden p-6 text-center text-gray-500">
+                    <p>Histórico de envios simplificado.</p>
+                </div>
+            )}
+
+            <PreviewModal 
+                isOpen={isPreviewOpen} 
+                onClose={() => setIsPreviewOpen(false)} 
+                onConfirm={handleConfirmSubmit} 
+                isSubmitting={isSubmitting} 
+                data={formData} 
+                onViewDoc={(type) => setViewDocType(type)}
+            />
+            <RatesModal 
+                isOpen={isRatesModalOpen} 
+                onClose={() => setIsRatesModalOpen(false)} 
+                demand={selectedPricingDemand} 
+            />
+            <DocViewerModal isOpen={!!viewDocType} onClose={() => setViewDocType(null)} docType={viewDocType} />
         </div>
     );
 };

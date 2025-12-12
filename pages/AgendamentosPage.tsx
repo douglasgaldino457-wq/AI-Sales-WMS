@@ -4,6 +4,7 @@ import { UserRole, Appointment, LeadOrigin, VisitPeriod, ClientBaseRow, VisitRep
 import { appStore } from '../services/store';
 import { MOCK_USERS } from '../constants';
 import { AddressAutocomplete } from '../components/AddressAutocomplete';
+import { CurrencyInput } from '../components/CurrencyInput'; // Added Import
 import { 
   Calendar, Clock, MapPin, User, MessageCircle, CheckCircle2, Save, 
   ArrowRight, Search, ChevronLeft, Pencil, FileText, Briefcase, Map, Layout,
@@ -34,6 +35,7 @@ const InsideSalesView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Novos' | 'Carteira'>('Novos');
   const [isWalletScheduleMode, setIsWalletScheduleMode] = useState(false);
   const [previewId, setPreviewId] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const [formData, setFormData] = useState<Partial<Appointment>>({
     leadOrigins: [],
@@ -116,30 +118,36 @@ const InsideSalesView: React.FC = () => {
         return;
     }
 
-    const newAppointment: Appointment = {
-      id: previewId,
-      leadOrigins: formData.leadOrigins || [],
-      clientId: formData.clientId || Math.floor(Math.random() * 1000).toString(),
-      clientName: formData.clientName,
-      responsible: formData.responsible || '',
-      whatsapp: formData.whatsapp,
-      address: formData.address || '',
-      observation: formData.observation || '',
-      fieldSalesName: formData.fieldSalesName,
-      date: formData.date,
-      period: formData.period as VisitPeriod,
-      status: 'Scheduled',
-      isWallet: isWalletScheduleMode,
-      visitReason: formData.visitReason
-    };
+    setIsSaving(true);
 
-    appStore.addAppointment(newAppointment);
+    // Simulate API delay
+    setTimeout(() => {
+        const newAppointment: Appointment = {
+          id: previewId,
+          leadOrigins: formData.leadOrigins || [],
+          clientId: formData.clientId || Math.floor(Math.random() * 1000).toString(),
+          clientName: formData.clientName,
+          responsible: formData.responsible || '',
+          whatsapp: formData.whatsapp,
+          address: formData.address || '',
+          observation: formData.observation || '',
+          fieldSalesName: formData.fieldSalesName,
+          date: formData.date,
+          period: formData.period as VisitPeriod,
+          status: 'Scheduled',
+          isWallet: isWalletScheduleMode,
+          visitReason: formData.visitReason
+        };
 
-    const consultant = MOCK_USERS.find(u => u.name === newAppointment.fieldSalesName);
-    const consultantPhone = consultant ? consultant.whatsapp : "";
+        appStore.addAppointment(newAppointment);
 
-    const link = generateWhatsAppMessage(newAppointment, consultantPhone);
-    setGeneratedLink(link);
+        const consultant = MOCK_USERS.find(u => u.name === newAppointment.fieldSalesName);
+        const consultantPhone = consultant ? consultant.whatsapp : "";
+
+        const link = generateWhatsAppMessage(newAppointment, consultantPhone);
+        setGeneratedLink(link);
+        setIsSaving(false);
+    }, 1000);
   };
 
   const handleScheduleFromWallet = (client: ClientBaseRow) => {
@@ -388,7 +396,10 @@ const InsideSalesView: React.FC = () => {
                 </div>
                 <div className="mt-8 pt-6 border-t border-brand-gray-100 flex justify-end gap-4">
                     <button type="button" onClick={resetForm} className="px-6 py-3 rounded-lg text-brand-gray-600 font-bold hover:bg-brand-gray-100 transition-colors text-sm">Limpar</button>
-                    <button type="submit" className="px-8 py-3 bg-brand-primary text-white rounded-lg font-bold hover:bg-brand-dark transition-all shadow-lg hover:shadow-xl flex items-center text-sm transform hover:-translate-y-0.5"><Save className="w-4 h-4 mr-2" />Salvar Agendamento</button>
+                    <button type="submit" disabled={isSaving} className="px-8 py-3 bg-brand-primary text-white rounded-lg font-bold hover:bg-brand-dark transition-all shadow-lg hover:shadow-xl flex items-center text-sm transform hover:-translate-y-0.5 disabled:opacity-50">
+                        {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <Save className="w-4 h-4 mr-2" />}
+                        {isSaving ? 'Salvando...' : 'Salvar Agendamento'}
+                    </button>
                 </div>
             </form>
         )}
@@ -542,6 +553,9 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [viewDetailsAppt, setViewDetailsAppt] = useState<Appointment | null>(null);
   const [reportData, setReportData] = useState<VisitReport>({});
+  
+  // Loading State for Actions
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   // Refs for click outside
   const searchWrapperRef = useRef<HTMLDivElement>(null);
@@ -574,8 +588,12 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
   });
 
   const handleCheckIn = (id: string) => {
-    appStore.checkInAppointment(id);
-    setRefresh(prev => prev + 1); // Refresh UI to show "Preencher Relatório"
+    setLoadingAction(`checkin-${id}`);
+    setTimeout(() => {
+        appStore.checkInAppointment(id);
+        setRefresh(prev => prev + 1); // Refresh UI to show "Preencher Relatório"
+        setLoadingAction(null);
+    }, 800);
   };
   
   const handleToggleRoute = (id: string) => {
@@ -599,9 +617,13 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
 
   const handleSaveReport = () => {
     if (selectedAppt) {
-        appStore.submitVisitReport(selectedAppt.id, reportData);
-        setSelectedAppt(null);
-        setRefresh(prev => prev + 1);
+        setLoadingAction('report');
+        setTimeout(() => {
+            appStore.submitVisitReport(selectedAppt.id, reportData);
+            setSelectedAppt(null);
+            setRefresh(prev => prev + 1);
+            setLoadingAction(null);
+        }, 1000);
     }
   };
 
@@ -655,72 +677,75 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
       }
   };
 
+  const handleSearchButtonClick = () => {
+      if (suggestions.length > 0) {
+          selectClient(suggestions[0]);
+      } else {
+          const exact = clientBase.find(c => c.id === searchId);
+          if (exact) {
+              selectClient(exact);
+          } else {
+             alert('Cliente não encontrado.');
+          }
+      }
+  };
+
   const handleCreateVisit = () => {
       if (!newVisitData.clientName) {
           alert('Preencha o nome do cliente.');
           return;
       }
+      setLoadingAction('create');
       
-      const newAppt: Appointment = {
-          id: appStore.generateId(),
-          clientId: newVisitData.clientId || 'MANUAL-' + Math.floor(Math.random()*1000),
-          clientName: newVisitData.clientName!,
-          responsible: newVisitData.responsible || '',
-          whatsapp: newVisitData.whatsapp || '',
-          address: newVisitData.address || '',
-          observation: newVisitData.observation || 'Visita criada manualmente pelo consultor.',
-          fieldSalesName: currentUser,
-          status: 'Scheduled',
-          leadOrigins: newVisitMode === 'PROSPECTION' ? ['Prospecção'] : ['Indicação'],
-          isWallet: newVisitMode === 'CLIENT_ID',
-          date: new Date().toISOString().split('T')[0],
-          period: 'Horário Comercial'
-      };
+      setTimeout(() => {
+          const newAppt: Appointment = {
+              id: appStore.generateId(),
+              clientId: newVisitData.clientId || 'MANUAL-' + Math.floor(Math.random()*1000),
+              clientName: newVisitData.clientName!,
+              responsible: newVisitData.responsible || '',
+              whatsapp: newVisitData.whatsapp || '',
+              address: newVisitData.address || '',
+              observation: newVisitData.observation || 'Visita criada manualmente pelo consultor.',
+              fieldSalesName: currentUser,
+              status: 'Scheduled',
+              leadOrigins: newVisitMode === 'PROSPECTION' ? ['Prospecção'] : ['Indicação'],
+              isWallet: newVisitMode === 'CLIENT_ID',
+              date: new Date().toISOString().split('T')[0],
+              period: 'Horário Comercial'
+          };
 
-      appStore.addAppointment(newAppt);
-      
-      // AUTO CHECK-IN & REPORT OPEN LOGIC FOR PROSPECTION
-      if (newVisitMode === 'PROSPECTION') {
-          appStore.checkInAppointment(newAppt.id);
+          appStore.addAppointment(newAppt);
           
-          setReportData({
-            outcome: undefined,
-            walletAction: undefined,
-            withdrawalReason: undefined,
-            swapReason: undefined,
-            observation: '',
-            revenuePotential: undefined,
-            competitorAcquirer: '',
-            hadRateQuote: false
+          // AUTO CHECK-IN & REPORT OPEN LOGIC FOR PROSPECTION
+          if (newVisitMode === 'PROSPECTION') {
+              appStore.checkInAppointment(newAppt.id);
+              
+              setReportData({
+                outcome: undefined,
+                walletAction: undefined,
+                withdrawalReason: undefined,
+                swapReason: undefined,
+                observation: '',
+                revenuePotential: undefined,
+                competitorAcquirer: '',
+                hadRateQuote: false
+              });
+              
+              setSelectedAppt(newAppt);
+          }
+
+          setRefresh(prev => prev + 1);
+          setIsNewVisitModalOpen(false);
+          setLoadingAction(null);
+          
+          // Reset form
+          setNewVisitData({
+              leadOrigins: ['Prospecção'],
+              status: 'Scheduled',
+              date: new Date().toISOString().split('T')[0]
           });
-          
-          setSelectedAppt(newAppt);
-      }
-
-      setRefresh(prev => prev + 1);
-      setIsNewVisitModalOpen(false);
-      
-      // Reset form
-      setNewVisitData({
-          leadOrigins: ['Prospecção'],
-          status: 'Scheduled',
-          date: new Date().toISOString().split('T')[0]
-      });
-      setSearchId('');
-  };
-
-  const handleCurrencyInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value;
-    // Remove everything that is not a digit
-    value = value.replace(/\D/g, "");
-    
-    // Convert to number (cents to float)
-    const numberValue = value ? parseInt(value, 10) / 100 : undefined;
-    
-    setReportData({
-        ...reportData,
-        revenuePotential: numberValue
-    });
+          setSearchId('');
+      }, 1000);
   };
 
   return (
@@ -881,10 +906,11 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                                     {!isCheckedIn ? (
                                         <button 
                                             onClick={() => handleCheckIn(appt.id)}
-                                            className="px-4 py-2 bg-brand-gray-900 text-white rounded-lg text-xs font-bold hover:bg-brand-dark shadow-sm flex items-center gap-1.5"
+                                            disabled={loadingAction === `checkin-${appt.id}`}
+                                            className="px-4 py-2 bg-brand-gray-900 text-white rounded-lg text-xs font-bold hover:bg-brand-dark shadow-sm flex items-center gap-1.5 disabled:opacity-50"
                                         >
-                                            <MapPin className="w-3 h-3" />
-                                            Fazer Check-in
+                                            {loadingAction === `checkin-${appt.id}` ? <Loader2 className="w-3 h-3 animate-spin"/> : <MapPin className="w-3 h-3" />}
+                                            {loadingAction === `checkin-${appt.id}` ? 'Registrando...' : 'Fazer Check-in'}
                                         </button>
                                     ) : (
                                         <button 
@@ -937,7 +963,7 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                                     <div className="relative flex-1">
                                         <input 
                                             type="text" 
-                                            placeholder="Busque por ID ou Nome (Tecle Enter)..." 
+                                            placeholder="Busque por ID ou Nome..." 
                                             value={searchId}
                                             onChange={handleSearchInput}
                                             onKeyDown={handleSearchKeyDown}
@@ -945,6 +971,12 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                                         />
                                         <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-brand-gray-400 w-4 h-4 pointer-events-none" />
                                     </div>
+                                    <button 
+                                        onClick={handleSearchButtonClick}
+                                        className="bg-brand-gray-100 text-brand-gray-600 px-3 py-2 rounded-lg text-sm font-bold hover:bg-brand-gray-200"
+                                    >
+                                        Buscar
+                                    </button>
                                 </div>
                                 
                                 {/* Dropdown for Suggestions */}
@@ -1010,8 +1042,10 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
 
                         <button 
                             onClick={handleCreateVisit}
-                            className="w-full bg-brand-primary text-white py-3 rounded-xl font-bold mt-4 hover:bg-brand-dark transition-colors shadow-lg"
+                            disabled={loadingAction === 'create'}
+                            className="w-full bg-brand-primary text-white py-3 rounded-xl font-bold mt-4 hover:bg-brand-dark transition-colors shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                         >
+                            {loadingAction === 'create' ? <Loader2 className="w-4 h-4 animate-spin"/> : null}
                             Confirmar Visita
                         </button>
                     </div>
@@ -1044,201 +1078,155 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                            <div>
                                <label className="block text-sm font-bold text-brand-gray-700 mb-2">Resultado da Visita *</label>
                                <select 
-                                   className="w-full border border-brand-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-brand-primary/20 outline-none"
+                                   className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
                                    value={reportData.outcome || ''}
                                    onChange={e => setReportData({...reportData, outcome: e.target.value as VisitOutcome})}
                                >
                                    <option value="">Selecione...</option>
-                                   <option value="Convertido">✅ Convertido (Venda Realizada)</option>
-                                   <option value="Em negociação">🤝 Em negociação / Quente</option>
-                                   <option value="Sem interesse">❌ Sem interesse</option>
-                                   <option value="Fidelidade com adquirente">🔒 Fidelidade com outra máquina</option>
-                                   <option value="Taxas altas">💸 Achou as taxas altas</option>
+                                   <option value="Convertido">Convertido (Venda Realizada)</option>
+                                   <option value="Em negociação">Em negociação</option>
+                                   <option value="Sem interesse">Sem interesse</option>
+                                   <option value="Fidelidade com adquirente">Fidelidade com adquirente</option>
+                                   <option value="Taxas altas">Taxas altas</option>
                                </select>
                            </div>
-
                            <div className="grid grid-cols-2 gap-4">
-                               <div>
-                                   <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Potencial (R$)</label>
-                                   <input 
-                                       type="text" 
-                                       placeholder="0,00"
-                                       className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 outline-none focus:border-brand-primary"
-                                       value={reportData.revenuePotential ? (reportData.revenuePotential * 100).toString() : ''}
-                                       onChange={handleCurrencyInput}
-                                   />
-                               </div>
-                               <div>
-                                   <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Concorrente</label>
-                                   <select
-                                      className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 bg-white outline-none focus:border-brand-primary text-sm"
-                                      value={reportData.competitorAcquirer || ''}
-                                      onChange={e => setReportData({...reportData, competitorAcquirer: e.target.value})}
-                                   >
-                                       <option value="">Selecione...</option>
-                                       <option value="Cielo">Cielo</option>
-                                       <option value="Rede">Rede</option>
-                                       <option value="Stone">Stone</option>
-                                       <option value="PagSeguro">PagSeguro</option>
-                                       <option value="Getnet">Getnet</option>
-                                       <option value="SafraPay">SafraPay</option>
-                                       <option value="Outro">Outro</option>
-                                   </select>
-                               </div>
-                           </div>
-                           
-                           <div className="flex items-center gap-2 mt-2">
-                               <input 
-                                   type="checkbox" 
-                                   id="quote"
-                                   checked={reportData.hadRateQuote}
-                                   onChange={e => setReportData({...reportData, hadRateQuote: e.target.checked})}
-                                   className="w-4 h-4 text-brand-primary rounded focus:ring-brand-primary"
-                               />
-                               <label htmlFor="quote" className="text-sm text-brand-gray-700">Realizei cotação de taxas?</label>
+                                <div>
+                                    <label className="block text-sm font-bold text-brand-gray-700 mb-2">Potencial (R$)</label>
+                                    <CurrencyInput 
+                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                        placeholder="R$ 0,00"
+                                        value={reportData.revenuePotential}
+                                        onChange={val => setReportData({...reportData, revenuePotential: val})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-brand-gray-700 mb-2">Concorrente</label>
+                                    <input 
+                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                        placeholder="Ex: Stone"
+                                        value={reportData.competitorAcquirer || ''}
+                                        onChange={e => setReportData({...reportData, competitorAcquirer: e.target.value})}
+                                    />
+                                </div>
                            </div>
                        </div>
                    ) : (
-                       // WALLET MANAGEMENT FLOW
+                       // WALLET FLOW
                        <div className="space-y-4">
                            <div>
                                <label className="block text-sm font-bold text-brand-gray-700 mb-2">Ação Realizada *</label>
                                <select 
-                                   className="w-full border border-brand-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-brand-primary/20 outline-none"
+                                   className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
                                    value={reportData.walletAction || ''}
                                    onChange={e => setReportData({...reportData, walletAction: e.target.value as WalletAction})}
                                >
                                    <option value="">Selecione...</option>
-                                   <option value="Retirada de POS">Retirada de Máquina</option>
-                                   <option value="Troca de POS">Troca de Máquina (Defeito/Modelo)</option>
-                                   <option value="Suporte pós-venda">Suporte / Dúvidas</option>
-                                   <option value="Engajamento sem uso">Reativação / Engajamento</option>
-                                   <option value="Negociação de taxas">Renegociação de Taxas</option>
+                                   <option value="Retirada de POS">Retirada de POS</option>
+                                   <option value="Troca de POS">Troca de POS</option>
+                                   <option value="Suporte pós-venda">Suporte pós-venda</option>
+                                   <option value="Engajamento sem uso">Engajamento sem uso</option>
+                                   <option value="Negociação de taxas">Negociação de taxas</option>
                                </select>
                            </div>
                            
+                           {/* Conditional fields based on Action */}
                            {reportData.walletAction === 'Retirada de POS' && (
-                               <div className="bg-red-50 p-3 rounded-lg border border-red-100 animate-fade-in">
-                                   <label className="block text-xs font-bold text-red-700 uppercase mb-1">Motivo da Retirada</label>
-                                   <select
-                                      className="w-full border border-red-200 rounded px-2 py-1.5 text-sm bg-white outline-none"
-                                      value={reportData.withdrawalReason || ''}
-                                      onChange={e => setReportData({...reportData, withdrawalReason: e.target.value as WithdrawalReason})}
+                               <div>
+                                   <label className="block text-sm font-bold text-brand-gray-700 mb-2">Motivo Retirada *</label>
+                                   <select 
+                                       className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                       value={reportData.withdrawalReason || ''}
+                                       onChange={e => setReportData({...reportData, withdrawalReason: e.target.value})}
                                    >
                                        <option value="">Selecione...</option>
-                                       <option value="Baixo Faturamento">Baixo Faturamento</option>
-                                       <option value="Não recebe Leads">Não recebe Leads Webmotors</option>
-                                       <option value="Taxas">Taxas Altas</option>
-                                       <option value="Contratou Credito no Banco">Venda Casada (Banco)</option>
-                                       <option value="Falta de suporte">Insatisfação com Suporte</option>
-                                       <option value="Outro">Outro</option>
+                                       {appStore.getWithdrawalReasons().map(r => <option key={r} value={r}>{r}</option>)}
                                    </select>
                                </div>
                            )}
 
                            {reportData.walletAction === 'Troca de POS' && (
-                               <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 animate-fade-in">
-                                   <label className="block text-xs font-bold text-blue-700 uppercase mb-1">Motivo da Troca</label>
-                                   <select
-                                      className="w-full border border-blue-200 rounded px-2 py-1.5 text-sm bg-white outline-none"
-                                      value={reportData.swapReason || ''}
-                                      onChange={e => setReportData({...reportData, swapReason: e.target.value as SwapReason})}
+                               <div>
+                                   <label className="block text-sm font-bold text-brand-gray-700 mb-2">Motivo Troca *</label>
+                                   <select 
+                                       className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                       value={reportData.swapReason || ''}
+                                       onChange={e => setReportData({...reportData, swapReason: e.target.value})}
                                    >
                                        <option value="">Selecione...</option>
-                                       <option value="Bateria">Bateria viciada</option>
-                                       <option value="POS Antiga">Modelo antigo (2G/3G)</option>
-                                       <option value="Erro na POS">Erro de Sistema</option>
-                                       <option value="Não liga">Não liga</option>
+                                       {appStore.getSwapReasons().map(r => <option key={r} value={r}>{r}</option>)}
                                    </select>
                                </div>
                            )}
                        </div>
                    )}
 
-                   <div className="mt-6">
-                       <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Observações Gerais</label>
+                   <div className="mt-4">
+                       <label className="block text-sm font-bold text-brand-gray-700 mb-2">Observações / Detalhes</label>
                        <textarea 
-                           className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none resize-none h-24"
-                           placeholder="Descreva detalhes importantes da visita..."
+                           className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none resize-none h-24"
+                           placeholder="Descreva o que foi conversado ou feito..."
                            value={reportData.observation || ''}
                            onChange={e => setReportData({...reportData, observation: e.target.value})}
                        />
                    </div>
                </div>
 
-               <div className="p-4 border-t border-brand-gray-100 bg-brand-gray-50 flex justify-end gap-3 shrink-0">
-                   <button onClick={() => setSelectedAppt(null)} className="px-4 py-2 text-brand-gray-600 font-bold hover:bg-brand-gray-200 rounded-lg transition-colors">Cancelar</button>
-                   <button onClick={handleSaveReport} className="px-6 py-2 bg-brand-primary text-white font-bold rounded-lg shadow hover:bg-brand-dark transition-colors">Finalizar Visita</button>
+               <div className="p-4 border-t border-brand-gray-200 bg-brand-gray-50 flex justify-end">
+                   <button 
+                       onClick={handleSaveReport}
+                       disabled={loadingAction === 'report'}
+                       className="px-6 py-2 bg-brand-primary text-white rounded-lg font-bold hover:bg-brand-dark transition-colors shadow-lg flex items-center gap-2 disabled:opacity-50"
+                   >
+                       {loadingAction === 'report' ? <Loader2 className="w-4 h-4 animate-spin"/> : null}
+                       Concluir Visita
+                   </button>
                </div>
            </div>
         </div>
       )}
 
-      {/* MODAL: VIEW DETAILS */}
+      {/* MODAL: VIEW DETAILS (Read Only) */}
       {viewDetailsAppt && (
           <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
-                  <button onClick={() => setViewDetailsAppt(null)} className="absolute top-4 right-4 text-brand-gray-400 hover:text-brand-gray-600"><X size={20}/></button>
+                  <button onClick={() => setViewDetailsAppt(null)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={18}/></button>
+                  <h3 className="text-xl font-bold mb-1">{viewDetailsAppt.clientName}</h3>
+                  <p className="text-gray-500 text-sm mb-6 flex items-center gap-1"><MapPin size={14}/> {viewDetailsAppt.address}</p>
                   
-                  <div className="flex items-center gap-3 mb-4">
-                      <div className="bg-brand-gray-100 p-3 rounded-full">
-                          <Briefcase className="w-6 h-6 text-brand-gray-600" />
-                      </div>
-                      <div>
-                          <h3 className="font-bold text-xl text-brand-gray-900">{viewDetailsAppt.clientName}</h3>
-                          <span className="text-xs text-brand-gray-500 uppercase font-bold">{viewDetailsAppt.isWallet ? 'Cliente Base' : 'Prospecção'}</span>
-                      </div>
-                  </div>
-
-                  <div className="space-y-4 text-sm">
-                      <div className="bg-brand-gray-50 p-4 rounded-xl border border-brand-gray-100 space-y-2">
-                          <div className="flex items-start gap-2">
-                              <MapPin className="w-4 h-4 text-brand-gray-400 mt-0.5" />
-                              <span className="text-brand-gray-700">{viewDetailsAppt.address}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                              <User className="w-4 h-4 text-brand-gray-400" />
-                              <span className="text-brand-gray-700">Resp: <strong>{viewDetailsAppt.responsible}</strong></span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                              <MessageCircle className="w-4 h-4 text-green-500" />
-                              <span className="text-brand-gray-700">{viewDetailsAppt.whatsapp}</span>
+                  <div className="space-y-4">
+                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                          <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Dados de Contato</h4>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div><span className="text-gray-500 block text-xs">Responsável</span>{viewDetailsAppt.responsible}</div>
+                              <div><span className="text-gray-500 block text-xs">Telefone</span>{viewDetailsAppt.whatsapp}</div>
                           </div>
                       </div>
 
-                      <div>
-                          <p className="text-xs font-bold text-brand-gray-400 uppercase mb-1">Motivo / Origem</p>
-                          <p className="font-medium text-brand-gray-800">
-                              {viewDetailsAppt.isWallet ? viewDetailsAppt.visitReason : viewDetailsAppt.leadOrigins.join(', ')}
+                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                          <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Sobre o Agendamento</h4>
+                          <p className="text-sm text-gray-800 mb-2">
+                              <span className="font-bold">Origem:</span> {viewDetailsAppt.isWallet ? 'Carteira (Gestão)' : 'Novo Negócio'}
                           </p>
+                          {viewDetailsAppt.leadOrigins.length > 0 && (
+                              <p className="text-sm text-gray-800 mb-2"><span className="font-bold">Fonte:</span> {viewDetailsAppt.leadOrigins.join(', ')}</p>
+                          )}
+                          <p className="text-sm text-gray-600 italic">"{viewDetailsAppt.observation}"</p>
                       </div>
 
-                      {viewDetailsAppt.observation && (
-                          <div>
-                              <p className="text-xs font-bold text-brand-gray-400 uppercase mb-1">Observação do Agendamento</p>
-                              <p className="text-brand-gray-600 italic bg-yellow-50 p-2 rounded border border-yellow-100">
-                                  "{viewDetailsAppt.observation}"
-                              </p>
-                          </div>
-                      )}
-
-                      {viewDetailsAppt.status === 'Completed' && viewDetailsAppt.visitReport && (
-                          <div className="mt-4 pt-4 border-t border-brand-gray-100">
-                              <p className="font-bold text-green-600 mb-2 flex items-center gap-2">
-                                  <CheckCircle2 size={16} /> Visita Realizada
-                              </p>
-                              <div className="grid grid-cols-2 gap-2 text-xs text-brand-gray-600">
-                                  <div>Check-in: {viewDetailsAppt.visitReport.checkInTime ? new Date(viewDetailsAppt.visitReport.checkInTime).toLocaleTimeString() : '-'}</div>
-                                  <div>Check-out: {viewDetailsAppt.visitReport.checkOutTime ? new Date(viewDetailsAppt.visitReport.checkOutTime).toLocaleTimeString() : '-'}</div>
-                              </div>
-                              <p className="mt-2 font-bold">Resultado: {viewDetailsAppt.visitReport.outcome || viewDetailsAppt.visitReport.walletAction}</p>
+                      {viewDetailsAppt.visitReport && (
+                          <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-green-800 text-sm">
+                              <p className="font-bold mb-1 flex items-center gap-2"><CheckCircle2 size={16}/> Visita Concluída</p>
+                              <p>Resultado: <strong>{viewDetailsAppt.visitReport.outcome || viewDetailsAppt.visitReport.walletAction}</strong></p>
+                              {viewDetailsAppt.fieldObservation && (
+                                  <p className="mt-2 italic text-green-700">"{viewDetailsAppt.fieldObservation}"</p>
+                              )}
                           </div>
                       )}
                   </div>
               </div>
           </div>
       )}
-
     </div>
   );
 };
