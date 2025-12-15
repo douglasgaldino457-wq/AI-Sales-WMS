@@ -7,19 +7,18 @@ import {
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { LogisticsTask, ManualDemand, DemandActionType, ClientBaseRow } from '../types';
-import { useAppStore } from '../services/useAppStore'; // Hook for navigation
+import { useAppStore } from '../services/useAppStore'; 
 import { Page } from '../types';
 
 interface PedidosRastreioPageProps {
     targetDemandId?: string;
 }
 
-// --- SLA CONFIGURATION (Hours) ---
 const SLA_CONFIG: Record<string, number> = {
     'Troca de POS': 24,
     'Desativação de POS': 72,
     'Alteração Bancária': 48,
-    'Alteração de Taxas': 4, // Fast track
+    'Alteração de Taxas': 4, 
     'Negociação de Taxas': 4,
     'Alteração Cadastral': 48,
     'Outros': 24
@@ -27,7 +26,7 @@ const SLA_CONFIG: Record<string, number> = {
 
 const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandId }) => {
     const { navigate } = useAppStore();
-    const [activeTab, setActiveTab] = useState<'TRACKING' | 'SERVICES'>('SERVICES'); // Default to Services
+    const [activeTab, setActiveTab] = useState<'TRACKING' | 'SERVICES'>('SERVICES'); 
     const [tasks, setTasks] = useState<LogisticsTask[]>([]);
     const [demands, setDemands] = useState<ManualDemand[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -37,7 +36,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
     const [selectedActionType, setSelectedActionType] = useState<DemandActionType | null>(null);
     const [newRequestData, setNewRequestData] = useState({ clientName: '', description: '', id: '' });
     
-    // Detail View State
     const [selectedItem, setSelectedItem] = useState<ManualDemand | null>(null);
 
     // Client Autocomplete State
@@ -48,23 +46,20 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
 
     useEffect(() => {
         refreshData();
-        setAllClients(appStore.getClients()); // Load clients for autocomplete
+        setAllClients(appStore.getClients());
         
-        // --- FLUID NAVIGATION CHECK ---
         const storedContext = sessionStorage.getItem('temp_service_context');
         if (storedContext) {
             try {
                 const data = JSON.parse(storedContext);
                 setIsActionModalOpen(true);
                 setNewRequestData(prev => ({ ...prev, clientName: data.clientName }));
-                // Clear after consuming
                 sessionStorage.removeItem('temp_service_context');
             } catch(e) {
                 console.error("Error parsing context", e);
             }
         }
 
-        // Close suggestions on click outside
         const handleClickOutside = (event: MouseEvent) => {
             if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) {
                 setShowSuggestions(false);
@@ -74,7 +69,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Deep Linking Effect
     useEffect(() => {
         if (targetDemandId && demands.length > 0) {
             const target = demands.find(d => d.id === targetDemandId);
@@ -90,7 +84,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
         setDemands(appStore.getDemands().sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     };
 
-    // --- FILTERING LOGIC ---
     const filteredTasks = tasks.filter(t => 
         t.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.trackingCode?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -103,7 +96,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
         d.type.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    // --- NEW REQUEST HANDLERS ---
     const handleOpenActionModal = () => {
         setIsActionModalOpen(true);
         setSelectedActionType(null);
@@ -158,7 +150,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
         alert("Solicitação criada com sucesso!");
     };
 
-    // --- RENDER HELPERS ---
     const getStatusBadge = (status: string, type: 'status' | 'admin' = 'status') => {
         if (type === 'admin') {
             switch (status) {
@@ -178,16 +169,12 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
         }
     };
 
-    // --- SLA PROGRESS BAR COMPONENT ---
     const SlaProgress = ({ date, type, status }: { date: string, type: string, status: string }) => {
-        // Stop SLA if concluded
         const isFinished = ['Concluído', 'Aprovado Pricing', 'Rejeitado', 'Finalizado ADM'].includes(status);
-        
         const slaHours = SLA_CONFIG[type] || SLA_CONFIG['Outros'];
         const startTime = new Date(date).getTime();
         const now = new Date().getTime();
         
-        // If finished, we assume 100% success for visual simplicity or full bar
         if (isFinished) {
             return (
                 <div className="w-full mt-1.5">
@@ -206,13 +193,11 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
         const totalSlaMs = slaHours * 60 * 60 * 1000;
         const percent = Math.min((elapsedMs / totalSlaMs) * 100, 100);
         
-        // Colors
         let color = 'bg-blue-500';
         let textColor = 'text-blue-600';
         if (percent > 60) { color = 'bg-orange-500'; textColor = 'text-orange-600'; }
         if (percent >= 90) { color = 'bg-red-500'; textColor = 'text-red-600'; }
 
-        // Time Remaining Text
         const remainingMs = totalSlaMs - elapsedMs;
         const remainingHrs = Math.ceil(remainingMs / (1000 * 60 * 60));
         const displayText = remainingMs > 0 ? `${remainingHrs}h restantes` : 'SLA Estourado';
@@ -224,10 +209,7 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                     <span>{Math.round(percent)}%</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                    <div 
-                        className={`h-1.5 rounded-full transition-all duration-500 ${color}`} 
-                        style={{ width: `${percent}%` }}
-                    ></div>
+                    <div className={`h-1.5 rounded-full transition-all duration-500 ${color}`} style={{ width: `${percent}%` }}></div>
                 </div>
             </div>
         );
@@ -250,7 +232,7 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                         <ListTodo className="w-8 h-8 text-brand-primary" />
                         Minhas Solicitações
                     </h1>
-                    <p className="text-brand-gray-600 mt-1 text-sm">Central de serviços e acompanhamento de chamados.</p>
+                    <p className="text-brand-gray-600 mt-1 text-sm">Central de serviços e acompanhamento.</p>
                 </div>
                 
                 <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
@@ -266,7 +248,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
 
             {activeTab === 'SERVICES' && (
                 <>
-                    {/* DESKTOP VIEW - MODERN TABLE */}
                     <div className="hidden md:flex bg-white rounded-2xl shadow-sm border border-brand-gray-100 min-h-[500px] overflow-hidden flex-col animate-fade-in relative">
                         <div className="p-5 border-b border-brand-gray-100 bg-white flex gap-4 items-center sticky top-0 z-30">
                             <div className="relative w-96">
@@ -288,7 +269,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                                         <th className="px-6 py-4 font-bold tracking-wider">Nome Fantasia</th>
                                         <th className="px-6 py-4 font-bold tracking-wider">Ação Solicitada</th>
                                         <th className="px-6 py-4 font-bold tracking-wider w-48">Status / SLA</th>
-                                        <th className="px-6 py-4 font-bold tracking-wider">Status Admin</th>
                                         <th className="px-6 py-4 text-right font-bold tracking-wider"></th>
                                     </tr>
                                 </thead>
@@ -334,12 +314,8 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                                                 <td className="px-6 py-5">
                                                     <div className="flex flex-col items-start w-full">
                                                         {getStatusBadge(demand.status)}
-                                                        {/* SLA BAR */}
                                                         <SlaProgress date={demand.date} type={demand.type} status={demand.status} />
                                                     </div>
-                                                </td>
-                                                <td className="px-6 py-5">
-                                                    {demand.adminStatus ? getStatusBadge(demand.adminStatus, 'admin') : <span className="text-gray-300 text-xs">-</span>}
                                                 </td>
                                                 <td className="px-6 py-5 text-right">
                                                     <ChevronRight className={`w-5 h-5 transition-all duration-300 ${selectedItem?.id === demand.id ? 'text-brand-primary translate-x-1' : 'text-brand-gray-300 group-hover:text-brand-primary group-hover:translate-x-1'}`} />
@@ -436,7 +412,7 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                 </div>
             )}
 
-            {/* DETAIL MODAL (SIDE SHEET STYLE) */}
+            {/* DETAIL MODAL WITH OTP HIGHLIGHT */}
             {selectedItem && (
                 <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex justify-end animate-fade-in" onClick={() => setSelectedItem(null)}>
                     <div 
@@ -473,19 +449,19 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                                 </div>
                             </div>
 
-                            {/* SLA Detail in Modal */}
-                            <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                                <h3 className="text-xs font-bold text-brand-gray-400 uppercase mb-2">Progresso do SLA</h3>
-                                <SlaProgress date={selectedItem.date} type={selectedItem.type} status={selectedItem.status} />
-                            </div>
-
-                            {selectedItem.adminStatus && (
-                                <div>
-                                    <h3 className="text-xs font-bold text-brand-gray-400 uppercase mb-2">Status Administrativo</h3>
-                                    <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                                        <span className="text-sm font-bold text-blue-800">{selectedItem.adminStatus}</span>
-                                        {selectedItem.adminStatus === 'Finalizado ADM' ? <CheckCircle2 className="text-green-500 w-5 h-5"/> : <Clock className="text-blue-500 w-5 h-5"/>}
+                            {/* OTP HIGHLIGHT - SHOW ONLY IF EXISTS */}
+                            {selectedItem.otp && (
+                                <div className="p-5 bg-purple-50 border-2 border-purple-200 rounded-2xl shadow-sm text-center relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-2 opacity-10">
+                                        <Key size={60} />
                                     </div>
+                                    <span className="block text-xs font-bold text-purple-700 uppercase mb-2">Código de Ativação (OTP)</span>
+                                    <div className="bg-white px-4 py-3 rounded-xl border border-purple-100 shadow-inner">
+                                        <span className="text-3xl font-mono font-bold text-purple-900 tracking-widest">{selectedItem.otp}</span>
+                                    </div>
+                                    <p className="text-[10px] text-purple-600 mt-2">
+                                        Use este código na maquininha para ativar ou trocar o equipamento.
+                                    </p>
                                 </div>
                             )}
 
@@ -495,13 +471,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                                     <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-sm text-green-800">
                                         {selectedItem.result}
                                     </div>
-                                </div>
-                            )}
-
-                            {selectedItem.otp && (
-                                <div className="mt-4 p-4 bg-purple-50 border border-purple-100 rounded-xl text-center">
-                                    <span className="block text-xs font-bold text-purple-600 uppercase mb-1">Código de Ativação (OTP)</span>
-                                    <span className="text-2xl font-mono font-bold text-purple-900 tracking-widest">{selectedItem.otp}</span>
                                 </div>
                             )}
                         </div>
@@ -578,10 +547,6 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                                             onChange={e => setNewRequestData({...newRequestData, description: e.target.value})}
                                             placeholder={`Descreva o motivo da ${selectedActionType}...`}
                                         />
-                                    </div>
-                                    <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-xs text-blue-700 flex items-center gap-2">
-                                        <Clock size={14} />
-                                        <span>SLA Estimado: <strong>{SLA_CONFIG[selectedActionType] || 24} horas</strong></span>
                                     </div>
                                     <button 
                                         onClick={handleSubmitRequest}

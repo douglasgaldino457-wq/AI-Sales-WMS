@@ -33,6 +33,10 @@ export const MOCK_USERS: SystemUser[] = [
   { id: '12', name: 'Bruno Batista', role: UserRole.INSIDE_SALES, email: 'bruno.batista@car10.com.br', whatsapp: '11 93946-8320', active: true, managerName: 'Douglas Galdino' },
   { id: '13', name: 'Ligia Rosa', role: UserRole.GESTOR, email: 'ligia.rosa@car10.com.br', whatsapp: '11 97817-6134', active: true },
   { id: '14', name: 'Carlos Pricing', role: UserRole.PRICING_MANAGER, email: 'pricing@car10.com.br', whatsapp: '11 99999-9999', active: true },
+  { id: '15', name: 'Roberto Logística', role: UserRole.LOGISTICA, email: 'logistica@car10.com.br', whatsapp: '11 98888-8888', active: true },
+  { id: '16', name: 'Admin Master', role: UserRole.ADMIN, email: 'admin@car10.com.br', whatsapp: '11 97777-7777', active: true },
+  { id: '17', name: 'Fernando Financeiro', role: UserRole.FINANCEIRO, email: 'fin@car10.com.br', whatsapp: '11 96666-6666', active: true },
+  { id: '18', name: 'Quitéria Qualidade', role: UserRole.QUALIDADE, email: 'cx@car10.com.br', whatsapp: '11 95555-5555', active: true },
 ];
 
 // REALISTIC ADDRESS DATABASE FOR AUTOCOMPLETE & MOCKS

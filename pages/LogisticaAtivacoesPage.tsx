@@ -2,13 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
     Key, Search, Terminal, MapPin, CheckCircle2, Loader2, Copy, Scan, ClipboardList, X,
-    RefreshCw, User, Phone, Mail, FileText, Hash, Building2, AlertTriangle, ArrowRight, Truck, Package, Briefcase
+    RefreshCw, User, Phone, Mail, FileText, Hash, Building2, AlertTriangle, ArrowRight, Truck, Package, Briefcase, LayoutList, Link
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { LogisticsTask, PosDevice } from '../types';
 
 const LogisticaAtivacoesPage: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'ACTIVATIONS' | 'MAINTENANCE'>('ACTIVATIONS');
+    const [filterType, setFilterType] = useState<'ALL' | 'ACTIVATION' | 'MAINTENANCE'>('ALL');
     const [tasks, setTasks] = useState<LogisticsTask[]>([]);
     const [inventory, setInventory] = useState<PosDevice[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -28,6 +28,28 @@ const LogisticaAtivacoesPage: React.FC = () => {
         refreshData();
     }, []);
 
+    // NEW: Auto-fill logic when a task is selected
+    useEffect(() => {
+        if (selectedTask?.posData?.serialNumber) {
+            // If task has linked POS, pre-fill inputs
+            setAssignSerial(selectedTask.posData.serialNumber);
+            setAssignRc(selectedTask.posData.rcNumber || '');
+            
+            // Check if it matches an item in current inventory to set dropdown
+            const inStockItem = inventory.find(i => i.serialNumber === selectedTask.posData?.serialNumber);
+            if (inStockItem) {
+                setSelectedStockId(inStockItem.serialNumber);
+            } else {
+                setSelectedStockId(''); // Linked but maybe not in main stock list (e.g. distinct status)
+            }
+        } else {
+            // Reset if no linked POS
+            setAssignSerial('');
+            setAssignRc('');
+            setSelectedStockId('');
+        }
+    }, [selectedTask, inventory]);
+
     const refreshData = () => {
         const allTasks = appStore.getLogisticsTasks();
         setTasks(allTasks);
@@ -43,13 +65,16 @@ const LogisticaAtivacoesPage: React.FC = () => {
         
         if (!matchesSearch) return false;
 
-        if (activeTab === 'ACTIVATIONS') {
-            // New Clients (From Admin Approval)
-            return (t.type === 'FIELD_ACTIVATION' || t.type === 'POS_SHIPMENT') && !t.status.includes('COMPLETED');
-        } else {
-            // Maintenance (Exchanges/Deactivations)
-            return (t.type === 'POS_EXCHANGE' || t.type === 'POS_RETRIEVAL') && !t.status.includes('COMPLETED');
-        }
+        const isCompleted = t.status.includes('COMPLETED');
+        if (isCompleted) return false; // Show only pending tasks in this queue
+
+        const isActivation = t.type === 'FIELD_ACTIVATION' || t.type === 'POS_SHIPMENT';
+        const isMaintenance = t.type === 'POS_EXCHANGE' || t.type === 'POS_RETRIEVAL';
+
+        if (filterType === 'ACTIVATION') return isActivation;
+        if (filterType === 'MAINTENANCE') return isMaintenance;
+
+        return true; // ALL
     }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const handleGsurfComplete = () => {
@@ -57,7 +82,7 @@ const LogisticaAtivacoesPage: React.FC = () => {
         
         // Validation for Activation/Exchange
         if (selectedTask.type !== 'POS_RETRIEVAL' && (!assignSerial || !assignRc || !assignOtp)) {
-            alert("Preencha Serial, RC e o OTP gerado no Gsurf.");
+            alert("Obrigatório preencher Serial, RC e o Código OTP gerado no Gsurf.");
             return;
         }
 
@@ -79,9 +104,9 @@ const LogisticaAtivacoesPage: React.FC = () => {
             refreshData();
             
             alert(selectedTask.type === 'POS_EXCHANGE' 
-                ? "Troca atualizada no GSurf! OTP enviado para o consultor. Backoffice notificado." 
+                ? "Troca atualizada! Nova POS ativada e antiga movida para o estoque do consultor." 
                 : "Ativação concluída! OTP enviado para o consultor.");
-        }, 1000);
+        }, 1500);
     };
 
     const handleStockSelect = (val: string) => {
@@ -91,8 +116,11 @@ const LogisticaAtivacoesPage: React.FC = () => {
             setAssignSerial(device.serialNumber);
             setAssignRc(device.rcNumber);
         } else {
-            setAssignSerial('');
-            setAssignRc('');
+            // Only clear if user selected empty option, don't auto-clear if they are typing manually
+            if (val === "") {
+                setAssignSerial('');
+                setAssignRc('');
+            }
         }
     };
 
@@ -106,23 +134,9 @@ const LogisticaAtivacoesPage: React.FC = () => {
                 <div>
                     <h1 className="text-2xl font-bold text-brand-gray-900 flex items-center gap-2">
                         <Key className="w-8 h-8 text-brand-primary" />
-                        Logística GSurf
+                        Esteira GSurf
                     </h1>
-                    <p className="text-brand-gray-600 mt-1">Esteira de ativação e manutenção de parque.</p>
-                </div>
-                <div className="flex bg-brand-gray-200 p-1 rounded-xl">
-                    <button 
-                        onClick={() => setActiveTab('ACTIVATIONS')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'ACTIVATIONS' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
-                    >
-                        <Terminal size={16} /> Novas Ativações
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('MAINTENANCE')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'MAINTENANCE' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
-                    >
-                        <RefreshCw size={16} /> Trocas & Manutenção
-                    </button>
+                    <p className="text-brand-gray-600 mt-1">Ativação sistêmica, geração de OTP e manutenção.</p>
                 </div>
             </header>
 
@@ -138,6 +152,27 @@ const LogisticaAtivacoesPage: React.FC = () => {
                             className="w-full pl-10 pr-3 py-2.5 text-sm border border-brand-gray-300 rounded-xl focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all shadow-sm"
                         />
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    </div>
+
+                    <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+                        <button 
+                            onClick={() => setFilterType('ALL')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${filterType === 'ALL' ? 'bg-brand-gray-900 text-white shadow-md' : 'bg-white text-brand-gray-600 border border-brand-gray-200 hover:bg-brand-gray-100'}`}
+                        >
+                            <LayoutList size={14} /> Todos
+                        </button>
+                        <button 
+                            onClick={() => setFilterType('ACTIVATION')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${filterType === 'ACTIVATION' ? 'bg-green-600 text-white shadow-md' : 'bg-white text-brand-gray-600 border border-brand-gray-200 hover:bg-brand-gray-100'}`}
+                        >
+                            <Terminal size={14} /> Ativações
+                        </button>
+                        <button 
+                            onClick={() => setFilterType('MAINTENANCE')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${filterType === 'MAINTENANCE' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-brand-gray-600 border border-brand-gray-200 hover:bg-brand-gray-100'}`}
+                        >
+                            <RefreshCw size={14} /> Manutenção
+                        </button>
                     </div>
                 </div>
                 
@@ -159,7 +194,7 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                         <div className="flex items-center gap-2">
                                             {isExchange ? (
                                                 <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-[10px] font-bold uppercase flex items-center gap-1 border border-orange-200">
-                                                    <RefreshCw className="w-3 h-3" /> Troca
+                                                    <RefreshCw className="w-3 h-3" /> Troca de Máquina
                                                 </span>
                                             ) : isRetrieval ? (
                                                 <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold uppercase flex items-center gap-1 border border-red-200">
@@ -167,11 +202,11 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                                 </span>
                                             ) : (
                                                 <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold uppercase flex items-center gap-1 border border-green-200">
-                                                    <CheckCircle2 className="w-3 h-3" /> Nova Ativação
+                                                    <CheckCircle2 className="w-3 h-3" /> Nova Ativação (ID Gerado)
                                                 </span>
                                             )}
                                             {task.internalId && (
-                                                <span className="font-mono text-[10px] bg-brand-gray-900 text-white px-2 py-1 rounded">
+                                                <span className="font-mono text-[10px] bg-brand-gray-900 text-white px-2 py-1 rounded border border-gray-700">
                                                     EC: {task.internalId}
                                                 </span>
                                             )}
@@ -182,7 +217,7 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                             className="bg-brand-primary text-white hover:bg-brand-dark px-4 py-2 rounded-lg text-xs font-bold shadow-md transition-all flex items-center gap-2"
                                         >
                                             <Terminal className="w-4 h-4" />
-                                            Acessar GSurf
+                                            Processar no GSurf
                                         </button>
                                     </div>
 
@@ -193,8 +228,8 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                             <p className="font-mono text-xs text-brand-gray-600">{task.documentNumber || 'CNPJ não informado'}</p>
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-bold text-brand-gray-500 uppercase mb-1">Endereço</p>
-                                            <p className="text-brand-gray-800 text-xs">{task.address}</p>
+                                            <p className="text-[10px] font-bold text-brand-gray-500 uppercase mb-1">Localização</p>
+                                            <p className="text-brand-gray-800 text-xs truncate max-w-[200px]">{task.address}</p>
                                         </div>
                                         <div>
                                             <p className="text-[10px] font-bold text-brand-gray-500 uppercase mb-1">Solicitante</p>
@@ -205,7 +240,7 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                     
                                     {(isExchange || isRetrieval) && (
                                         <div className="mt-3 p-2 bg-yellow-50 border border-yellow-100 rounded text-xs text-yellow-800">
-                                            <strong>Detalhe:</strong> {task.details}
+                                            <strong>Detalhe da Solicitação:</strong> {task.details}
                                         </div>
                                     )}
                                 </div>
@@ -283,12 +318,17 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                     
                                     {/* POS PRE-ALLOCATED IF EXISTS */}
                                     {selectedTask.posData?.serialNumber && (
-                                        <div className="bg-gray-100 p-4 rounded-lg border border-gray-200">
-                                            <span className="text-xs font-bold text-gray-500 uppercase block mb-2">POS Vinculada (Sugerida)</span>
-                                            <div className="flex gap-4 font-mono text-sm text-gray-800">
+                                        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                            <span className="text-xs font-bold text-green-700 uppercase flex items-center gap-1 mb-2">
+                                                <Link size={12} /> POS Vinculada na Solicitação
+                                            </span>
+                                            <div className="flex gap-4 font-mono text-sm text-green-900 bg-white p-2 rounded border border-green-100">
                                                 <span>SN: {selectedTask.posData.serialNumber}</span>
                                                 <span>RC: {selectedTask.posData.rcNumber}</span>
                                             </div>
+                                            <p className="text-[10px] text-green-600 mt-1">
+                                                * Os campos de ativação foram preenchidos automaticamente.
+                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -297,7 +337,7 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                 <div className="flex-[2] bg-white p-6 rounded-xl shadow-md border border-gray-200 flex flex-col">
                                     <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-6 uppercase border-b pb-2">
                                         <Hash className="w-4 h-4 text-brand-primary" /> 
-                                        Registro de Saída
+                                        Registro de Saída (Estoque)
                                     </h4>
                                     
                                     {selectedTask.type === 'POS_RETRIEVAL' ? (
@@ -360,9 +400,16 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                                     onChange={e => setAssignOtp(e.target.value.toUpperCase())}
                                                 />
                                                 <p className="text-[10px] text-purple-600/70 text-center mt-2">
-                                                    Este código será enviado automaticamente para o consultor.
+                                                    * Obrigatório. Este código será enviado para o consultor.
                                                 </p>
                                             </div>
+
+                                            {selectedTask.type === 'POS_EXCHANGE' && (
+                                                <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg text-xs text-orange-800 flex items-start gap-2">
+                                                    <RefreshCw className="w-4 h-4 shrink-0 mt-0.5" />
+                                                    <p>Ao confirmar, a máquina <strong>antiga</strong> será movida automaticamente para o estoque do consultor <strong>{selectedTask.requesterName}</strong>.</p>
+                                                </div>
+                                            )}
 
                                             <button 
                                                 onClick={handleGsurfComplete}
@@ -370,7 +417,7 @@ const LogisticaAtivacoesPage: React.FC = () => {
                                                 className="w-full bg-brand-primary text-white py-3 rounded-xl font-bold hover:bg-brand-dark transition-colors shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
                                             >
                                                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <CheckCircle2 className="w-4 h-4" />}
-                                                Salvar & Enviar OTP
+                                                Confirmar & Enviar OTP
                                             </button>
                                         </div>
                                     )}

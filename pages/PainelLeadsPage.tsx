@@ -89,7 +89,7 @@ const PortfolioOverview: React.FC = () => {
                         <BarChart2 className="w-5 h-5 text-brand-primary" /> Tendência de Receita & Leads
                     </h3>
                     {/* Fixed Height Wrapper to prevent Recharts -1 error */}
-                    <div style={{ width: '100%', height: '250px', minWidth: '0' }}>
+                    <div className="h-[250px] w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={MOCK_PORTFOLIO_DATA.monthlyTrend}>
                                 <defs>
@@ -124,7 +124,7 @@ const PortfolioOverview: React.FC = () => {
                         <PieIcon className="w-5 h-5 text-brand-primary" /> Mix de Serviços
                     </h3>
                     {/* Fixed Height Wrapper to prevent Recharts -1 error */}
-                    <div style={{ width: '100%', height: '250px', minWidth: '0', position: 'relative' }}>
+                    <div className="h-[250px] w-full min-w-0 relative">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
@@ -493,7 +493,7 @@ const PainelLeadsPage: React.FC = () => {
                                         <TrendingUp className="w-5 h-5 text-brand-primary" /> Distribuição por Fluxo
                                     </h3>
                                     {/* FIX: Set Explicit Height for ResponsiveContainer Parent */}
-                                    <div style={{ width: '100%', height: '250px', minWidth: '0' }}>
+                                    <div className="h-[250px] w-full min-w-0">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 30 }}>
                                                 <XAxis type="number" hide />

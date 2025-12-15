@@ -537,8 +537,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             </div>
 
             <div className="tech-card rounded-2xl p-6 flex flex-col justify-center items-center text-center">
-                 {/* Explicitly defined style for container to prevent Recharts -1 width error */}
-                 <div style={{ width: '100%', height: '192px', position: 'relative', minWidth: '192px' }}>
+                 <div style={{ width: 192, height: 192, position: 'relative', minWidth: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                             <Pie

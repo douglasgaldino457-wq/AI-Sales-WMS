@@ -37,7 +37,13 @@ import {
   ListTodo,
   Bell,
   User,
-  Receipt
+  Receipt,
+  Terminal,
+  ScanLine,
+  Star,
+  PieChart,
+  DollarSign,
+  Box
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -97,6 +103,7 @@ const Sidebar: React.FC = () => {
           { icon: ListTodo, label: 'Minhas Solicitações', page: Page.PEDIDOS_RASTREIO },
           { icon: Receipt, label: 'Despesas & Reembolso', page: Page.DESPESAS },
           { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
+          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
         ];
         break;
       case UserRole.PRICING_MANAGER:
@@ -104,6 +111,38 @@ const Sidebar: React.FC = () => {
           { icon: LayoutDashboard, label: 'Dashboard Pricing', page: Page.PRICING_DASHBOARD },
           { icon: TrendingUp, label: 'Mesa de Negociação', page: Page.MESA_NEGOCIACAO },
           { icon: Percent, label: 'Config. Taxas', page: Page.CONFIG_TAXAS },
+        ];
+        break;
+      case UserRole.LOGISTICA:
+        items = [
+          { icon: LayoutDashboard, label: 'Dashboard Logística', page: Page.LOGISTICA_DASHBOARD },
+          { icon: Box, label: 'Estoque Global', page: Page.LOGISTICA_ESTOQUE },
+          { icon: Terminal, label: 'Fila GSurf / Ativações', page: Page.LOGISTICA_ATIVACOES },
+          { icon: LifeBuoy, label: 'Gestão de Suporte', page: Page.LOGISTICA_SUPORTE },
+        ];
+        break;
+      case UserRole.ADMIN:
+        items = [
+          { icon: LayoutDashboard, label: 'Centro de Comando', page: Page.DASHBOARD },
+          { icon: ShieldCheck, label: 'Validações & Demandas', page: Page.ADMIN_DEMANDS },
+          { icon: UserCog, label: 'Gestão de Usuários', page: Page.USUARIOS },
+        ];
+        break;
+      case UserRole.FINANCEIRO:
+        items = [
+          { icon: LayoutDashboard, label: 'Dash Financeiro', page: Page.DASHBOARD_GERAL },
+          { icon: Receipt, label: 'Aprovação de Despesas', page: Page.DESPESAS },
+          { icon: DollarSign, label: 'Custos & Pricing', page: Page.CONFIG_TAXAS },
+          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
+        ];
+        break;
+      case UserRole.QUALIDADE:
+        items = [
+          { icon: Star, label: 'Monitoria de Qualidade', page: Page.DASHBOARD_GERAL },
+          { icon: ClipboardCheck, label: 'Auditoria de Visitas', page: Page.AGENDAMENTOS },
+          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+          { icon: LifeBuoy, label: 'Tickets de Suporte', page: Page.LOGISTICA_SUPORTE },
+          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
         ];
         break;
     }
@@ -143,6 +182,31 @@ const Sidebar: React.FC = () => {
           { icon: TrendingUp, label: 'Mesa', page: Page.MESA_NEGOCIACAO },
           { icon: Percent, label: 'Config', page: Page.CONFIG_TAXAS },
           { icon: LayoutDashboard, label: 'Dash', page: Page.PRICING_DASHBOARD, isCentral: true }, 
+        ];
+      case UserRole.LOGISTICA:
+        return [
+          { icon: Box, label: 'Estoque', page: Page.LOGISTICA_ESTOQUE },
+          { icon: Terminal, label: 'GSurf', page: Page.LOGISTICA_ATIVACOES },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.LOGISTICA_DASHBOARD, isCentral: true },
+          { icon: LifeBuoy, label: 'Suporte', page: Page.LOGISTICA_SUPORTE },
+        ];
+      case UserRole.ADMIN:
+        return [
+          { icon: ShieldCheck, label: 'Validação', page: Page.ADMIN_DEMANDS },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, 
+          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
+        ];
+      case UserRole.FINANCEIRO:
+        return [
+          { icon: Receipt, label: 'Despesas', page: Page.DESPESAS },
+          { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true },
+          { icon: DollarSign, label: 'Custos', page: Page.CONFIG_TAXAS },
+        ];
+      case UserRole.QUALIDADE:
+        return [
+          { icon: ClipboardCheck, label: 'Auditoria', page: Page.AGENDAMENTOS },
+          { icon: Star, label: 'Monitoria', page: Page.DASHBOARD_GERAL, isCentral: true },
+          { icon: LifeBuoy, label: 'Suporte', page: Page.LOGISTICA_SUPORTE },
         ];
       default:
         return [];
@@ -212,7 +276,7 @@ const Sidebar: React.FC = () => {
             {menuItems.map((item) => {
               const isActive = currentPage === item.page;
               // Highlight "Minhas Solicitações" if there are notifications and it's not active
-              const hasAlert = item.label.includes('Solicitações') && unreadCount > 0;
+              const hasAlert = (item.label.includes('Solicitações') || item.label.includes('Suporte')) && unreadCount > 0;
 
               return (
                 <button
@@ -249,7 +313,7 @@ const Sidebar: React.FC = () => {
                 <LogOut size={14} className="group-hover:-translate-x-1 transition-transform" />
                 Sair do Sistema
             </button>
-            <p className="text-[10px] text-gray-600 font-mono text-center">Build v1.7.5 • 2025</p>
+            <p className="text-[10px] text-gray-600 font-mono text-center">Build v1.8.0 • 2025</p>
         </div>
     </div>
   );

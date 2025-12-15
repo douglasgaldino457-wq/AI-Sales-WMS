@@ -6,6 +6,8 @@ export enum UserRole {
   PRICING_MANAGER = 'Gestão de Pricing',
   LOGISTICA = 'Logística',
   ADMIN = 'Backoffice',
+  FINANCEIRO = 'Financeiro',
+  QUALIDADE = 'Qualidade (CX)',
 }
 
 export enum Page {

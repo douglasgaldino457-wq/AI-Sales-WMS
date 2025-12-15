@@ -1,14 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Search, Filter, Phone, Mail, ArrowUpDown, Power, Edit2, X, CheckCircle2, UserCheck, UserX, Briefcase } from 'lucide-react';
+import { UserPlus, Search, Filter, Phone, Mail, ArrowUpDown, Power, Edit2, X, CheckCircle2, UserCheck, UserX, Briefcase, ChevronRight, Lock } from 'lucide-react';
 import { UserRole, SystemUser } from '../types';
 import { appStore } from '../services/store';
+import { useAppStore } from '../services/useAppStore';
 
 type SortField = 'name' | 'role' | 'active';
 type SortDirection = 'asc' | 'desc';
 type StatusFilter = 'all' | 'active' | 'inactive';
 
 const UsuariosPage: React.FC = () => {
+  const { userRole } = useAppStore(); // Get current logged-in role
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [managers, setManagers] = useState<SystemUser[]>([]);
   
@@ -35,11 +37,42 @@ const UsuariosPage: React.FC = () => {
 
   useEffect(() => {
     refreshUsers();
-  }, []);
+  }, [userRole]);
+
+  // --- FILTERING LOGIC PER PROFILE ---
+  const filterVisibleUsers = (allUsers: SystemUser[], myRole: UserRole | null): SystemUser[] => {
+      if (!myRole) return [];
+      
+      // Admin and Gestor see everyone
+      if (myRole === UserRole.ADMIN || myRole === UserRole.GESTOR) return allUsers;
+
+      // Financeiro: Sees people who generate expenses/costs (Sales & Managers)
+      if (myRole === UserRole.FINANCEIRO) {
+          return allUsers.filter(u => 
+              u.role === UserRole.FIELD_SALES || 
+              u.role === UserRole.INSIDE_SALES || 
+              u.role === UserRole.GESTOR
+          );
+      }
+
+      // Qualidade: Sees people who interact with clients (Sales & Logistics)
+      if (myRole === UserRole.QUALIDADE) {
+          return allUsers.filter(u => 
+              u.role === UserRole.FIELD_SALES || 
+              u.role === UserRole.INSIDE_SALES || 
+              u.role === UserRole.LOGISTICA
+          );
+      }
+
+      // Default fallback (e.g. if a Sales person somehow accessed this page): Only see themselves
+      return [];
+  };
 
   const refreshUsers = () => {
     const allUsers = appStore.getUsers();
-    setUsers([...allUsers]);
+    // Apply permission filter
+    const visibleUsers = filterVisibleUsers(allUsers, userRole);
+    setUsers(visibleUsers);
     setManagers(allUsers.filter(u => u.role === UserRole.GESTOR));
   };
 
@@ -53,11 +86,22 @@ const UsuariosPage: React.FC = () => {
   };
 
   const handleToggleStatus = (id: string) => {
+    // Permission check
+    if (userRole !== UserRole.ADMIN && userRole !== UserRole.GESTOR) {
+        alert("Apenas Gestores e Admins podem alterar status.");
+        return;
+    }
     appStore.toggleUserStatus(id);
     refreshUsers();
   };
 
   const handleOpenModal = (user?: SystemUser) => {
+    // Permission check for creating/editing
+    if (userRole !== UserRole.ADMIN && userRole !== UserRole.GESTOR) {
+        alert("Apenas Gestores e Admins podem editar usuários.");
+        return;
+    }
+
     if (user) {
       setEditingUser(user);
       setFormData({ ...user });
@@ -96,7 +140,7 @@ const UsuariosPage: React.FC = () => {
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
-  // Filter & Sort Logic
+  // Filter & Sort Logic (Local State)
   const processedUsers = users
     .filter(u => {
       const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -124,9 +168,10 @@ const UsuariosPage: React.FC = () => {
 
   const activeCount = users.filter(u => u.active).length;
   const inactiveCount = users.filter(u => !u.active).length;
+  const canEdit = userRole === UserRole.ADMIN || userRole === UserRole.GESTOR;
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-6 relative pb-20">
       
       {/* Success Toast */}
       {successMsg && (
@@ -142,7 +187,7 @@ const UsuariosPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <h1 className="text-2xl font-bold text-brand-gray-900">Usuários</h1>
-            <p className="text-brand-gray-700">Gerenciamento de acessos e equipe</p>
+            <p className="text-brand-gray-700">Visualização de equipe ({userRole})</p>
           </div>
           
           <div className="flex gap-4">
@@ -182,15 +227,17 @@ const UsuariosPage: React.FC = () => {
           </div>
       </div>
 
-      <div className="flex justify-end">
-        <button 
-            onClick={() => handleOpenModal()}
-            className="bg-brand-primary hover:bg-brand-dark text-white px-4 py-2 rounded-lg shadow transition-colors flex items-center text-sm font-medium"
-        >
-            <UserPlus className="w-4 h-4 mr-2" />
-            Novo Usuário
-        </button>
-      </div>
+      {canEdit && (
+          <div className="flex justify-end">
+            <button 
+                onClick={() => handleOpenModal()}
+                className="bg-brand-primary hover:bg-brand-dark text-white px-4 py-2 rounded-lg shadow transition-colors flex items-center text-sm font-medium"
+            >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Novo Usuário
+            </button>
+          </div>
+      )}
 
       {/* Filters Bar */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-brand-gray-100 flex flex-col md:flex-row gap-4 items-center">
@@ -241,7 +288,7 @@ const UsuariosPage: React.FC = () => {
                 <th className="px-6 py-4">Contato</th>
                 <th className="px-6 py-4">Gestor Responsável</th>
                 <th className="px-6 py-4 text-center cursor-pointer hover:bg-brand-gray-100" onClick={() => handleSort('active')}>Status</th>
-                <th className="px-6 py-4 text-right">Ações</th>
+                {canEdit && <th className="px-6 py-4 text-right">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-gray-100">
@@ -255,6 +302,10 @@ const UsuariosPage: React.FC = () => {
                       ${user.role === UserRole.GESTOR ? 'bg-purple-100 text-purple-800 border-purple-200' : ''}
                       ${user.role === UserRole.FIELD_SALES ? 'bg-blue-100 text-blue-800 border-blue-200' : ''}
                       ${user.role === UserRole.INSIDE_SALES ? 'bg-orange-100 text-orange-800 border-orange-200' : ''}
+                      ${user.role === UserRole.LOGISTICA ? 'bg-amber-100 text-amber-800 border-amber-200' : ''}
+                      ${user.role === UserRole.ADMIN ? 'bg-gray-100 text-gray-800 border-gray-200' : ''}
+                      ${user.role === UserRole.FINANCEIRO ? 'bg-green-100 text-green-800 border-green-200' : ''}
+                      ${user.role === UserRole.QUALIDADE ? 'bg-teal-100 text-teal-800 border-teal-200' : ''}
                     `}>
                       {user.role}
                     </span>
@@ -272,7 +323,11 @@ const UsuariosPage: React.FC = () => {
                      </div>
                   </td>
                   <td className="px-6 py-4 text-brand-gray-700">
-                      {user.managerName || <span className="text-brand-gray-400 text-xs italic">Não atribuído</span>}
+                      {user.managerName ? (
+                          <div className="flex items-center gap-1 text-xs bg-gray-100 px-2 py-1 rounded w-fit">
+                              <Briefcase size={12} className="text-gray-500"/> {user.managerName}
+                          </div>
+                      ) : <span className="text-brand-gray-400 text-xs italic">Não atribuído</span>}
                   </td>
                   <td className="px-6 py-4 text-center">
                     {user.active ? (
@@ -281,39 +336,42 @@ const UsuariosPage: React.FC = () => {
                         <span className="inline-block w-2.5 h-2.5 bg-brand-gray-400 rounded-full shadow-sm" title="Inativo"></span>
                     )}
                   </td>
-                  <td className="px-6 py-4">
-                     <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={() => handleOpenModal(user)}
-                          className="p-2 text-brand-gray-500 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors"
-                          title="Editar"
-                        >
-                            <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleToggleStatus(user.id)}
-                          className={`p-2 rounded-lg transition-colors ${user.active ? 'text-brand-gray-500 hover:text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
-                          title={user.active ? 'Inativar' : 'Ativar'}
-                        >
-                            <Power className="w-4 h-4" />
-                        </button>
-                     </div>
-                  </td>
+                  {canEdit && (
+                      <td className="px-6 py-4">
+                         <div className="flex items-center justify-end gap-2">
+                            <button 
+                              onClick={() => handleOpenModal(user)}
+                              className="p-2 text-brand-gray-500 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors"
+                              title="Editar"
+                            >
+                                <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleToggleStatus(user.id)}
+                              className={`p-2 rounded-lg transition-colors ${user.active ? 'text-brand-gray-500 hover:text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
+                              title={user.active ? 'Inativar' : 'Ativar'}
+                            >
+                                <Power className="w-4 h-4" />
+                            </button>
+                         </div>
+                      </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
           
           {processedUsers.length === 0 && (
-              <div className="p-10 text-center text-brand-gray-500">
-                  Nenhum usuário encontrado com os filtros selecionados.
+              <div className="p-10 text-center text-brand-gray-500 bg-brand-gray-50/50">
+                  <Lock className="w-8 h-8 mx-auto mb-2 text-brand-gray-300" />
+                  <p>Nenhum usuário encontrado para o seu nível de acesso.</p>
               </div>
           )}
         </div>
       </div>
 
       {/* Modal Form */}
-      {isModalOpen && (
+      {isModalOpen && canEdit && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
                <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center">
