@@ -1,13 +1,121 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
     ClipboardCheck, Clock, CheckCircle2, AlertTriangle, Search, FileText, ArrowRight,
     Briefcase, Calendar, ChevronDown, Plus, X, Save, Share2, MessageCircle, FileInput,
-    Download, ChevronUp, User
+    Download, ChevronUp, User, Laptop2, Terminal, Table, Percent, Building2, Printer, Eye
 } from 'lucide-react';
 import { appStore } from '../services/store';
-import { ManualDemand, RegistrationRequest } from '../types';
+import { ManualDemand, RegistrationRequest, ClientBaseRow } from '../types';
 import { Page } from '../types';
+import { PagmotorsLogo } from '../components/Logo';
+
+// --- NEW COMPONENT: PROPOSAL PREVIEW MODAL (Similar to PricingPage Range) ---
+const ProposalPreviewModal: React.FC<{ demand: ManualDemand; onClose: () => void }> = ({ demand, onClose }) => {
+    const printRef = useRef<HTMLDivElement>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    if (!demand.pricingData?.approvedRates) return null;
+    const rates = demand.pricingData.approvedRates;
+    const plan = demand.description?.toLowerCase().includes('simples') ? 'Simples' : 'Full';
+
+    const generateImage = async () => {
+        if (!printRef.current) return;
+        setIsGenerating(true);
+        try {
+            // @ts-ignore
+            const html2canvas = window.html2canvas;
+            if (!html2canvas) { alert("Libs não carregadas."); return; }
+            const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 1200 });
+            const link = document.createElement('a');
+            link.download = `Proposta_Aprovada_${demand.clientName}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        } catch(e) { console.error(e); alert("Erro ao gerar."); }
+        finally { setIsGenerating(false); }
+    };
+
+    const sendWhatsApp = () => {
+        const text = `Olá! Segue a proposta aprovada para *${demand.clientName}*:\n\n` +
+            `✅ *Débito:* ${rates.debit.toFixed(2)}%\n` +
+            `✅ *Crédito 1x:* ${rates.credit1x.toFixed(2)}%\n` +
+            `✅ *Crédito 12x:* ${rates.credit12x.toFixed(2)}%\n\n` +
+            `Qualquer dúvida estou à disposição!`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    };
+
+    return (
+        <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col relative max-h-[90vh]">
+                <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white shrink-0 rounded-t-2xl">
+                    <h3 className="font-bold text-lg flex items-center gap-2"><FileText className="w-5 h-5"/> Proposta Aprovada</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto bg-gray-100 p-6 flex justify-center">
+                    {/* VISUAL PROPOSAL TEMPLATE */}
+                    <div ref={printRef} className="bg-white shadow-lg w-[210mm] min-h-[297mm] flex flex-col relative scale-[0.6] md:scale-[0.7] origin-top transform-gpu">
+                        <div className="bg-gradient-to-r from-brand-primary to-brand-dark h-32 flex items-center justify-between px-12">
+                            <div className="scale-110"><PagmotorsLogo variant="white" /></div>
+                            <div className="text-right text-white">
+                                <h2 className="text-2xl font-bold uppercase tracking-widest">Proposta Comercial</h2>
+                                <p className="text-sm opacity-80">Condições Especiais Aprovadas</p>
+                            </div>
+                        </div>
+                        <div className="p-12 flex-1 flex flex-col gap-8">
+                            <div>
+                                <div className="inline-block px-4 py-1 rounded-full bg-green-100 text-green-800 font-bold text-xs uppercase mb-2">Plano {plan}</div>
+                                <h1 className="text-4xl font-bold text-gray-900">{demand.clientName}</h1>
+                                <p className="text-gray-500 mt-2">Proposta válida por 5 dias.</p>
+                            </div>
+
+                            <div className="border rounded-xl overflow-hidden">
+                                <div className="bg-brand-gray-900 text-white font-bold text-xs uppercase p-4 flex justify-between">
+                                    <span>Modalidade</span><span>Taxa Final</span>
+                                </div>
+                                <div className="divide-y divide-gray-100">
+                                    <div className="p-4 flex justify-between font-bold text-sm bg-gray-50">
+                                        <span>Débito</span><span>{rates.debit.toFixed(2)}%</span>
+                                    </div>
+                                    <div className="p-4 flex justify-between font-bold text-sm">
+                                        <span>Crédito à Vista (1x)</span><span>{rates.credit1x.toFixed(2)}%</span>
+                                    </div>
+                                    {plan === 'Full' && Array.from({length: 11}).map((_, i) => {
+                                        const steps = 11;
+                                        const stepVal = (rates.credit12x - rates.credit1x) / steps;
+                                        const val = rates.credit1x + (stepVal * (i+1));
+                                        return (
+                                            <div key={i} className="p-4 flex justify-between text-sm">
+                                                <span>Crédito {i+2}x</span><span>{val.toFixed(2)}%</span>
+                                            </div>
+                                        );
+                                    })}
+                                    {plan === 'Simples' && (
+                                        <>
+                                            <div className="p-4 flex justify-between text-sm"><span>Crédito 2x - 6x</span><span>{(rates.credit1x + 1.5).toFixed(2)}%</span></div>
+                                            <div className="p-4 flex justify-between text-sm"><span>Crédito 7x - 12x</span><span>{rates.credit12x.toFixed(2)}%</span></div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-gray-100 p-6 text-center text-xs text-gray-500 font-bold uppercase tracking-wider">
+                            CAR10 TECNOLOGIA E INFORMAÇÃO S/A
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t bg-white rounded-b-2xl flex justify-end gap-3">
+                    <button onClick={sendWhatsApp} className="px-6 py-2 bg-[#25D366] text-white font-bold rounded-lg hover:bg-[#128C7E] flex items-center gap-2 shadow-sm">
+                        <MessageCircle size={18} /> Enviar WhatsApp
+                    </button>
+                    <button onClick={generateImage} disabled={isGenerating} className="px-6 py-2 bg-brand-gray-900 text-white font-bold rounded-lg hover:bg-black flex items-center gap-2 shadow-sm disabled:opacity-50">
+                        <Download size={18} /> {isGenerating ? 'Gerando...' : 'Baixar Imagem'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu' }) => {
     const [demands, setDemands] = useState<ManualDemand[]>([]);
@@ -15,8 +123,10 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedDemandId, setExpandedDemandId] = useState<string | null>(null);
     
-    // Modal State
+    // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedProposalDemand, setSelectedProposalDemand] = useState<ManualDemand | null>(null); // For Preview Modal
+    
     const [demandTypes, setDemandTypes] = useState<string[]>([]);
     const [newDemand, setNewDemand] = useState<Partial<ManualDemand>>({
         clientName: '',
@@ -24,8 +134,24 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
         description: '',
     });
 
+    // Client Autocomplete State
+    const [allClients, setAllClients] = useState<ClientBaseRow[]>([]);
+    const [suggestions, setSuggestions] = useState<ClientBaseRow[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const searchWrapperRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         refreshData();
+        setAllClients(appStore.getClients()); // Load clients for search
+
+        // Close suggestions on click outside
+        const handleClickOutside = (event: MouseEvent) => {
+            if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) {
+                setShowSuggestions(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
     const refreshData = () => {
@@ -72,67 +198,47 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
         setNewDemand({ clientName: '', type: '', description: '' });
     };
 
-    // --- Action Handlers for Approved Deals ---
-    const handleGeneratePDF = (demand: ManualDemand) => {
-        alert(`Gerando PDF da proposta para ${demand.clientName}... (Simulado)`);
-    };
-
-    const handleWhatsAppShare = (demand: ManualDemand) => {
-        const approved = demand.pricingData?.approvedRates;
-        const msg = `Olá! Tenho ótimas notícias. A diretoria aprovou condições especiais para a *${demand.clientName}*! 🎉\n\n` +
-                    `✅ *Débito:* ${approved?.debit.toFixed(2)}%\n` +
-                    `✅ *Crédito 1x:* ${approved?.credit1x.toFixed(2)}%\n` +
-                    `✅ *Crédito 12x:* ${approved?.credit12x.toFixed(2)}%\n\n` +
-                    `Podemos seguir com o fechamento?`;
+    const handleConcludeAction = (demand: ManualDemand) => {
+        const actionType = demand.type.includes('Taxa') ? 'Cadastro de Taxas' : demand.type;
         
-        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+        if (confirm(`Confirmar execução de "${actionType}" no sistema SIC?\n\nEssa ação será registrada no histórico do cliente.`)) {
+            let details = 'Demanda concluída.';
+            
+            if (demand.pricingData?.approvedRates) {
+                const r = demand.pricingData.approvedRates;
+                details = `Taxas cadastradas no SIC: Débito ${r.debit}%, 1x ${r.credit1x}%, 12x ${r.credit12x}%.`;
+            } else {
+                details = demand.description || 'Solicitação processada com sucesso.';
+            }
+
+            appStore.concludeDemand(demand.id, details, currentUser);
+            refreshData();
+            alert("Sucesso! Demanda concluída e registrada no histórico do cliente.");
+        }
     };
 
-    const handleMoveToCadastro = (demand: ManualDemand) => {
-        if (confirm(`O cliente aceitou a proposta?\n\nIsso irá concluir a demanda de Pricing e enviar os dados para o Time Administrativo (Cadastro).`)) {
-            // 1. Update Pricing Demand
-            const updated: ManualDemand = {
-                ...demand,
-                status: 'Concluído',
-                result: 'Cliente aceitou proposta. Enviado para cadastro.'
-            };
-            appStore.updateDemand(updated);
-
-            // 2. Create Registration Request
-            const regReq: RegistrationRequest = {
-                id: `REG-${Math.floor(Math.random() * 9000) + 1000}`,
-                clientName: demand.clientName,
-                documentNumber: '00.000.000/0001-00', // Mock, would come from earlier data
-                requesterName: currentUser,
-                requesterRole: currentUser.includes('Cleiton') || currentUser.includes('Samuel') ? 'Field Sales' : 'Inside Sales', // Simple mock logic
-                dateSubmitted: new Date().toISOString(),
-                status: 'PENDING_ANALYSIS',
-                docs: { contract: false, idCard: false, addressProof: false }, // Reset for Admin. Removed bankProof: false
-                pricingDemandId: demand.id,
-                notes: `Origem: Negociação Aprovada (ID: ${demand.id}). Taxas Especiais.`,
-                
-                // Fields required by RegistrationRequest type
-                responsibleName: 'A definir',
-                contactPhones: [],
-                email: 'pendente@cadastro.com',
-                address: 'Endereço a preencher',
-                openingHours: { weekdays: { start: '08:00', end: '18:00' } },
-                planType: 'Full',
-                bankAccounts: [{
-                    bankCode: '',
-                    agency: '',
-                    accountNumber: '',
-                    holderName: '',
-                    accountType: 'Corrente',
-                    holderType: 'PJ',
-                    isThirdParty: false
-                }] // Changed to bankAccounts array
-            };
-            appStore.addRegistrationRequest(regReq);
-
-            refreshData();
-            alert("Sucesso! Os dados foram enviados para o perfil Gestão de Cadastros.");
+    const handleClientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setNewDemand({...newDemand, clientName: val});
+        
+        if (val.length > 1) {
+            const matches = allClients.filter(c => 
+                c.nomeEc.toLowerCase().includes(val.toLowerCase()) || 
+                c.id.toLowerCase().includes(val.toLowerCase())
+            ).slice(0, 5);
+            setSuggestions(matches);
+            setShowSuggestions(true);
+        } else {
+            setShowSuggestions(false);
         }
+    };
+
+    const selectClient = (client: ClientBaseRow) => {
+        setNewDemand({
+            ...newDemand, 
+            clientName: client.nomeEc
+        });
+        setShowSuggestions(false);
     };
 
     return (
@@ -212,7 +318,7 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
                                         {/* Header Row */}
                                         <div 
                                             onClick={() => setExpandedDemandId(isExpanded ? null : demand.id)}
-                                            className="p-5 cursor-pointer hover:bg-brand-gray-50 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center"
+                                            className="p-5 cursor-pointer hover:bg-brand-gray-50 transition-colors flex flex-col md:flex-row gap-4 justify-between items-start md:items-center"
                                         >
                                             <div className="flex items-start gap-4">
                                                 <div className={`p-3 rounded-full shrink-0 ${
@@ -257,50 +363,41 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
                                                     {/* SPECIAL UI FOR APPROVED PRICING */}
                                                     {isPricingApproved && demand.pricingData?.approvedRates && (
                                                         <div className="bg-purple-50 border border-purple-100 rounded-xl p-5 mb-4 relative overflow-hidden">
-                                                            <div className="absolute top-0 right-0 p-4 opacity-10">
-                                                                <Briefcase size={80} className="text-purple-600" />
-                                                            </div>
-                                                            
-                                                            <h4 className="font-bold text-purple-900 text-lg mb-4 flex items-center gap-2">
-                                                                <CheckCircle2 className="w-5 h-5 text-purple-600" />
-                                                                Proposta Aprovada
-                                                            </h4>
-
-                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 relative z-10">
-                                                                <div className="bg-white p-3 rounded-lg shadow-sm border border-purple-100 text-center">
-                                                                    <span className="block text-xs text-purple-600 font-bold uppercase">Débito</span>
-                                                                    <span className="block text-xl font-bold text-brand-gray-900">{demand.pricingData.approvedRates.debit.toFixed(2)}%</span>
-                                                                </div>
-                                                                <div className="bg-white p-3 rounded-lg shadow-sm border border-purple-100 text-center">
-                                                                    <span className="block text-xs text-purple-600 font-bold uppercase">Crédito 1x</span>
-                                                                    <span className="block text-xl font-bold text-brand-gray-900">{demand.pricingData.approvedRates.credit1x.toFixed(2)}%</span>
-                                                                </div>
-                                                                <div className="bg-white p-3 rounded-lg shadow-sm border border-purple-100 text-center">
-                                                                    <span className="block text-xs text-purple-600 font-bold uppercase">Crédito 12x</span>
-                                                                    <span className="block text-xl font-bold text-brand-gray-900">{demand.pricingData.approvedRates.credit12x.toFixed(2)}%</span>
-                                                                </div>
+                                                            <div className="flex items-center justify-between mb-4">
+                                                                <h4 className="font-bold text-purple-900 text-lg flex items-center gap-2">
+                                                                    <Terminal className="w-5 h-5 text-purple-600" />
+                                                                    Execução de Cadastro (SIC)
+                                                                </h4>
+                                                                
+                                                                {/* NEW: VIEW PROPOSAL BUTTON */}
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); setSelectedProposalDemand(demand); }}
+                                                                    className="bg-white hover:bg-purple-100 text-purple-700 text-xs font-bold px-3 py-1.5 rounded border border-purple-200 flex items-center gap-2 shadow-sm transition-colors"
+                                                                >
+                                                                    <Eye className="w-4 h-4" /> Ver Proposta Aprovada
+                                                                </button>
                                                             </div>
 
-                                                            <div className="flex flex-col sm:flex-row gap-3 relative z-10">
+                                                            {/* Approval Metadata */}
+                                                            {demand.pricingData.approvalMetadata && (
+                                                                <div className="text-[10px] text-purple-800 mb-3 bg-purple-100/50 p-2 rounded border border-purple-200 inline-block">
+                                                                    Aprovado por: <strong>{demand.pricingData.approvalMetadata.approvedBy}</strong> em {new Date(demand.pricingData.approvalMetadata.approvedAt).toLocaleString()}
+                                                                </div>
+                                                            )}
+
+                                                            <div className="flex flex-col sm:flex-row gap-3">
+                                                                {/* MAIN ACTION: CONCLUDE AND LOG HISTORY */}
                                                                 <button 
-                                                                    onClick={() => handleGeneratePDF(demand)}
-                                                                    className="flex-1 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                                                    onClick={() => handleConcludeAction(demand)}
+                                                                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg transform hover:-translate-y-0.5"
                                                                 >
-                                                                    <Download className="w-4 h-4" /> Baixar PDF
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => handleWhatsAppShare(demand)}
-                                                                    className="flex-1 bg-[#25D366] hover:bg-[#128C7E] text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-sm"
-                                                                >
-                                                                    <MessageCircle className="w-4 h-4" /> Enviar WhatsApp
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => handleMoveToCadastro(demand)}
-                                                                    className="flex-[1.5] bg-brand-gray-900 hover:bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg"
-                                                                >
-                                                                    <User className="w-4 h-4" /> Cliente Aceitou (Enviar Cadastro)
+                                                                    <CheckCircle2 className="w-5 h-5" /> 
+                                                                    Confirmar Cadastro no SIC
                                                                 </button>
                                                             </div>
+                                                            <p className="text-[10px] text-purple-700/70 mt-3 text-center">
+                                                                * Ao confirmar, a alteração será registrada automaticamente no histórico do cliente.
+                                                            </p>
                                                         </div>
                                                     )}
                                                 </div>
@@ -335,15 +432,43 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
                         </div>
                         
                         <form onSubmit={handleCreateDemand} className="p-6 space-y-4">
-                            <div>
+                            <div className="relative" ref={searchWrapperRef}>
                                 <label className="block text-sm font-bold text-brand-gray-700 mb-1">Cliente / EC *</label>
-                                <input 
-                                    required
-                                    className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
-                                    placeholder="Nome do estabelecimento"
-                                    value={newDemand.clientName}
-                                    onChange={e => setNewDemand({...newDemand, clientName: e.target.value})}
-                                />
+                                <div className="relative">
+                                    <input 
+                                        required
+                                        className="w-full border border-brand-gray-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                        placeholder="Nome do estabelecimento"
+                                        value={newDemand.clientName}
+                                        onChange={handleClientNameChange}
+                                        onFocus={() => {
+                                            if (newDemand.clientName && newDemand.clientName.length > 1) setShowSuggestions(true);
+                                        }}
+                                    />
+                                    {showSuggestions && (
+                                        <div className="absolute z-50 w-full bg-white border border-brand-gray-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
+                                            {suggestions.length > 0 ? (
+                                                suggestions.map(client => (
+                                                    <div 
+                                                        key={client.id}
+                                                        className="px-4 py-2 hover:bg-brand-gray-50 cursor-pointer border-b border-brand-gray-50 last:border-0 flex justify-between items-center"
+                                                        onClick={() => selectClient(client)}
+                                                    >
+                                                        <div>
+                                                            <p className="text-sm font-bold text-brand-gray-800">{client.nomeEc}</p>
+                                                            <p className="text-xs text-brand-gray-500">{client.endereco}</p>
+                                                        </div>
+                                                        <span className="text-[10px] bg-brand-gray-100 text-brand-gray-600 px-1.5 py-0.5 rounded font-mono">
+                                                            ID: {client.id}
+                                                        </span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="px-4 py-3 text-xs text-gray-500 text-center">Nenhum cliente encontrado</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div>
@@ -388,6 +513,14 @@ const ResultadosPage: React.FC<{ currentUser?: string }> = ({ currentUser = 'Eu'
                         </form>
                     </div>
                 </div>
+            )}
+
+            {/* APPROVED PROPOSAL MODAL */}
+            {selectedProposalDemand && (
+                <ProposalPreviewModal 
+                    demand={selectedProposalDemand} 
+                    onClose={() => setSelectedProposalDemand(null)} 
+                />
             )}
         </div>
     );

@@ -6,7 +6,7 @@ interface CurrencyInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
   onChange: (value: number) => void;
 }
 
-export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onChange, className, ...props }) => {
+export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onChange, className, onFocus, ...props }) => {
   
   // Format the numeric value into R$ string for display
   const formatDisplay = (val: number | string | undefined) => {
@@ -32,6 +32,12 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onChange, c
     onChange(numericValue);
   };
 
+  // Keyboard UX: Select all text on focus to allow immediate overwriting
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.select();
+    if (onFocus) onFocus(e);
+  };
+
   return (
     <input
       {...props}
@@ -39,6 +45,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onChange, c
       inputMode="numeric"
       value={formatDisplay(value)}
       onChange={handleChange}
+      onFocus={handleFocus}
       className={className}
     />
   );

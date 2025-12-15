@@ -4,7 +4,8 @@ import { UserRole, Appointment, LeadOrigin, VisitPeriod, ClientBaseRow, VisitRep
 import { appStore } from '../services/store';
 import { MOCK_USERS } from '../constants';
 import { AddressAutocomplete } from '../components/AddressAutocomplete';
-import { CurrencyInput } from '../components/CurrencyInput'; // Added Import
+import { CurrencyInput } from '../components/CurrencyInput'; 
+import { useAppStore } from '../services/useAppStore'; // Hook
 import { 
   Calendar, Clock, MapPin, User, MessageCircle, CheckCircle2, Save, 
   ArrowRight, Search, ChevronLeft, Pencil, FileText, Briefcase, Map, Layout,
@@ -18,20 +19,8 @@ interface AgendamentosPageProps {
 const ORIGINS: LeadOrigin[] = ['SIR', 'SIN', 'CAM', 'Indicação', 'Prospecção'];
 const PERIODS: VisitPeriod[] = ['Manhã', 'Tarde', 'Horário Comercial'];
 
-const AgendamentosPage: React.FC<AgendamentosPageProps> = ({ role }) => {
-  const isInside = role === UserRole.INSIDE_SALES;
-
-  if (isInside) {
-    return <InsideSalesView />;
-  } else {
-    // specific logic to find the "current user" name for demo
-    const fieldSalesName = "Cleiton Freitas"; 
-    return <FieldSalesView currentUser={fieldSalesName} />;
-  }
-};
-
-/* --- INSIDE SALES COMPONENT --- */
-const InsideSalesView: React.FC = () => {
+/* --- INSIDE SALES COMPONENT (Defined Before Use) --- */
+const InsideSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<'Novos' | 'Carteira'>('Novos');
   const [isWalletScheduleMode, setIsWalletScheduleMode] = useState(false);
   const [previewId, setPreviewId] = useState<string>('');
@@ -48,9 +37,13 @@ const InsideSalesView: React.FC = () => {
   const [visitReasons, setVisitReasons] = useState<string[]>([]);
 
   useEffect(() => {
-    setWalletClients(appStore.getClients());
+    // Filter by Current User for Wallet
+    const allClients = appStore.getClients();
+    const myClients = allClients.filter(c => c.insideSales === currentUser);
+    setWalletClients(myClients);
+    
     setVisitReasons(appStore.getVisitReasons());
-  }, [activeTab]); 
+  }, [activeTab, currentUser]); 
 
   useEffect(() => {
     if (!previewId) {
@@ -132,6 +125,7 @@ const InsideSalesView: React.FC = () => {
           address: formData.address || '',
           observation: formData.observation || '',
           fieldSalesName: formData.fieldSalesName,
+          insideSalesName: currentUser, // Track creator
           date: formData.date,
           period: formData.period as VisitPeriod,
           status: 'Scheduled',
@@ -448,7 +442,7 @@ const InsideSalesView: React.FC = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden animate-fade-in">
                     <div className="p-6 border-b border-brand-gray-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-gray-50/30">
                         <div>
-                            <h3 className="font-bold text-lg text-brand-gray-900">Minha Carteira</h3>
+                            <h3 className="font-bold text-lg text-brand-gray-900">Minha Carteira ({currentUser})</h3>
                             <p className="text-sm text-brand-gray-500">Clientes atribuídos a você</p>
                         </div>
                         <div className="relative w-full md:w-auto group">
@@ -520,8 +514,7 @@ const InsideSalesView: React.FC = () => {
   );
 };
 
-/* --- FIELD SALES COMPONENT --- */
-
+/* --- FIELD SALES COMPONENT (Defined Before Use) --- */
 const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [refresh, setRefresh] = useState(0);
@@ -1229,6 +1222,20 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
       )}
     </div>
   );
+};
+
+/* --- MAIN PAGE COMPONENT (Defined Last) --- */
+const AgendamentosPage: React.FC<AgendamentosPageProps> = ({ role }) => {
+  const isInside = role === UserRole.INSIDE_SALES;
+  const { currentUser } = useAppStore();
+
+  if (isInside) {
+    return <InsideSalesView currentUser={currentUser?.name || ''} />;
+  } else {
+    // specific logic to find the "current user" name for demo
+    const fieldSalesName = currentUser?.name || "Cleiton Freitas"; 
+    return <FieldSalesView currentUser={fieldSalesName} />;
+  }
 };
 
 export default AgendamentosPage;

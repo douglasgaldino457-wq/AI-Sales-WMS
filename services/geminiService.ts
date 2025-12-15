@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { Visit, ClientBaseRow } from "../types";
+import { Visit, ClientBaseRow, Vehicle } from "../types";
 
 // Helper to get AI instance safely
 const getAI = () => {
@@ -12,15 +12,30 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// CIRCUIT BREAKER: Check if we've already hit the limit this session
+const isQuotaExceeded = () => {
+    return sessionStorage.getItem('gemini_quota_exceeded') === 'true';
+};
+
+const setQuotaExceeded = () => {
+    console.warn("Gemini Quota Exceeded. Disabling AI features for this session.");
+    sessionStorage.setItem('gemini_quota_exceeded', 'true');
+};
+
 /**
  * Reusable retry logic for Gemini API calls to handle 429 Quota errors.
- * Uses exponential backoff.
+ * Uses exponential backoff and circuit breaker pattern.
  */
 export const runWithRetry = async <T>(
   operation: () => Promise<T>, 
   retries = 3, 
   delay = 2000
 ): Promise<T> => {
+  // 1. Fast Fail if quota already known to be exceeded
+  if (isQuotaExceeded()) {
+      throw new Error("Quota exceeded (Circuit Breaker active).");
+  }
+
   try {
     return await operation();
   } catch (error: any) {
@@ -30,17 +45,24 @@ export const runWithRetry = async <T>(
                          error?.message?.includes('quota') ||
                          error?.message?.includes('RESOURCE_EXHAUSTED');
     
-    if (retries > 0 && isQuotaError) {
-      console.warn(`Gemini API Quota Exceeded (429). Retrying in ${delay}ms... (Attempts left: ${retries})`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      // Exponential backoff: double the delay
-      return runWithRetry(operation, retries - 1, delay * 2);
+    if (isQuotaError) {
+        if (retries > 0) {
+            console.warn(`Gemini API Quota Warning (429). Retrying in ${delay}ms... (Attempts left: ${retries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return runWithRetry(operation, retries - 1, delay * 2);
+        } else {
+            // All retries failed -> Trip the circuit breaker
+            setQuotaExceeded();
+            throw error;
+        }
     }
     throw error;
   }
 };
 
 export const getDashboardInsights = async (role: string, dataSummary: string): Promise<string> => {
+  if (isQuotaExceeded()) return "Insights de IA pausados (Limite de cota).";
+  
   const ai = getAI();
   if (!ai) return "IA indisponível. Verifique a chave de API.";
 
@@ -62,155 +84,100 @@ export const getDashboardInsights = async (role: string, dataSummary: string): P
         TAREFA:
         Gere um "Plano de Ação Tático" com no máximo 4 pontos cruciais.
         
-        DIRETRIZES ESPECÍFICAS POR PERFIL:
-        
-        1. SE FOR "FIELD SALES" OU "INSIDE SALES":
-           - Identifique clientes específicos citados nos dados (ex: "Oficina X está em negociação").
-           - Priorize follow-ups atrasados ou negociações paradas ("Em negociação").
-           - Sugira ações para carteira inativa (Risco de Churn).
-        
-        2. SE FOR "GESTOR":
-           - Identifique nominalmente qual consultor precisa de ajuda (baixa conversão ou muitas visitas sem sucesso).
-           - Aponte gargalos no funil (ex: "Muitas visitas, pouca conversão").
-           - Sugira uma ação de liderança imediata.
-
         FORMATO DE RESPOSTA (Markdown simples):
         - Use emojis para destacar (🔥 Urgente, 💰 Oportunidade, ⚠️ Atenção).
         - Seja direto. Ex: "🔥 **Oficina do Zé**: Está em negociação há 5 dias. Ligue agora oferecendo isenção de aluguel."
-        - Não faça introduções longas. Vá direto aos pontos.
       `,
     }));
     return response.text || "Sem insights no momento.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Não foi possível gerar insights agora.";
+    return "Insights de IA temporariamente indisponíveis (Cota de uso excedida).";
   }
 };
 
-export const optimizeRoute = async (visits: Visit[], startLocation?: string): Promise<string> => {
+// Updated: Returns ordered array of IDs instead of string text
+export const optimizeRoute = async (visits: Visit[], startLocation?: string): Promise<string[]> => {
+  if (isQuotaExceeded()) return visits.map(v => v.id); // Fallback to original order
+  
   const ai = getAI();
-  if (!ai) return "AI service unavailable.";
+  if (!ai) return visits.map(v => v.id);
 
-  const addresses = visits.map(v => `${v.clientName} (${v.address})`).join(', ');
-  const startContext = startLocation ? `O ponto de partida OBRIGATÓRIO é a localização atual do consultor em: ${startLocation}.` : "Assuma que começamos no centro da cidade.";
-
+  const destinations = visits.map(v => ({ id: v.id, address: v.address, client: v.clientName }));
+  
   try {
     const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `
-        Você é um assistente de logística inteligente. Organize a seguinte lista de visitas na melhor ordem lógica de rota para economizar tempo e combustível.
+        You are an expert logistics route optimizer.
         
-        ${startContext}
+        STARTING POINT (Current User Location): ${startLocation || 'Unknown'}
         
-        Lista de Visitas a organizar: ${addresses}
-
-        Retorne APENAS a lista ordenada numerada, começando pela visita mais próxima do ponto de partida e seguindo a sequência lógica. Adicione uma breve justificativa de trânsito simulada para a escolha da primeira parada.
+        DESTINATIONS TO VISIT:
+        ${JSON.stringify(destinations)}
+        
+        TASK:
+        Reorder the DESTINATIONS to create the most efficient route (shortest travel time) starting from the STARTING POINT and visiting all destinations sequentially.
+        
+        OUTPUT:
+        Return ONLY a valid JSON array of strings containing the 'id' of the visits in the optimized order.
+        Example: ["id-3", "id-1", "id-2"]
+        Do not include markdown code blocks.
       `,
+      config: { responseMimeType: 'application/json' }
     }));
-    return response.text || "Não foi possível otimizar a rota.";
+    
+    if (response.text) {
+        try {
+            return JSON.parse(response.text);
+        } catch (e) {
+            console.error("Failed to parse route JSON", e);
+            return visits.map(v => v.id);
+        }
+    }
+    return visits.map(v => v.id);
   } catch (error) {
     console.error("Gemini Route Error:", error);
-    return "Erro ao calcular rota.";
+    return visits.map(v => v.id);
   }
 };
 
 export const getGeographicInsights = async (clients: ClientBaseRow[]): Promise<string> => {
+  if (isQuotaExceeded()) return "Análise geográfica indisponível (Cota excedida).";
+
   const ai = getAI();
   if (!ai) return "IA indisponível.";
 
   // Simplify data for token efficiency
-  const clientData = clients.slice(0, 30).map(c => 
-    `- ID ${c.id} (${c.nomeEc}): Região ${c.regiaoAgrupada}, Field: ${c.fieldSales}`
+  const clientData = clients.slice(0, 20).map(c => 
+    `- ID ${c.id}: Região ${c.regiaoAgrupada}, Field: ${c.fieldSales}`
   ).join('\n');
 
   try {
     const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `
-        Você é um especialista em Inteligência Geográfica e Gestão de Territórios Comerciais.
+        Você é um especialista em Inteligência Geográfica.
         Analise a lista de clientes abaixo (Amostra):
-        
         ${clientData}
-
-        TAREFA:
-        Identifique possíveis divergências ou ineficiências na alocação da carteira (ex: Consultor X atendendo região que não é a principal dele, ou regiões misturadas).
-        
-        FORMATO DE RESPOSTA (JSON):
-        Retorne APENAS um texto simples (não markdown, não json) com 3 tópicos curtos de alerta/sugestão.
-        Exemplo de formato:
-        "⚠️ O EC X está fora da região do consultor Y. Sugestão: realocar para Z."
-        "📍 Concentração alta na Zona Sul para Consultor A."
+        Identifique possíveis divergências ou ineficiências na alocação da carteira.
+        Retorne APENAS um texto simples com 3 tópicos curtos.
       `,
     }));
     return response.text || "Análise geográfica concluída sem alertas críticos.";
   } catch (error) {
-    console.error("Gemini Geo Error:", error);
-    return "Erro ao analisar o território.";
+    return "Análise indisponível no momento.";
   }
 };
 
 // --- UPDATED: Document Analysis with Fraud Detection ---
 export const analyzeDocument = async (base64Data: string, docType: 'IDENTITY' | 'ADDRESS' | 'BANK_PROOF') => {
+  if (isQuotaExceeded()) return null;
   const ai = getAI();
-  if (!ai) throw new Error("IA indisponível.");
+  if (!ai) return null;
 
-  let prompt = "";
+  let prompt = `Analise este documento do tipo ${docType} e extraia os dados principais em JSON.`;
   
-  if (docType === 'IDENTITY') {
-    prompt = `
-      Atue como um analista de prevenção a fraudes (KYC).
-      Analise este documento de identificação (RG ou CNH).
-      
-      1. Extraia os dados:
-         - Nome Completo
-         - Número do CPF ou RG
-         - Data de Validade (se existir)
-      
-      2. Validação de Segurança:
-         - O documento parece estar vencido? (Considere a data de hoje ${new Date().toLocaleDateString()})
-         - Existem sinais visuais de montagem, fontes diferentes ou adulteração?
-      
-      Retorne APENAS o JSON no seguinte formato:
-      {
-        "name": "Nome Completo",
-        "docNumber": "Número do Documento",
-        "expiryDate": "dd/mm/aaaa",
-        "isExpired": boolean,
-        "isSuspicious": boolean,
-        "suspicionReason": "Texto curto explicando se houver suspeita, ou null"
-      }
-    `;
-  } else if (docType === 'ADDRESS') {
-    prompt = `
-      Atue como um analista de Backoffice.
-      Analise este comprovante de endereço.
-      
-      1. Extraia o endereço completo.
-      2. Verifique se a data de emissão é recente (últimos 90 dias).
-      
-      Retorne APENAS o JSON:
-      {
-        "fullAddress": "Rua, Número, Bairro, Cidade - UF, CEP",
-        "issueDate": "dd/mm/aaaa",
-        "isRecent": boolean
-      }
-    `;
-  } else if (docType === 'BANK_PROOF') {
-    prompt = `
-      Atue como um analista bancário.
-      Analise este comprovante bancário, cartão ou cheque.
-      Extraia os dados com precisão.
-      
-      Retorne APENAS o JSON:
-      {
-        "bankName": "Nome do Banco",
-        "agency": "Agência (sem dígito)",
-        "account": "Conta (com dígito)",
-        "holder": "Nome do Titular"
-      }
-    `;
-  }
-
   try {
     const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -231,7 +198,7 @@ export const analyzeDocument = async (base64Data: string, docType: 'IDENTITY' | 
     return null;
   } catch (error) {
     console.error("Document Analysis Error:", error);
-    throw error;
+    return null; 
   }
 };
 
@@ -241,47 +208,15 @@ export const extractRatesFromEvidence = async (
     planType: 'Full' | 'Simples', 
     simulationValue?: number
 ) => {
+    if (isQuotaExceeded()) return null;
     const ai = getAI();
-    if (!ai) throw new Error("IA indisponível.");
+    if (!ai) return null;
 
     const prompt = `
-        Você é um especialista em Pricing e Adquirência de Cartões.
-        Analise as imagens fornecidas (prints de taxas, relatórios de vendas ou simulações de maquininha).
-        
-        OBJETIVO:
-        Extrair as taxas que estão sendo aplicadas (Custo Efetivo Total para o lojista).
-        
-        CONTEXTO:
-        - O usuário selecionou o plano de destino: ${planType}.
-        - ${simulationValue ? `O usuário informou que a evidência é uma SIMULAÇÃO de uma venda no valor de R$ ${simulationValue}. Se a imagem mostrar o valor líquido ou o valor da parcela, calcule a taxa reversa: Taxa = 1 - (ValorLiquido / ${simulationValue}).` : "A evidência deve conter as taxas explícitas (Ex: MDR + Antecipação ou Taxa Final)."}
-        
-        REGRAS DE NEGÓCIO:
-        1. Se a evidência mostrar "MDR" (Taxa adm) e "Antecipação" (a.m.) separadas:
-           - Se o plano destino for 'Full': Calcule a taxa total para cada parcela (MDR + (Antecipação * Meses)).
-           - Se o plano destino for 'Simples': Retorne MDR e Antecipação separadamente se possível, ou agrupe.
-        2. Se a evidência mostrar "Juros Cliente" (Repasse): A taxa do lojista é apenas o MDR base (geralmente baixa). Identifique se é Juros Lojista ou Cliente.
-        3. Preencha os campos vazios com null se não encontrar.
-
-        RETORNO ESPERADO (JSON):
-        {
-            "debit": number,
-            "credit1x": number,
-            "credit2x": number,
-            "credit3x": number,
-            "credit4x": number,
-            "credit5x": number,
-            "credit6x": number,
-            "credit7x": number,
-            "credit8x": number,
-            "credit9x": number,
-            "credit10x": number,
-            "credit11x": number,
-            "credit12x": number,
-            "credit18x": number,
-            "notes": "Breve explicação de como chegou nos valores (ex: 'Detectado simulação Juros Lojista...')"
-        }
-        
-        Se encontrar intervalos (ex: 2x-6x), replique o valor para todas as parcelas do intervalo.
+        Analise as imagens fornecidas (prints de taxas).
+        Extraia as taxas aplicadas (Débito, Crédito à Vista, Parcelado).
+        Plano destino: ${planType}.
+        Retorne JSON com as chaves: debit, credit1x, credit2x...
     `;
 
     try {
@@ -303,6 +238,83 @@ export const extractRatesFromEvidence = async (
         return null;
     } catch (error) {
         console.error("Pricing AI Error:", error);
-        throw error;
+        return null; 
+    }
+};
+
+// --- NEW: Vehicle Identification ---
+export const identifyVehicleByPlate = async (plate: string): Promise<Vehicle | null> => {
+    if (isQuotaExceeded()) return null;
+    const ai = getAI();
+    if (!ai) return null;
+
+    const prompt = `
+        Com base na placa brasileira "${plate}", gere dados PLAUSÍVEIS de um veículo comum no Brasil.
+        Retorne JSON: { "plate", "make", "model", "year", "color" }.
+    `;
+
+    try {
+        const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: { responseMimeType: "application/json" }
+        }));
+
+        if (response.text) {
+            return JSON.parse(response.text);
+        }
+        return null;
+    } catch (error) {
+        console.error("Vehicle ID Error:", error);
+        return null;
+    }
+};
+
+// --- NEW: Receipt Analysis (Expenses) ---
+export const analyzeReceipt = async (base64Image: string) => {
+    if (isQuotaExceeded()) return null;
+    const ai = getAI();
+    if (!ai) return null;
+
+    const prompt = `
+        Analise este comprovante fiscal ou recibo.
+        
+        Objetivo: Extrair dados para reembolso de despesas corporativas.
+        
+        Extraia os seguintes campos em JSON:
+        - date: Data da emissão (Formato YYYY-MM-DD).
+        - amount: Valor total pago (number).
+        - establishment: Nome do estabelecimento.
+        - category: Classifique em uma destas: 'Combustível', 'Estacionamento', 'Pedágio', 'Uber/Táxi', 'Hospedagem', 'Alimentação', 'Outros'.
+        
+        SE A CATEGORIA FOR 'Combustível':
+        - fuelDetails: {
+            fuelType: 'Gasolina' | 'Etanol' | 'Diesel' | 'GNV',
+            liters: Quantidade de litros abastecidos (number),
+            pricePerLiter: Preço por litro (number)
+        }
+        
+        Se não for combustível, fuelDetails deve ser null.
+    `;
+
+    try {
+        const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+                    { text: prompt }
+                ]
+            },
+            config: { responseMimeType: "application/json" }
+        }));
+
+        if (response.text) {
+            return JSON.parse(response.text);
+        }
+        return null;
+    } catch (error) {
+        console.error("Receipt Analysis Error:", error);
+        return null; 
     }
 };

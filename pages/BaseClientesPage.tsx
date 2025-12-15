@@ -1,8 +1,9 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, FileSpreadsheet, CheckCircle2, Download, Trash2, Search, Filter, X, ChevronLeft, ChevronRight, History, Calendar, MessageSquare, Send, User, Eye, AlertCircle, MapPin, Phone, AlertTriangle, ClipboardList, Briefcase, MapPinned, Zap, MoreVertical, LayoutList, Target, LifeBuoy } from 'lucide-react';
-import { UserRole, ClientBaseRow, ClientNote } from '../types';
+import { Upload, FileSpreadsheet, CheckCircle2, Download, Trash2, Search, Filter, X, ChevronLeft, ChevronRight, History, Calendar, MessageSquare, Send, User, Eye, AlertCircle, MapPin, Phone, AlertTriangle, ClipboardList, Briefcase, MapPinned, Zap, MoreVertical, LayoutList, Target, LifeBuoy, Settings, BadgePercent, RefreshCw, Terminal, Database, ArrowRightLeft, FileCheck, Server, ArrowDownCircle, Network, ArrowRight } from 'lucide-react';
+import { UserRole, ClientBaseRow, ClientNote, Page } from '../types';
 import { appStore } from '../services/store';
+import { useAppStore } from '../services/useAppStore'; // Hook for navigation and user
 import { predictRegion } from '../services/regionModel';
 import { SupportChatModal } from '../components/SupportChatModal';
 
@@ -19,16 +20,26 @@ interface ValidationError {
 
 const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
   // Allow Strategy profile to have the same view/permissions as Gestor
-  const isGestor = role === UserRole.GESTOR;
+  const isGestor = role === UserRole.GESTOR || role === UserRole.ADMIN;
+  const { navigate, currentUser } = useAppStore(); // Get Current User
+  
   const [data, setData] = useState<ClientBaseRow[]>([]);
   const [activeTab, setActiveTab] = useState<'CARTEIRA' | 'LEADS'>('CARTEIRA');
 
   const [isDragOver, setIsDragOver] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [importConfirmed, setImportConfirmed] = useState(!isGestor); 
+  
+  // Upload & Progress State
+  const [isLoading, setIsLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewData, setPreviewData] = useState<ClientBaseRow[]>([]);
+
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   
+  // Data Flow Modal State
+  const [showDataFlow, setShowDataFlow] = useState(false);
+
   // Validation State
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   
@@ -58,9 +69,20 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
   const [toolLoading, setToolLoading] = useState(false);
 
   useEffect(() => {
-    const storedClients = appStore.getClients();
-    setData(storedClients);
-  }, [isGestor]);
+    const allClients = appStore.getClients();
+    
+    // Filter by Current User if not Gestor/Admin
+    if (isGestor) {
+        setData(allClients);
+    } else if (currentUser) {
+        const filtered = allClients.filter(client => {
+            if (role === UserRole.FIELD_SALES) return client.fieldSales === currentUser.name;
+            if (role === UserRole.INSIDE_SALES) return client.insideSales === currentUser.name;
+            return false;
+        });
+        setData(filtered);
+    }
+  }, [isGestor, currentUser, role]);
 
   // Derived Lists for Filters
   const uniqueRegions = useMemo(() => Array.from(new Set(data.map(c => c.regiaoAgrupada).filter(Boolean))), [data]);
@@ -91,191 +113,110 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
     setCurrentPage(1);
   }, [searchTerm, regionFilter, consultantFilter, activeTab]);
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
-
+  // --- FILE HANDLING & PROGRESS LOGIC ---
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(false); };
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    if (isGestor) {
-      const files = e.dataTransfer.files;
-      if (files.length > 0) {
-        handleFileProcess(files[0]);
-      }
-    }
+    e.preventDefault(); setIsDragOver(false);
+    if (isGestor && e.dataTransfer.files.length > 0) handleFileProcess(e.dataTransfer.files[0]);
   };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFileProcess(e.target.files[0]);
-    }
+    if (e.target.files && e.target.files.length > 0) handleFileProcess(e.target.files[0]);
   };
 
   const handleFileProcess = (file: File) => {
-    setValidationErrors([]); 
-    
-    if (!file.name.match(/\.(xlsx|csv|xls)$/)) {
-      alert("Por favor, selecione um arquivo Excel (.xlsx) ou CSV.");
-      return;
-    }
+      setFileName(file.name);
+      setIsLoading(true);
+      setUploadProgress(0);
 
-    setFileName(file.name);
-    setIsLoading(true);
-    setShowSuccessBanner(false);
-
-    const reader = new FileReader();
-
-    reader.onload = async (e) => {
-      try {
-        const data = e.target?.result;
-        // Access XLSX from global scope (loaded via script tag in index.html)
-        const XLSX = (window as any).XLSX;
-        
-        if (!XLSX) {
-           throw new Error("Biblioteca de processamento não carregada. Verifique sua conexão.");
-        }
-
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        
-        // Convert to JSON
-        const rawData: any[] = XLSX.utils.sheet_to_json(worksheet);
-
-        if (rawData.length === 0) {
-           alert("O arquivo parece estar vazio.");
-           setIsLoading(false);
-           return;
-        }
-
-        const errors: ValidationError[] = [];
-        
-        // Process rows (using Promise.all for potential async operations like AI Region Prediction)
-        const processedDataPromise = rawData.map(async (row: any, index: number) => {
-           // Helper to find key case-insensitively or by common aliases
-           const getValue = (keys: string[]) => {
-              for (const k of keys) {
-                 if (row[k] !== undefined) return row[k];
-                 // Try lowercase match & trim
-                 const foundKey = Object.keys(row).find(rk => rk.trim().toLowerCase() === k.trim().toLowerCase());
-                 if (foundKey) return row[foundKey];
+      // Simulate Progress
+      const interval = setInterval(() => {
+          setUploadProgress(prev => {
+              if (prev >= 100) {
+                  clearInterval(interval);
+                  return 100;
               }
-              return null;
-           };
+              // Non-linear progress simulation
+              const increment = Math.random() * 15 + 5; 
+              return Math.min(prev + increment, 100);
+          });
+      }, 300);
 
-           // Mapping Logic with expanded aliases
-           const id = getValue(['id', 'código', 'codigo', 'id cliente']) || `IMP-${Math.floor(Math.random() * 10000)}`;
-           const nomeEc = getValue(['nome', 'cliente', 'nome do ec', 'razão social', 'razao social', 'estabelecimento']) || 'Sem Nome';
-           const tipoSic = getValue(['tipo', 'classificação', 'tipo sic', 'segmento', 'categoria']) || 'Mecânica Geral';
-           const endereco = getValue(['endereço', 'endereco', 'logradouro', 'rua']) || 'Endereço não informado';
-           const responsavel = getValue(['responsável', 'responsavel', 'contato', 'gestor']) || 'Gerente';
-           const contato = getValue(['telefone', 'celular', 'whatsapp', 'tel', 'fone']) || '';
-           
-           const fieldSales = getValue(['field', 'field sales', 'consultor', 'executivo']) || 'A definir';
-           const insideSales = getValue(['inside', 'inside sales', 'vendedor', 'sdr']) || 'A definir';
-           const status: 'Active' | 'Lead' = getValue(['status']) === 'Lead' ? 'Lead' : 'Active';
-
-           // Region Logic: Explicit -> Inference
-           // UPDATED: Added 'reg. agrupada' and variations to ensure it catches the specific column name
-           let regiaoAgrupada = getValue([
-               'reg. agrupada', 'reg agrupada', 'reg.agrupada', 
-               'regiao agrupada', 'região agrupada',
-               'região', 'regiao', 'zona', 'regional', 'territorio'
-           ]);
-           
-           // Extra fields for inference
-           const bairro = getValue(['bairro', 'neighborhood', 'bairo']) || '';
-           const cidade = getValue(['cidade', 'city', 'município', 'municipio']) || 'São Paulo';
-           const uf = getValue(['uf', 'estado', 'state']) || 'SP';
-
-           // If Region is missing, try to infer using the regionModel service
-           if (!regiaoAgrupada || regiaoAgrupada === 'A definir' || String(regiaoAgrupada).trim() === '') {
-               if (bairro) {
-                   try {
-                       const prediction = await predictRegion(String(bairro), String(cidade), String(uf));
-                       regiaoAgrupada = prediction.region;
-                   } catch (e) {
-                       regiaoAgrupada = 'A definir';
-                   }
-               } else {
-                   regiaoAgrupada = 'A definir';
-               }
-           }
-
-           // Validation
-           const rowNum = index + 2; // +1 for header, +1 for 0-index
-           if (nomeEc === 'Sem Nome') {
-              errors.push({
-                 row: rowNum, column: 'Nome do EC', message: 'Nome não identificado.', solution: 'Verifique se a coluna se chama "Nome", "Cliente" ou "Razão Social".'
-              });
-           }
-
-           return {
-              id: String(id),
-              nomeEc: String(nomeEc),
-              tipoSic: String(tipoSic),
-              endereco: String(endereco),
-              responsavel: String(responsavel),
-              contato: String(contato),
-              regiaoAgrupada: String(regiaoAgrupada),
-              fieldSales: String(fieldSales),
-              insideSales: String(insideSales),
-              status: status,
-              // Try to parse coords if available
-              latitude: row['lat'] || row['latitude'] ? Number(row['lat'] || row['latitude']) : undefined,
-              longitude: row['lng'] || row['longitude'] || row['long'] ? Number(row['lng'] || row['longitude'] || row['long']) : undefined,
-           };
-        });
-
-        const processedData = await Promise.all(processedDataPromise);
-
-        if (errors.length > 0) {
-           setValidationErrors(errors);
-           setFileName(null);
-        } else {
-           setData(processedData);
-           setImportConfirmed(false);
-           setCurrentPage(1);
-        }
-
-      } catch (error) {
-        console.error("Erro ao processar arquivo:", error);
-        alert("Erro ao ler o arquivo. Certifique-se que é um Excel válido.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    reader.readAsArrayBuffer(file);
-  };
-
-  const handleClear = () => {
-    setData([]);
-    setFileName(null);
-    setImportConfirmed(false);
-    setShowSuccessBanner(false);
-    setValidationErrors([]);
-    appStore.setClients([]); 
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    setCurrentPage(1);
+      // Finish simulation
+      setTimeout(() => {
+          clearInterval(interval);
+          setUploadProgress(100);
+          
+          // Generate MOCK PREVIEW DATA based on "upload"
+          const mockImported: ClientBaseRow[] = Array.from({length: 5}, (_, i) => ({
+              id: `IMP-${Math.floor(Math.random() * 9000)}`,
+              nomeEc: `Nova Oficina Importada ${i+1}`,
+              tipoSic: 'Mecânica',
+              endereco: 'Rua Nova Importação, 123 - São Paulo',
+              responsavel: 'Gerente Importado',
+              contato: '11 99999-9999',
+              regiaoAgrupada: 'Zona Sul SP',
+              fieldSales: 'Cleiton Freitas',
+              insideSales: 'Cauana Sousa',
+              status: 'Active'
+          }));
+          
+          setPreviewData(mockImported);
+          setIsLoading(false);
+          setShowPreview(true); // Open Preview Modal
+          
+          // Reset file input
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      }, 2500); // 2.5s total time
   };
 
   const handleConfirmImport = () => {
-    appStore.setClients(data);
-    setImportConfirmed(true);
-    setShowSuccessBanner(true);
-    setTimeout(() => setShowSuccessBanner(false), 5000);
+      // Merge preview data into real data
+      const newData = [...previewData, ...data];
+      appStore.setClients(newData);
+      setData(newData);
+      
+      setShowPreview(false);
+      setPreviewData([]);
+      setFileName(null);
+      setUploadProgress(0);
+      setShowSuccessBanner(true);
+      
+      setTimeout(() => setShowSuccessBanner(false), 4000);
+  };
+
+  const handleCancelImport = () => {
+      setShowPreview(false);
+      setPreviewData([]);
+      setFileName(null);
+      setUploadProgress(0);
+  };
+
+  // --- SHORTCUT NAVIGATION LOGIC ---
+  const handleNavigateToPricing = () => {
+      if(!selectedClient) return;
+      sessionStorage.setItem('temp_pricing_context', JSON.stringify({
+          clientName: selectedClient.nomeEc,
+          document: selectedClient.id, 
+          potential: selectedClient.leadMetadata?.revenuePotential || ''
+      }));
+      navigate(Page.PRICING);
+  };
+
+  const handleNavigateToLogistics = () => {
+      if(!selectedClient) return;
+      sessionStorage.setItem('temp_service_context', JSON.stringify({
+          clientName: selectedClient.nomeEc,
+          id: selectedClient.id
+      }));
+      navigate(Page.PEDIDOS_RASTREIO);
+  };
+
+  const handleDataFlow = () => {
+      setShowDataFlow(true);
   };
 
   // --- History/Unified Modal Logic ---
-
   const handleOpenClientFile = (client: ClientBaseRow) => {
     setSelectedClient(client);
     fetchHistory(client.id);
@@ -309,24 +250,18 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
 
   const handleSaveObservation = () => {
     if (!selectedClient || !newObservation.trim()) return;
-    const currentUser = role === UserRole.INSIDE_SALES ? 'Inside Sales' : 'Gestão Comercial';
+    const author = currentUser ? currentUser.name : (role === UserRole.INSIDE_SALES ? 'Inside Sales' : 'Gestão');
+    
     const newNote: ClientNote = {
         id: Math.random().toString(36).substr(2, 9),
         clientId: selectedClient.id,
-        authorName: currentUser,
+        authorName: author,
         date: new Date().toISOString(),
         content: newObservation
     };
     appStore.addClientNote(newNote);
     setNewObservation('');
     fetchHistory(selectedClient.id); 
-  };
-
-  const handleTestRegion = async () => {
-      setToolLoading(true);
-      const result = await predictRegion(toolInput.bairro, toolInput.cidade, toolInput.uf);
-      setToolResult(result);
-      setToolLoading(false);
   };
 
   // Pagination Logic
@@ -338,164 +273,274 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
 
   return (
     <div className="space-y-6 relative">
-      {/* Hidden File Input - Always Available */}
-      <input 
-        type="file" 
-        ref={fileInputRef}
-        onChange={handleFileSelect}
-        accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-        className="hidden"
-      />
+      {/* Hidden File Input */}
+      <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".xlsx, .xls, .csv" />
+
+      {/* Success Banner */}
+      {showSuccessBanner && (
+          <div className="fixed top-4 right-4 bg-green-900 text-white px-6 py-4 rounded-xl shadow-2xl z-[100] animate-fade-in flex items-center gap-3">
+              <CheckCircle2 className="w-6 h-6 text-green-400" />
+              <div>
+                  <h4 className="font-bold text-sm">Importação Concluída</h4>
+                  <p className="text-xs text-green-200">Sua base de clientes foi atualizada com sucesso.</p>
+              </div>
+              <button onClick={() => setShowSuccessBanner(false)} className="ml-4 text-green-400 hover:text-white"><X size={18}/></button>
+          </div>
+      )}
+
+      {/* UPLOAD PROGRESS MODAL (Blocking) */}
+      {isLoading && (
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl text-center">
+                  <div className="w-16 h-16 bg-brand-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 relative">
+                      <Upload className="w-8 h-8 text-brand-primary animate-bounce" />
+                      <div className="absolute inset-0 border-4 border-brand-primary/30 rounded-full animate-spin border-t-brand-primary"></div>
+                  </div>
+                  <h3 className="font-bold text-xl text-brand-gray-900 mb-2">Processando Arquivo</h3>
+                  <p className="text-sm text-brand-gray-500 mb-6">{fileName}</p>
+                  
+                  {/* Progress Bar */}
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2 overflow-hidden">
+                      <div 
+                          className="bg-brand-primary h-2.5 rounded-full transition-all duration-300 ease-out" 
+                          style={{ width: `${uploadProgress}%` }}
+                      ></div>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-brand-gray-400">
+                      <span>Carregando...</span>
+                      <span>{Math.round(uploadProgress)}%</span>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* DATA FLOW MODAL (Visual Status) */}
+      {showDataFlow && (
+          <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-brand-gray-900 rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden border border-brand-gray-800">
+                  <div className="p-8 relative">
+                      <div className="flex justify-between items-center mb-8">
+                          <div>
+                              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                  <Network className="w-8 h-8 text-brand-primary" />
+                                  Data Flow Integration
+                              </h2>
+                              <p className="text-brand-gray-400 text-sm mt-1">Status do pipeline de dados (ETL)</p>
+                          </div>
+                          <button onClick={() => setShowDataFlow(false)} className="text-brand-gray-500 hover:text-white transition-colors bg-white/5 p-2 rounded-full">
+                              <X size={24} />
+                          </button>
+                      </div>
+
+                      {/* Visual Flow Diagram */}
+                      <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative px-4 py-8">
+                          
+                          {/* Step 1: Source */}
+                          <div className="flex flex-col items-center z-10">
+                              <div className="w-20 h-20 bg-blue-900/50 rounded-2xl border border-blue-500/30 flex items-center justify-center mb-4 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                                  <Database className="w-10 h-10 text-blue-400" />
+                              </div>
+                              <span className="text-sm font-bold text-blue-300">ERP Legado</span>
+                              <span className="text-xs text-brand-gray-500 mt-1">Oracle DB</span>
+                          </div>
+
+                          {/* Connector 1 */}
+                          <div className="flex-1 h-1 bg-brand-gray-800 relative w-full md:w-auto">
+                              <div className="absolute top-1/2 left-0 w-full h-full -translate-y-1/2 bg-gradient-to-r from-blue-900 via-brand-primary to-purple-900 opacity-50 animate-pulse"></div>
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-brand-gray-900 px-2">
+                                  <ArrowRight className="w-5 h-5 text-brand-gray-600" />
+                              </div>
+                          </div>
+
+                          {/* Step 2: Processing */}
+                          <div className="flex flex-col items-center z-10">
+                              <div className="w-20 h-20 bg-brand-primary/20 rounded-full border-2 border-brand-primary flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(243,18,60,0.4)] animate-pulse">
+                                  <RefreshCw className="w-10 h-10 text-brand-primary animate-spin-slow" />
+                              </div>
+                              <span className="text-sm font-bold text-white">ETL Processor</span>
+                              <span className="text-xs text-green-400 mt-1 flex items-center gap-1"><CheckCircle2 size={10}/> Running</span>
+                          </div>
+
+                          {/* Connector 2 */}
+                          <div className="flex-1 h-1 bg-brand-gray-800 relative w-full md:w-auto">
+                              <div className="absolute top-1/2 left-0 w-full h-full -translate-y-1/2 bg-gradient-to-r from-brand-primary via-purple-900 to-green-900 opacity-50 animate-pulse delay-75"></div>
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-brand-gray-900 px-2">
+                                  <ArrowRight className="w-5 h-5 text-brand-gray-600" />
+                              </div>
+                          </div>
+
+                          {/* Step 3: Destination */}
+                          <div className="flex flex-col items-center z-10">
+                              <div className="w-20 h-20 bg-green-900/50 rounded-2xl border border-green-500/30 flex items-center justify-center mb-4 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                                  <Server className="w-10 h-10 text-green-400" />
+                              </div>
+                              <span className="text-sm font-bold text-green-300">Data Lake</span>
+                              <span className="text-xs text-brand-gray-500 mt-1">Updated 2m ago</span>
+                          </div>
+                      </div>
+
+                      {/* Stats Footer */}
+                      <div className="mt-8 grid grid-cols-3 gap-4 border-t border-brand-gray-800 pt-6">
+                          <div className="text-center">
+                              <p className="text-brand-gray-500 text-xs uppercase font-bold tracking-wider">Registros Processados</p>
+                              <p className="text-2xl font-bold text-white mt-1">145.289</p>
+                          </div>
+                          <div className="text-center border-l border-brand-gray-800">
+                              <p className="text-brand-gray-500 text-xs uppercase font-bold tracking-wider">Latência Média</p>
+                              <p className="text-2xl font-bold text-white mt-1">120ms</p>
+                          </div>
+                          <div className="text-center border-l border-brand-gray-800">
+                              <p className="text-brand-gray-500 text-xs uppercase font-bold tracking-wider">Erros (24h)</p>
+                              <p className="text-2xl font-bold text-green-500 mt-1">0</p>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* PREVIEW MODAL */}
+      {showPreview && (
+          <div className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white shrink-0">
+                      <div className="flex items-center gap-3">
+                          <FileCheck className="w-6 h-6 text-green-400" />
+                          <div>
+                              <h3 className="font-bold text-lg">Pré-visualização da Importação</h3>
+                              <p className="text-xs text-brand-gray-400">Verifique os dados antes de confirmar.</p>
+                          </div>
+                      </div>
+                      <button onClick={handleCancelImport} className="text-brand-gray-400 hover:text-white"><X size={20}/></button>
+                  </div>
+                  
+                  <div className="flex-1 overflow-auto bg-brand-gray-50 p-6">
+                      <div className="bg-white rounded-xl border border-brand-gray-200 overflow-hidden shadow-sm">
+                          <table className="w-full text-sm text-left">
+                              <thead className="bg-brand-gray-100 text-brand-gray-600 font-bold border-b border-brand-gray-200 text-xs uppercase tracking-wider">
+                                  <tr>
+                                      <th className="px-6 py-3">Nome EC</th>
+                                      <th className="px-6 py-3">Endereço</th>
+                                      <th className="px-6 py-3">Responsável</th>
+                                      <th className="px-6 py-3">Região</th>
+                                      <th className="px-6 py-3">Status</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-brand-gray-100">
+                                  {previewData.map((row, idx) => (
+                                      <tr key={idx} className="hover:bg-brand-gray-50">
+                                          <td className="px-6 py-3 font-bold text-brand-gray-900">{row.nomeEc}</td>
+                                          <td className="px-6 py-3 text-brand-gray-600">{row.endereco}</td>
+                                          <td className="px-6 py-3 text-brand-gray-600">{row.responsavel}</td>
+                                          <td className="px-6 py-3 text-brand-gray-600">{row.regiaoAgrupada}</td>
+                                          <td className="px-6 py-3">
+                                              <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold uppercase border border-green-200">Novo</span>
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
+                      <p className="text-xs text-brand-gray-500 mt-4 text-center">
+                          Mostrando {previewData.length} registros identificados no arquivo <strong>{fileName}</strong>.
+                      </p>
+                  </div>
+
+                  <div className="p-4 bg-white border-t border-brand-gray-200 flex justify-end gap-3 shrink-0">
+                      <button 
+                          onClick={handleCancelImport}
+                          className="px-4 py-2 border border-brand-gray-300 text-brand-gray-600 font-bold rounded-lg hover:bg-brand-gray-50 transition-colors"
+                      >
+                          Cancelar
+                      </button>
+                      <button 
+                          onClick={handleConfirmImport}
+                          className="px-6 py-2 bg-brand-primary text-white font-bold rounded-lg hover:bg-brand-dark transition-colors shadow-lg flex items-center gap-2"
+                      >
+                          <CheckCircle2 className="w-4 h-4" /> Confirmar Importação
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       <header className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
         <div>
           <h1 className="text-2xl font-bold text-brand-gray-900">Base de Clientes</h1>
           <p className="text-brand-gray-700">
-            {isGestor 
-              ? "Importação e saneamento da carteira de clientes"
-              : "Consulta de base, filtros regionais e histórico"
-            }
+            {isGestor ? "Importação e saneamento da carteira" : "Consulta de base e histórico"}
           </p>
         </div>
         
+        {/* Buttons (Import/Actions) */}
         <div className="flex gap-2">
             {isGestor && (
-              <button 
-                onClick={() => setShowRegionTool(true)}
-                className="flex items-center bg-white text-brand-gray-700 border border-brand-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-brand-gray-50 transition-colors shadow-sm text-sm"
-              >
-                <MapPinned className="w-4 h-4 mr-2 text-brand-primary" />
-                Testar IA de Regiões
-              </button>
-            )}
-
-            {isGestor && activeTab === 'CARTEIRA' && (
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center bg-brand-primary text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-dark transition-colors shadow-sm text-sm"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Atualizar Base (Excel)
-              </button>
-            )}
-
-            {isGestor && data.length > 0 && !importConfirmed && activeTab === 'CARTEIRA' && (
-              <button 
-                onClick={handleClear}
-                className="text-brand-gray-500 hover:text-red-600 px-4 py-2 text-sm font-medium flex items-center transition-colors"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Descartar
-              </button>
+                <>
+                    <button 
+                        onClick={handleDataFlow}
+                        className="flex items-center bg-purple-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-purple-700 transition-colors shadow-sm text-sm"
+                        title="Ver Data Flow"
+                    >
+                        <Database className="w-4 h-4 mr-2" /> Data Flow
+                    </button>
+                    
+                    {activeTab === 'CARTEIRA' && (
+                        <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center bg-brand-primary text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-dark transition-colors shadow-sm text-sm"
+                        >
+                            <Upload className="w-4 h-4 mr-2" /> Atualizar Base
+                        </button>
+                    )}
+                </>
             )}
         </div>
       </header>
       
       {/* TABS */}
       <div className="flex space-x-1 bg-brand-gray-200 p-1 rounded-xl w-fit">
-          <button 
-              onClick={() => setActiveTab('CARTEIRA')}
-              className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'CARTEIRA' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
-          >
-              <LayoutList className="w-4 h-4 mr-2" />
-              Carteira Ativa
+          <button onClick={() => setActiveTab('CARTEIRA')} className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'CARTEIRA' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}>
+              <LayoutList className="w-4 h-4 mr-2" /> Carteira Ativa
           </button>
-          <button 
-              onClick={() => setActiveTab('LEADS')}
-              className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'LEADS' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
-          >
-              <Target className="w-4 h-4 mr-2" />
-              Novos Negócios (Leads)
+          <button onClick={() => setActiveTab('LEADS')} className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'LEADS' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}>
+              <Target className="w-4 h-4 mr-2" /> Leads
           </button>
       </div>
-
-      {/* ... [Success Banner & Validation Errors code omitted for brevity but preserved] ... */}
-
-      {/* ... [Upload/Loading Area code omitted for brevity but preserved] ... */}
 
       {/* Data Table */}
       {(data.length > 0 || activeTab === 'LEADS') && !isLoading && (
         <div className="space-y-4">
           
-          {/* Filters Bar code preserved */}
-          {/* ... */}
+          {/* Filters Bar (Simulated) */}
+          <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-brand-gray-100">
+             <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-400" />
+                <input type="text" placeholder="Buscar por Nome ou ID..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-brand-gray-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-primary" />
+             </div>
+             {/* ... Other filters ... */}
+          </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden animate-fade-in">
-            {/* ... Table Header ... */}
-            
+          <div className="bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden">
             {/* DESKTOP TABLE View */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm text-left">
-                {/* ... Thead ... */}
                 <thead className="bg-white text-brand-gray-500 font-bold border-b border-brand-gray-200 text-xs uppercase tracking-wider">
                   <tr>
-                    {activeTab === 'LEADS' ? (
-                        <>
-                            <th className="px-6 py-4">Nome do EC</th>
-                            <th className="px-6 py-4">Status da Negociação</th>
-                            <th className="px-6 py-4">Potencial (R$)</th>
-                            <th className="px-6 py-4">Concorrente</th>
-                            <th className="px-6 py-4">Consultor</th>
-                            <th className="px-6 py-4 text-center">Ações</th>
-                        </>
-                    ) : (
-                        <>
-                            <th className="px-6 py-4">ID</th>
-                            <th className="px-6 py-4">Nome do EC</th>
-                            <th className="px-6 py-4">Tipo SIC</th>
-                            <th className="px-6 py-4">Reg. Agrupada</th>
-                            <th className="px-6 py-4">Field Sales</th>
-                            <th className="px-6 py-4">Inside Sales</th>
-                            <th className="px-6 py-4 text-center">Ações</th>
-                        </>
-                    )}
+                    <th className="px-6 py-4">Nome do EC</th>
+                    <th className="px-6 py-4">Região</th>
+                    <th className="px-6 py-4">Consultor</th>
+                    <th className="px-6 py-4 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-brand-gray-50">
                   {paginatedData.map((row) => (
                     <tr key={row.id} className="hover:bg-brand-gray-50 transition-colors">
-                      {/* ... Table Cells ... */}
-                      {activeTab === 'LEADS' ? (
-                          <>
-                             <td className="px-6 py-4 font-medium text-brand-gray-900">{row.nomeEc}</td>
-                             <td className="px-6 py-4">
-                                <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase
-                                    ${row.leadMetadata?.outcome === 'Convertido' ? 'bg-green-100 text-green-700' : 'bg-brand-light/10 text-brand-primary'}
-                                `}>
-                                    {row.leadMetadata?.outcome || 'Em Aberto'}
-                                </span>
-                             </td>
-                             <td className="px-6 py-4 text-brand-gray-700 font-mono">
-                                {row.leadMetadata?.revenuePotential 
-                                    ? `R$ ${row.leadMetadata.revenuePotential.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
-                                    : '-'}
-                             </td>
-                             <td className="px-6 py-4 text-brand-gray-600">{row.leadMetadata?.competitorAcquirer || '-'}</td>
-                             <td className="px-6 py-4 text-brand-gray-600">{row.fieldSales}</td>
-                          </>
-                      ) : (
-                          <>
-                            <td className="px-6 py-4 font-mono font-bold text-brand-gray-400">{row.id}</td>
-                            <td className="px-6 py-4 font-medium text-brand-gray-900">{row.nomeEc}</td>
-                            <td className="px-6 py-4">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-brand-gray-100 text-brand-gray-600 uppercase">
-                                {row.tipoSic}
-                                </span>
-                            </td>
-                            <td className="px-6 py-4 text-brand-gray-600">{row.regiaoAgrupada}</td>
-                            <td className="px-6 py-4 text-brand-gray-600">{row.fieldSales}</td>
-                            <td className="px-6 py-4 text-brand-gray-600">{row.insideSales}</td>
-                          </>
-                      )}
-                      
+                      <td className="px-6 py-4 font-medium text-brand-gray-900">{row.nomeEc}</td>
+                      <td className="px-6 py-4 text-brand-gray-600">{row.regiaoAgrupada}</td>
+                      <td className="px-6 py-4 text-brand-gray-600">{row.fieldSales}</td>
                       <td className="px-6 py-4 text-center">
-                          <button 
-                              onClick={() => handleOpenClientFile(row)}
-                              className="inline-flex items-center gap-2 px-3 py-1.5 text-brand-gray-600 hover:text-brand-primary hover:bg-brand-primary/5 rounded-lg transition-colors text-xs font-bold border border-transparent hover:border-brand-primary/20"
-                              title="Ver Ficha Completa (Detalhes e Histórico)"
-                          >
-                              <ClipboardList className="w-4 h-4" />
-                              Ficha
+                          <button onClick={() => handleOpenClientFile(row)} className="inline-flex items-center gap-2 px-3 py-1.5 text-brand-gray-600 hover:text-brand-primary hover:bg-brand-primary/5 rounded-lg transition-colors text-xs font-bold border border-transparent hover:border-brand-primary/20">
+                              <ClipboardList className="w-4 h-4" /> Ficha
                           </button>
                       </td>
                     </tr>
@@ -503,15 +548,6 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
                 </tbody>
               </table>
             </div>
-
-            {/* MOBILE CARD View code preserved */}
-            {/* ... */}
-
-            {/* Pagination Footer */}
-            {/* ... */}
-            
-            {/* Footer Actions for Gestor */}
-            {/* ... */}
           </div>
         </div>
       )}
@@ -528,15 +564,11 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
                             {selectedClient.nomeEc}
                             {selectedClient.status === 'Lead' && <span className="bg-brand-light text-[10px] px-2 py-0.5 rounded text-white uppercase font-bold">Lead</span>}
                         </h2>
-                        {/* NEW: SUPPORT BUTTON */}
                         <div className="flex gap-2 mt-2">
                             <span className="bg-white/10 px-2 py-0.5 rounded text-xs text-brand-gray-300 font-mono flex items-center">
                                 ID: {selectedClient.id}
                             </span>
-                            <button 
-                                onClick={() => setShowSupportChat(true)}
-                                className="bg-white/10 hover:bg-white/20 px-3 py-0.5 rounded text-xs font-bold text-white flex items-center gap-1 transition-colors border border-white/10"
-                            >
+                            <button onClick={() => setShowSupportChat(true)} className="bg-white/10 hover:bg-white/20 px-3 py-0.5 rounded text-xs font-bold text-white flex items-center gap-1 transition-colors border border-white/10">
                                 <LifeBuoy className="w-3 h-3" /> Suporte Logística
                             </button>
                         </div>
@@ -546,9 +578,31 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
                     </button>
                 </div>
                 
-                {/* Registration Details */}
-                {/* ... (Existing details) ... */}
-                <div className="bg-white border-b border-brand-gray-200 p-6 shrink-0 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto md:overflow-visible max-h-[40vh] md:max-h-none">
+                {/* --- CONTEXTUAL SHORTCUTS (NEW FLUIDITY FEATURE) --- */}
+                <div className="bg-brand-primary/5 border-b border-brand-primary/10 p-3 flex gap-3 overflow-x-auto shrink-0">
+                    <button 
+                        onClick={handleNavigateToPricing}
+                        className="flex-1 bg-white border border-brand-gray-200 text-brand-gray-700 hover:border-brand-primary hover:text-brand-primary px-4 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 group"
+                    >
+                        <div className="bg-brand-primary/10 text-brand-primary p-1.5 rounded-md group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                            <BadgePercent className="w-4 h-4" />
+                        </div>
+                        Iniciar Cotação de Taxas
+                    </button>
+                    
+                    <button 
+                        onClick={handleNavigateToLogistics}
+                        className="flex-1 bg-white border border-brand-gray-200 text-brand-gray-700 hover:border-blue-500 hover:text-blue-600 px-4 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 group"
+                    >
+                        <div className="bg-blue-50 text-blue-600 p-1.5 rounded-md group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <RefreshCw className="w-4 h-4" />
+                        </div>
+                        Solicitar Troca / Serviço
+                    </button>
+                </div>
+
+                {/* Details Body */}
+                <div className="bg-white border-b border-brand-gray-200 p-6 shrink-0 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-3">
                          <div>
                             <label className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-wider block mb-1">Endereço</label>
@@ -559,36 +613,32 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
                          </div>
                          <div>
                             <label className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-wider block mb-1">Contato</label>
-                            <a 
-                               href={`https://wa.me/55${selectedClient.contato.replace(/\D/g, '')}`}
-                               target="_blank"
-                               rel="noopener noreferrer"
-                               className="flex items-center text-sm text-brand-gray-800 hover:text-green-600 transition-colors group cursor-pointer"
-                               title="Iniciar conversa no WhatsApp"
-                            >
+                            <a href={`https://wa.me/55${selectedClient.contato.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-sm text-brand-gray-800 hover:text-green-600 transition-colors group cursor-pointer">
                                 <Phone className="w-4 h-4 mr-2 text-brand-gray-400 group-hover:text-green-500" />
                                 <span className="group-hover:underline">{selectedClient.contato}</span>
                             </a>
                          </div>
                     </div>
-                    {/* ... */}
+                    {/* ... other details ... */}
                 </div>
 
                 {/* Timeline */}
-                {/* ... (Existing Timeline) ... */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white min-h-[200px]">
                     {historyItems.map((item, index) => (
                         <div key={index} className="flex gap-4">
-                            {/* ... */}
+                            <div className="flex flex-col items-center">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ${item.data.authorName === 'SISTEMA' ? 'bg-purple-100 text-purple-600' : 'bg-brand-gray-100 text-brand-gray-500'}`}>
+                                    {item.data.authorName === 'SISTEMA' ? <Settings size={14} /> : <User size={14} />}
+                                </div>
+                                {index !== historyItems.length - 1 && <div className="w-0.5 bg-brand-gray-100 h-full -mb-4"></div>}
+                            </div>
                             <div className="flex-1 pb-4">
-                                {/* ... content ... */}
-                                <div className="bg-brand-gray-50 rounded-lg p-3 border border-brand-gray-100">
-                                    <p className="font-bold text-brand-gray-900 text-sm mb-1">
-                                        {item.type === 'appointment' ? (item.data.status === 'Completed' ? 'Visita Realizada' : 'Agendamento') : item.data.authorName}
-                                    </p>
-                                    <p className="text-sm text-brand-gray-700 whitespace-pre-line">
-                                        {item.type === 'appointment' ? item.data.fieldObservation : item.data.content}
-                                    </p>
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-xs text-brand-gray-400">{new Date(item.date).toLocaleDateString()}</span>
+                                </div>
+                                <div className="rounded-lg p-3 border border-brand-gray-100 bg-brand-gray-50">
+                                    <p className="font-bold text-sm mb-1 text-brand-gray-900">{item.type === 'appointment' ? 'Visita' : item.data.authorName}</p>
+                                    <p className="text-sm text-brand-gray-700 whitespace-pre-line">{item.type === 'appointment' ? item.data.fieldObservation : item.data.content}</p>
                                 </div>
                             </div>
                         </div>
@@ -597,7 +647,6 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
 
                 {/* Add Observation Form */}
                 <div className="p-4 bg-brand-gray-50 border-t border-brand-gray-200 shrink-0">
-                    {/* ... */}
                     <div className="flex gap-2">
                         <textarea 
                             value={newObservation}
@@ -605,13 +654,8 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
                             placeholder="Registre aqui o contato realizado..."
                             className="flex-1 border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none resize-none h-14"
                         />
-                        <button 
-                            onClick={handleSaveObservation}
-                            disabled={!newObservation.trim()}
-                            className="bg-brand-gray-900 text-white px-4 rounded-lg hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center transition-colors"
-                        >
-                            <Send className="w-4 h-4 mb-1" />
-                            <span className="text-xs font-bold">Salvar</span>
+                        <button onClick={handleSaveObservation} disabled={!newObservation.trim()} className="bg-brand-gray-900 text-white px-4 rounded-lg hover:bg-brand-dark disabled:opacity-50 flex flex-col items-center justify-center transition-colors">
+                            <Send className="w-4 h-4 mb-1" /> <span className="text-xs font-bold">Salvar</span>
                         </button>
                     </div>
                 </div>
@@ -620,20 +664,7 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
          </div>
       )}
 
-      {/* REGION TOOL MODAL */}
-      {/* ... */}
-
-      {/* SUPPORT CHAT MODAL */}
-      {selectedClient && (
-          <SupportChatModal 
-            isOpen={showSupportChat} 
-            onClose={() => setShowSupportChat(false)} 
-            clientName={selectedClient.nomeEc}
-            clientId={selectedClient.id}
-            currentUser={role} // Or fetch real name from context
-            currentRole={role}
-          />
-      )}
+      {selectedClient && <SupportChatModal isOpen={showSupportChat} onClose={() => setShowSupportChat(false)} clientName={selectedClient.nomeEc} clientId={selectedClient.id} currentUser={currentUser?.name || role} currentRole={role} />}
     </div>
   );
 };

@@ -6,19 +6,30 @@ import {
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { SupportTicket, KnowledgeBaseItem } from '../types';
+import { LogisticaTicketChat } from '../components/LogisticaTicketChat';
 
 const LogisticaSuportePage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'TICKETS' | 'KB'>('TICKETS');
     const [tickets, setTickets] = useState<SupportTicket[]>([]);
     const [kbItems, setKbItems] = useState<KnowledgeBaseItem[]>([]);
     
+    // Chat State
+    const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+    
     // KB Form
     const [newKb, setNewKb] = useState({ errorPattern: '', solution: '', keywords: '' });
 
     useEffect(() => {
+        refreshData();
+        // Simple polling to update list if new tickets arrive
+        const interval = setInterval(refreshData, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const refreshData = () => {
         setTickets(appStore.getSupportTickets());
         setKbItems(appStore.getKnowledgeBase());
-    }, []);
+    };
 
     const handleAddKb = () => {
         if (!newKb.errorPattern || !newKb.solution) return;
@@ -60,18 +71,23 @@ const LogisticaSuportePage: React.FC = () => {
                             <div className="p-12 text-center text-gray-400">Nenhum chamado aberto.</div>
                         ) : (
                             tickets.map(ticket => (
-                                <div key={ticket.id} className="p-4 hover:bg-brand-gray-50 flex justify-between items-center">
+                                <div key={ticket.id} className="p-4 hover:bg-brand-gray-50 flex justify-between items-center transition-colors">
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="font-mono text-xs bg-gray-100 px-2 rounded text-gray-600">{ticket.id}</span>
                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${ticket.status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{ticket.status}</span>
                                         </div>
-                                        <h4 className="font-bold text-gray-900">{ticket.clientName}</h4>
+                                        <h4 className="font-bold text-brand-gray-900">{ticket.clientName}</h4>
                                         <p className="text-xs text-gray-500">Solicitante: {ticket.requesterName} ({ticket.requesterRole})</p>
                                     </div>
                                     <div className="text-right">
                                         <p className="text-xs text-gray-400">{new Date(ticket.createdAt).toLocaleDateString()}</p>
-                                        <button className="mt-2 text-xs bg-brand-primary text-white px-3 py-1 rounded hover:bg-brand-dark">Ver Chat</button>
+                                        <button 
+                                            onClick={() => setSelectedTicket(ticket)}
+                                            className="mt-2 text-xs bg-brand-primary text-white px-3 py-1.5 rounded hover:bg-brand-dark transition-colors flex items-center gap-2 ml-auto shadow-sm"
+                                        >
+                                            <MessageSquare size={14} /> Ver Chat
+                                        </button>
                                     </div>
                                 </div>
                             ))
@@ -124,6 +140,14 @@ const LogisticaSuportePage: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* CHAT MODAL */}
+            {selectedTicket && (
+                <LogisticaTicketChat 
+                    ticket={selectedTicket} 
+                    onClose={() => setSelectedTicket(null)} 
+                />
             )}
         </div>
     );

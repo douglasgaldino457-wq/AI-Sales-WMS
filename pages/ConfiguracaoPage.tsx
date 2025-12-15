@@ -4,7 +4,7 @@ import { appStore } from '../services/store';
 import { SystemUser, UserRole } from '../types';
 import { 
     Settings, Plus, Trash2, CheckCircle2, X, Users, LayoutList, 
-    UserPlus, Search, Filter, Phone, Mail, ArrowUpDown, Power, Edit2, UserCheck, UserX, Briefcase, Map, Target 
+    UserPlus, Search, Filter, Phone, Mail, ArrowUpDown, Power, Edit2, UserCheck, UserX, Briefcase, Map, Target, AlertCircle 
 } from 'lucide-react';
 
 // --- TYPES ---
@@ -65,6 +65,14 @@ const ConfiguracaoPage: React.FC = () => {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  // --- HELPER: PHONE FORMATTER ---
+  const formatPhone = (v: string) => {
+    const r = v.replace(/\D/g, "");
+    return r.replace(/^(\d{2})(\d{5})(\d{4}).*/, "($1) $2-$3")
+      .replace(/^(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3")
+      .replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+  };
+
   // --- USERS HANDLERS ---
   const handleSortUsers = (field: SortField) => {
     if (sortField === field) {
@@ -101,6 +109,14 @@ const ConfiguracaoPage: React.FC = () => {
 
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Final Validation Check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (userFormData.email && !emailRegex.test(userFormData.email)) {
+        alert("Por favor, corrija o formato do e-mail antes de salvar.");
+        return;
+    }
+
     if (editingUser) {
       appStore.updateUser({ ...editingUser, ...userFormData } as SystemUser);
       showNotification('Usuário atualizado com sucesso!');
@@ -145,6 +161,12 @@ const ConfiguracaoPage: React.FC = () => {
 
   const activeUserCount = users.filter(u => u.active).length;
   const inactiveUserCount = users.filter(u => !u.active).length;
+
+  // Helper for Email Validation
+  const isEmailValid = (email: string | undefined) => {
+      if (!email) return true; // Empty is handled by required prop
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
 
   // --- REUSABLE COMPONENT: CONFIG LIST ---
   const ConfigListSection = ({ 
@@ -553,8 +575,17 @@ const ConfiguracaoPage: React.FC = () => {
                                         type="email" 
                                         value={userFormData.email}
                                         onChange={e => setUserFormData({...userFormData, email: e.target.value})}
-                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none"
+                                        className={`w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all ${
+                                            !isEmailValid(userFormData.email) && (userFormData.email || '').length > 0
+                                            ? 'border-red-500 focus:border-red-500 text-red-900' 
+                                            : 'border-brand-gray-300 focus:border-brand-primary'
+                                        }`}
                                     />
+                                    {!isEmailValid(userFormData.email) && (userFormData.email || '').length > 0 && (
+                                        <p className="text-[10px] text-red-500 mt-1 font-medium flex items-center gap-1">
+                                            <AlertCircle className="w-3 h-3"/> Formato de e-mail inválido
+                                        </p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-brand-gray-700 mb-1">WhatsApp</label>
@@ -562,7 +593,8 @@ const ConfiguracaoPage: React.FC = () => {
                                         required
                                         type="tel" 
                                         value={userFormData.whatsapp}
-                                        onChange={e => setUserFormData({...userFormData, whatsapp: e.target.value})}
+                                        onChange={e => setUserFormData({...userFormData, whatsapp: formatPhone(e.target.value)})}
+                                        placeholder="(XX) XXXXX-XXXX"
                                         className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none"
                                     />
                                 </div>

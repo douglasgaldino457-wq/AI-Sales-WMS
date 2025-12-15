@@ -6,13 +6,13 @@ import {
     Building2, MapPin, Phone, Mail, Clock, DollarSign, CreditCard,
     Camera, Image as ImageIcon, Briefcase, Plus, Trash2, Smartphone, Save, UploadCloud, ShieldCheck,
     PieChart as PieChartIcon, BarChart3, ChevronDown, Eye, Send, AlertTriangle, BadgePercent, Key, Copy, LayoutDashboard, Inbox, History, FileSearch, Car, FileInput,
-    Store
+    Store, Truck, Package
 } from 'lucide-react';
 import { 
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, AreaChart, Area
 } from 'recharts';
 import { appStore } from '../services/store';
-import { RegistrationRequest, UserRole, RegistrationStatus, BankAccount, ManualDemand, PosDevice, PosRequestItem } from '../types';
+import { RegistrationRequest, UserRole, RegistrationStatus, BankAccount, ManualDemand, PosDevice, PosRequestItem, ClientBaseRow } from '../types';
 import { AddressAutocomplete } from '../components/AddressAutocomplete';
 import { PagmotorsLogo } from '../components/Logo';
 import { analyzeDocument } from '../services/geminiService';
@@ -213,7 +213,9 @@ export const FichaCadastralView: React.FC<{ data: Partial<RegistrationRequest>, 
                                                                 <span className="font-mono text-gray-500">RC: {item.rcNumber}</span>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-brand-gray-500 italic">Solicitar envio</span>
+                                                            <span className="text-brand-gray-500 italic flex items-center gap-1">
+                                                                <Truck className="w-3 h-3"/> Envio via Logística
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </div>
@@ -424,8 +426,8 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
     });
 
     // Temporary states for complex adds
-    const [newEquip, setNewEquip] = useState<{type: 'STOCK' | 'REQUEST', model: string, serial: string, rc: string, accountIndex: number}>({
-        type: 'REQUEST', model: 'P2 Smart', serial: '', rc: '', accountIndex: 0
+    const [newEquip, setNewEquip] = useState<{type: 'STOCK' | 'REQUEST', model: string, serial: string, rc: string, accountIndex: number, stockSelection: string}>({
+        type: 'REQUEST', model: 'P2 Smart', serial: '', rc: '', accountIndex: 0, stockSelection: ''
     });
 
     const [newBank, setNewBank] = useState<BankAccount>({
@@ -442,6 +444,20 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
     }, [isSubmitting]);
 
     const selectedPricingDemand = pricingRequests.find(d => d.id === formData.pricingDemandId);
+
+    // --- HELPER TO FILL FROM EXISTING CLIENT BASE ---
+    const autoFillFromClient = (client: ClientBaseRow) => {
+        setFormData(prev => ({
+            ...prev,
+            clientName: client.nomeEc,
+            address: client.endereco,
+            responsibleName: client.responsavel,
+            contactPhones: [client.contato],
+            // Try to deduce other fields
+            razaoSocial: client.nomeEc, // Fallback if Razao not in row
+            documentNumber: client.cnpj || prev.documentNumber, // Use CNPJ if available in row
+        }));
+    };
 
     // --- FORM HANDLERS ---
 
@@ -527,7 +543,7 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
         };
         
         if (newEquip.type === 'STOCK' && (!newEquip.serial || !newEquip.rc)) {
-            alert("Para estoque próprio, Serial e RC são obrigatórios.");
+            alert("Para estoque próprio, é necessário selecionar um equipamento válido.");
             return;
         }
 
@@ -535,7 +551,9 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
             ...prev,
             requestedEquipments: [...(prev.requestedEquipments || []), item]
         }));
-        setNewEquip({ type: 'REQUEST', model: 'P2 Smart', serial: '', rc: '', accountIndex: 0 });
+        
+        // Reset Logic
+        setNewEquip({ type: 'REQUEST', model: 'P2 Smart', serial: '', rc: '', accountIndex: 0, stockSelection: '' });
     };
 
     const handleRemoveEquipment = (id: string) => {
@@ -552,10 +570,19 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
         }
         setFormData(prev => ({ ...prev, pricingDemandId: demandId }));
         
-        // Auto-fill client name if empty
         const demand = pricingRequests.find(d => d.id === demandId);
-        if (demand && !formData.clientName) {
+        if (demand) {
+             // AUTO-FILL NAME
              setFormData(prev => ({ ...prev, clientName: demand.clientName }));
+             
+             // SMART FILL: Check if client exists in DB to fill address etc.
+             const existingClient = appStore.getClients().find(c => 
+                 c.nomeEc.toLowerCase() === demand.clientName.toLowerCase() ||
+                 (demand.clientName.includes(c.nomeEc))
+             );
+             if (existingClient) {
+                 autoFillFromClient(existingClient);
+             }
         }
     };
 
@@ -577,6 +604,16 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
     const handleCnpjSearch = async () => {
         if (!formData.documentNumber || formData.documentNumber.length < 14) { alert("CNPJ inválido."); return; }
         setCnpjLoading(true);
+        
+        // SMART CHECK: Check local DB first
+        const existingClient = appStore.getClients().find(c => c.cnpj === formData.documentNumber);
+        if (existingClient) {
+            autoFillFromClient(existingClient);
+            setCnpjLoading(false);
+            return;
+        }
+
+        // Mock API Call fallback
         setTimeout(() => {
             setFormData(prev => ({
                 ...prev,
@@ -717,9 +754,10 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
                                 <div className="relative">
                                     <label className={`block text-xs uppercase mb-1 ${getLabelClass(formData.documentNumber)}`}>CNPJ *</label>
                                     <div className="flex gap-2">
-                                        <input required className={`flex-1 rounded-lg px-3 py-2 text-sm border ${getFieldClass(formData.documentNumber)}`} value={formData.documentNumber || ''} onChange={e => setFormData({...formData, documentNumber: e.target.value})} />
+                                        <input required className={`flex-1 rounded-lg px-3 py-2 text-sm border ${getFieldClass(formData.documentNumber)}`} value={formData.documentNumber || ''} onChange={e => setFormData({...formData, documentNumber: e.target.value})} placeholder="Digite para buscar na base..." />
                                         <button type="button" onClick={handleCnpjSearch} className="bg-brand-primary/10 text-brand-primary px-3 py-2 rounded-lg hover:bg-brand-primary/20">{cnpjLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Search className="w-4 h-4"/>}</button>
                                     </div>
+                                    <p className="text-[10px] text-gray-400 mt-1">* Se o CNPJ já estiver na base, os dados serão carregados automaticamente.</p>
                                 </div>
                                 <div><label className={`block text-xs uppercase mb-1 ${getLabelClass(formData.clientName)}`}>Nome Fantasia *</label><input className={`w-full rounded-lg px-3 py-2 text-sm border ${getFieldClass(formData.clientName)}`} value={formData.clientName || ''} onChange={e => setFormData({...formData, clientName: e.target.value})} /></div>
                             </div>
@@ -845,7 +883,7 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
                             </div>
                         </section>
 
-                        {/* 5. Commercial & Equipment (Updated) */}
+                        {/* 5. Commercial & Equipment (Refactored) */}
                         <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
                             <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Briefcase className="w-5 h-5 text-brand-primary" /> Comercial & Equipamentos</h3>
                             <div className="space-y-6">
@@ -896,46 +934,80 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
                                     )}
                                     
                                     {/* Add Equipment Form */}
-                                    <div className="bg-white p-3 rounded-lg border border-brand-gray-200 border-dashed space-y-3">
-                                        <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-white p-4 rounded-lg border border-brand-gray-200 border-dashed space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            
+                                            {/* 1. Origem */}
                                             <div>
-                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Origem</label>
-                                                <select className="w-full border rounded text-sm py-1.5" value={newEquip.type} onChange={e => setNewEquip({...newEquip, type: e.target.value as any, serial: '', rc: ''})}>
-                                                    <option value="REQUEST">Solicitar à Logística</option>
+                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Origem do Equipamento</label>
+                                                <select 
+                                                    className="w-full border rounded text-sm py-2 px-2 bg-gray-50 font-bold text-brand-gray-800 focus:ring-1 focus:ring-brand-primary outline-none" 
+                                                    value={newEquip.type} 
+                                                    onChange={e => setNewEquip({...newEquip, type: e.target.value as any, serial: '', rc: '', stockSelection: ''})}
+                                                >
+                                                    <option value="REQUEST">Solicitar à Logística (Envio)</option>
                                                     <option value="STOCK">Meu Estoque (Pronta-Entrega)</option>
                                                 </select>
+                                                {newEquip.type === 'REQUEST' && (
+                                                    <p className="text-[10px] text-orange-600 mt-1 flex items-center gap-1">
+                                                        <Truck className="w-3 h-3"/> Será gerada uma demanda de envio para Logística.
+                                                    </p>
+                                                )}
                                             </div>
+
+                                            {/* 2. Seleção Dinâmica (Modelo ou Item de Estoque) */}
                                             <div>
-                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Modelo</label>
-                                                <select className="w-full border rounded text-sm py-1.5" value={newEquip.model} onChange={e => setNewEquip({...newEquip, model: e.target.value})}>
-                                                    {POS_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
-                                                </select>
+                                                {newEquip.type === 'STOCK' ? (
+                                                    <>
+                                                        <label className="block text-[10px] uppercase font-bold text-blue-600 mb-1">Equipamento Disponível</label>
+                                                        <select 
+                                                            className="w-full border border-blue-200 rounded text-sm py-2 px-2 bg-blue-50 text-brand-gray-800 focus:ring-1 focus:ring-blue-500 outline-none"
+                                                            value={newEquip.stockSelection}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                if (!val) {
+                                                                    setNewEquip({...newEquip, stockSelection: '', serial: '', rc: '', model: ''});
+                                                                    return;
+                                                                }
+                                                                const selectedPos = myInventory.find(p => p.serialNumber === val);
+                                                                if (selectedPos) {
+                                                                    setNewEquip({
+                                                                        ...newEquip, 
+                                                                        stockSelection: val,
+                                                                        serial: selectedPos.serialNumber,
+                                                                        rc: selectedPos.rcNumber,
+                                                                        model: selectedPos.model
+                                                                    });
+                                                                }
+                                                            }}
+                                                        >
+                                                            <option value="">Selecione do seu estoque...</option>
+                                                            {myInventory.map(pos => (
+                                                                <option key={pos.serialNumber} value={pos.serialNumber}>
+                                                                    RC: {pos.rcNumber} / SN: {pos.serialNumber} / {pos.model}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Modelo Desejado</label>
+                                                        <select 
+                                                            className="w-full border rounded text-sm py-2 px-2"
+                                                            value={newEquip.model} 
+                                                            onChange={e => setNewEquip({...newEquip, model: e.target.value})}
+                                                        >
+                                                            {POS_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                                                        </select>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                         
-                                        {/* GROUPED: RC, SN and Model (Model above) */}
-                                        {newEquip.type === 'STOCK' && (
-                                            <div className="grid grid-cols-2 gap-3 bg-blue-50 p-2 rounded border border-blue-100">
-                                                <div>
-                                                    <label className="block text-[10px] uppercase font-bold text-blue-700 mb-1">Serial Number</label>
-                                                    <select className="w-full border rounded text-sm py-1.5 font-mono" value={newEquip.serial} onChange={e => {
-                                                        const selectedPos = myInventory.find(p => p.serialNumber === e.target.value);
-                                                        setNewEquip({...newEquip, serial: e.target.value, rc: selectedPos?.rcNumber || '', model: selectedPos?.model || newEquip.model });
-                                                    }}>
-                                                        <option value="">Selecione...</option>
-                                                        {myInventory.map(pos => <option key={pos.serialNumber} value={pos.serialNumber}>{pos.serialNumber}</option>)}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[10px] uppercase font-bold text-blue-700 mb-1">RC Number</label>
-                                                    <input className="w-full border rounded text-sm py-1.5 font-mono bg-gray-100 text-gray-500" readOnly value={newEquip.rc} placeholder="RC000000" />
-                                                </div>
-                                            </div>
-                                        )}
-
+                                        {/* 3. Vincular Conta */}
                                         <div>
                                             <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Vincular Conta Bancária *</label>
-                                            <select className="w-full border rounded text-sm py-1.5" value={newEquip.accountIndex} onChange={e => setNewEquip({...newEquip, accountIndex: Number(e.target.value)})}>
+                                            <select className="w-full border rounded text-sm py-2 px-2" value={newEquip.accountIndex} onChange={e => setNewEquip({...newEquip, accountIndex: Number(e.target.value)})}>
                                                 {formData.bankAccounts && formData.bankAccounts.length > 0 ? (
                                                     formData.bankAccounts.map((acc, idx) => (
                                                         <option key={idx} value={idx}>Conta {idx+1}: {acc.bankCode} - {acc.accountNumber}</option>
@@ -946,8 +1018,8 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
                                             </select>
                                         </div>
 
-                                        <button type="button" onClick={handleAddEquipment} className="w-full bg-brand-gray-900 text-white text-xs font-bold py-2 rounded hover:bg-black transition-colors">
-                                            + Adicionar POS
+                                        <button type="button" onClick={handleAddEquipment} className="w-full bg-brand-gray-900 text-white text-xs font-bold py-3 rounded hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                            <Plus className="w-4 h-4"/> Adicionar POS
                                         </button>
                                     </div>
                                 </div>

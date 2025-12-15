@@ -1,52 +1,48 @@
 
-import React, { useState, useEffect } from 'react';
-import { Settings, Save, Calculator, RefreshCw, TrendingUp, AlertCircle, DollarSign, Layers, PieChart, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { CurrencyInput } from '../components/CurrencyInput'; // Added Import
+import React, { useState, useEffect, useMemo } from 'react';
+import { Settings, Save, TrendingUp, AlertCircle, PieChart, CheckCircle2, Tag, DollarSign, Clock, Briefcase, BarChart3 } from 'lucide-react';
+import { CostStructure, RateRangesConfig } from '../types';
+import { appStore } from '../services/store';
+import { useAppStore } from '../services/useAppStore';
+import { PagmotorsLogo } from '../components/Logo';
 
-interface CostStructure {
-    debitCost: number;
-    creditSightCost: number;
-    // Granular Installment Costs
-    installment2to6Cost: number;
-    installment7to12Cost: number;
-    installment13to18Cost: number;
-    anticipationCost: number; // Custo CDI/Funding a.m.
-    taxRate: number; // Impostos (PIS/COFINS/ISS)
-    fixedCostPerTx: number; // Custo fixo por transação
+// --- TYPES ---
+interface FinancialTerms {
+    debit: number;
+    credit1x: number;
+    credit2to6: number;
+    credit7to12: number;
+    credit13to18: number;
 }
 
-// Data structures for FULL Model (Individual Installments)
-interface FullRow {
-    id: string; // 'debit', '1x', '2x'...
-    label: string;
-    mix: number;
-    concRate: number;
-    propRate: number;
-    termMonths: number; // Prazo médio de recebimento (para cálculo de custo)
-}
+// Perfis de Concentração
+const CONCENTRATION_PROFILES = {
+    'OFICINA': {
+        debit: 35,
+        credit1x: 25,
+        credit2to6: 25,
+        credit7to12: 10,
+        credit13to18: 5
+    },
+    'REVENDA': {
+        debit: 10,
+        credit1x: 10,
+        credit2to6: 30,
+        credit7to12: 35,
+        credit13to18: 15
+    }
+};
 
-interface FullSimulationData {
-    tpv: number;
-    rows: FullRow[];
-}
-
-// Data structures for SIMPLES Model
-interface SimplesBucket {
-    rate: number;
-    concentration: number;
-    avgTerm: number;
-}
-
-interface SimplesSimulationData {
-    buckets: {
-        debit: SimplesBucket;
-        credit1x: SimplesBucket;
-        credit2to6: SimplesBucket;
-        credit7to12: SimplesBucket;
-        credit13to18: SimplesBucket;
-    };
-    anticipationRate: number; 
-}
+// Médias de TPV por Faixa (Para Simulação Automática)
+const RANGE_AVERAGES: Record<number, number> = {
+    0: 5000,    // Balcão (Padrão) - Base baixa
+    1: 7500,    // 5k - 10k -> Média 7.5k
+    2: 15000,   // 10k - 20k -> Média 15k
+    3: 35000,   // 20k - 50k -> Média 35k
+    4: 75000,   // 50k - 100k -> Média 75k
+    5: 125000,  // 100k - 150k -> Média 125k
+    6: 200000   // +150k -> Estimativa base 200k
+};
 
 // Helper for safe number parsing
 const safeFloat = (value: string) => {
@@ -54,253 +50,394 @@ const safeFloat = (value: string) => {
     return isNaN(parsed) ? 0 : parsed;
 };
 
-const ConfigTaxasPage: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'FULL' | 'SIMPLES'>('FULL');
-    const [successMsg, setSuccessMsg] = useState<string|null>(null);
+// --- ISOLATED COMPONENTS ---
 
-    // --- CUSTOS GERAIS ---
-    const [costs, setCosts] = useState<CostStructure>({
-        debitCost: 0.50,
-        creditSightCost: 1.80,
-        installment2to6Cost: 2.20,
-        installment7to12Cost: 2.40,
-        installment13to18Cost: 2.60,
-        anticipationCost: 0.90,
-        taxRate: 11.25,
-        fixedCostPerTx: 0.15
-    });
+interface ConfigInputProps {
+    label: string;
+    value: number;
+    onChange: (val: number) => void;
+    suffix?: string;
+    step?: number;
+}
 
-    // --- HELPER TO GENERATE INITIAL FULL ROWS ---
-    const generateInitialFullRows = (): FullRow[] => {
-        const rows: FullRow[] = [];
-        // Debit
-        rows.push({ id: 'debit', label: 'Débito', mix: 20, concRate: 0.90, propRate: 0.99, termMonths: 0 });
-        // Sight
-        rows.push({ id: '1x', label: '1x', mix: 30, concRate: 2.90, propRate: 3.49, termMonths: 1 });
-        // Installments 2x to 18x
-        for (let i = 2; i <= 18; i++) {
-            // Mock realistic curve
-            const curve = 3.5 + (i * 0.8);
-            rows.push({
-                id: `${i}x`,
-                label: `${i}x`,
-                mix: i <= 12 ? 4 : 0.5, // Distribute mix mock
-                concRate: parseFloat((curve - 0.5).toFixed(2)),
-                propRate: parseFloat(curve.toFixed(2)),
-                termMonths: (i + 1) / 2 // Average term approximation
-            });
+const ConfigInput = React.memo(({ label, value, onChange, suffix = "%", step = 0.01 }: ConfigInputProps) => (
+    <div className="bg-white border border-brand-gray-200 rounded-lg p-2 shadow-sm hover:shadow-md transition-all group relative flex flex-col justify-center h-full">
+        <label className="block text-[10px] font-bold text-brand-gray-500 uppercase tracking-wide mb-0.5 truncate group-hover:text-brand-primary transition-colors" title={label}>
+            {label}
+        </label>
+        <div className="relative">
+            <input 
+                type="number" step={step}
+                value={value}
+                onChange={(e) => onChange(safeFloat(e.target.value))}
+                onFocus={(e) => e.target.select()}
+                className="w-full text-right text-sm font-mono font-bold text-brand-gray-900 bg-transparent outline-none p-0 pr-5 focus:text-brand-primary transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                placeholder="0.00"
+            />
+            <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400 pointer-events-none">{suffix}</span>
+        </div>
+    </div>
+));
+
+// UPDATED LOGIC: 
+// - Full Plan: Installments calculate exact average term ((N+1)/2).
+// - Simples Plan: No Funding Cost.
+const calculateMetrics = (
+    rate: number, 
+    installmentKey: number | 'debit' | '1x' | '2x-6x' | '7x-12x' | '13x-18x', 
+    costs: CostStructure, 
+    terms: FinancialTerms,
+    planType: 'Full' | 'Simples'
+) => {
+    let interchange = 0;
+    let avgTerm = 0;
+
+    if (installmentKey === 'debit') {
+        interchange = costs.debitCost;
+        avgTerm = terms.debit;
+    } else if (installmentKey === '1x') {
+        interchange = costs.creditSightCost;
+        avgTerm = terms.credit1x;
+    } else if (installmentKey === '2x-6x') {
+        interchange = costs.installment2to6Cost;
+        avgTerm = terms.credit2to6;
+    } else if (installmentKey === '7x-12x') {
+        interchange = costs.installment7to12Cost;
+        avgTerm = terms.credit7to12;
+    } else if (installmentKey === '13x-18x') {
+        interchange = costs.installment13to18Cost;
+        avgTerm = terms.credit13to18;
+    } else if (typeof installmentKey === 'number') {
+        // Full Plan Granular Logic
+        // 1. Interchange lookup based on bucket
+        if (installmentKey <= 6) {
+            interchange = costs.installment2to6Cost;
+        } else if (installmentKey <= 12) {
+            interchange = costs.installment7to12Cost;
+        } else {
+            interchange = costs.installment13to18Cost;
         }
-        return rows;
+
+        // 2. Average Term Calculation: Specific for each installment (N+1)/2
+        // This overrides the grouped terms for improved accuracy in Full Table
+        avgTerm = (installmentKey + 1) / 2;
+    }
+
+    // Funding applies only to Full. Simples uses fixed MDR logic (Interchange + Fixed).
+    const fundingCost = planType === 'Full' ? (avgTerm * costs.anticipationCost) : 0;
+    
+    const totalCost = interchange + fundingCost + costs.fixedCostPerTx;
+    
+    const spread = rate - totalCost;
+    const tax = rate * (costs.taxRate / 100);
+    const mcf2 = spread - tax;
+
+    return { totalCost, spread, mcf2, fundingCost, avgTerm };
+};
+
+interface FullModelRowProps {
+    label: string;
+    type: 'debit' | '1x' | 'installment';
+    idx?: number;
+    rateRanges: RateRangesConfig;
+    setRateRanges: React.Dispatch<React.SetStateAction<RateRangesConfig>>;
+    selectedRangeId: number;
+    costs: CostStructure;
+    terms: FinancialTerms;
+    concentration: number;
+}
+
+const FullModelRow = React.memo(({ label, type, idx, rateRanges, setRateRanges, selectedRangeId, costs, terms, concentration }: FullModelRowProps) => {
+    const range = rateRanges.full[selectedRangeId];
+    if (!range) return null;
+
+    let currentRate = 0;
+    if (type === 'debit') currentRate = range.debit;
+    else if (type === '1x') currentRate = range.credit1x;
+    else if (idx !== undefined) currentRate = range.installments[idx];
+
+    const installmentKey = (type === 'installment' && idx !== undefined) 
+        ? (idx + 2) 
+        : (type === 'debit' ? 'debit' : '1x');
+
+    const { totalCost, spread, mcf2, avgTerm } = calculateMetrics(currentRate, installmentKey, costs, terms, 'Full');
+
+    const handleRateChange = (newRate: number) => {
+        setRateRanges(prev => {
+            const updated = { ...prev };
+            updated.full = { ...updated.full };
+            updated.full[selectedRangeId] = { ...updated.full[selectedRangeId] };
+            if (updated.full[selectedRangeId].installments) {
+                 updated.full[selectedRangeId].installments = [...updated.full[selectedRangeId].installments];
+            }
+
+            const targetRange = updated.full[selectedRangeId];
+            
+            if (type === 'debit') targetRange.debit = newRate;
+            else if (type === '1x') targetRange.credit1x = newRate;
+            else if (idx !== undefined) targetRange.installments[idx] = newRate;
+            
+            return updated;
+        });
     };
 
-    // --- ESTADO MODELO FULL ---
-    const [fullSim, setFullSim] = useState<FullSimulationData>({
-        tpv: 50000,
-        rows: generateInitialFullRows()
+    const handleSpreadChange = (newSpread: number) => {
+        const newRate = parseFloat((totalCost + newSpread).toFixed(2));
+        handleRateChange(newRate);
+    };
+
+    return (
+        <tr className="hover:bg-brand-gray-50 border-b border-brand-gray-100 last:border-0 transition-colors group h-8">
+            <td className="px-4 py-0 text-xs font-bold text-gray-700 whitespace-nowrap">{label}</td>
+            <td className="px-2 py-0 text-center"><span className="text-[11px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{concentration.toFixed(0)}%</span></td>
+            {/* Added Average Term Column for Full Plan */}
+            <td className="px-2 py-0 text-center"><span className="text-[10px] font-mono text-gray-400">{avgTerm > 0 ? `${avgTerm.toFixed(1)}m` : '-'}</span></td>
+            <td className="px-2 py-0 text-center"><span className="text-[11px] font-mono text-gray-500" title={`Custo Total: ${totalCost.toFixed(3)}%`}>{totalCost.toFixed(2)}%</span></td>
+            <td className="px-2 py-0 text-center">
+                <div className="relative inline-block w-20">
+                    <input type="number" step="0.01" className="w-full text-center text-xs font-bold text-green-700 bg-green-50/50 border border-transparent focus:bg-white focus:border-brand-primary/20 hover:border-green-200 rounded px-1 py-0.5 outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={spread.toFixed(2)} onChange={(e) => handleSpreadChange(safeFloat(e.target.value))} onFocus={(e) => e.target.select()} />
+                </div>
+            </td>
+            <td className="px-2 py-0 text-center">
+                <div className="relative inline-block w-20">
+                    <input type="number" step="0.01" className="w-full text-center text-xs font-extrabold text-brand-primary bg-brand-primary/5 border border-transparent focus:bg-white focus:border-brand-primary/20 hover:border-brand-primary/20 rounded px-1 py-0.5 outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={currentRate} onChange={(e) => handleRateChange(safeFloat(e.target.value))} onFocus={(e) => e.target.select()} />
+                </div>
+            </td>
+            <td className="px-4 py-0 text-center"><span className={`text-[11px] font-mono font-bold ${mcf2 < 0.1 ? 'text-red-500' : 'text-blue-600'}`}>{mcf2.toFixed(2)}%</span></td>
+        </tr>
+    );
+});
+
+// NEW: Simples Model Row Component
+interface SimplesModelRowProps {
+    label: string;
+    type: 'debit' | '1x' | '2x-6x' | '7x-12x' | '13x-18x';
+    rateRanges: RateRangesConfig;
+    setRateRanges: React.Dispatch<React.SetStateAction<RateRangesConfig>>;
+    selectedRangeId: number;
+    costs: CostStructure;
+    terms: FinancialTerms;
+    concentration: number;
+}
+
+const SimplesModelRow = React.memo(({ label, type, rateRanges, setRateRanges, selectedRangeId, costs, terms, concentration }: SimplesModelRowProps) => {
+    const range = rateRanges.simples[selectedRangeId];
+    if (!range) return null;
+
+    let currentRate = 0;
+    if (type === 'debit') currentRate = range.debit;
+    else if (type === '1x') currentRate = range.credit1x;
+    else if (type === '2x-6x') currentRate = range.credit2x6x;
+    else if (type === '7x-12x') currentRate = range.credit7x12x;
+    else if (type === '13x-18x') currentRate = range.credit13x18x;
+
+    // Pass 'Simples' explicitly to exclude funding cost
+    const { totalCost, spread, mcf2 } = calculateMetrics(currentRate, type, costs, terms, 'Simples');
+
+    const handleRateChange = (newRate: number) => {
+        setRateRanges(prev => {
+            const updated = { ...prev };
+            updated.simples = { ...updated.simples };
+            updated.simples[selectedRangeId] = { ...updated.simples[selectedRangeId] };
+            
+            const targetRange = updated.simples[selectedRangeId];
+            if (type === 'debit') targetRange.debit = newRate;
+            else if (type === '1x') targetRange.credit1x = newRate;
+            else if (type === '2x-6x') targetRange.credit2x6x = newRate;
+            else if (type === '7x-12x') targetRange.credit7x12x = newRate;
+            else if (type === '13x-18x') targetRange.credit13x18x = newRate;
+            
+            return updated;
+        });
+    };
+
+    const handleSpreadChange = (newSpread: number) => {
+        const newRate = parseFloat((totalCost + newSpread).toFixed(2));
+        handleRateChange(newRate);
+    };
+
+    return (
+        <tr className="hover:bg-brand-gray-50 border-b border-brand-gray-100 last:border-0 transition-colors group h-8">
+            <td className="px-4 py-0 text-xs font-bold text-gray-700 whitespace-nowrap">{label}</td>
+            <td className="px-2 py-0 text-center"><span className="text-[11px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{concentration.toFixed(0)}%</span></td>
+            <td className="px-2 py-0 text-center"><span className="text-[11px] font-mono text-gray-500" title={`Custo Total (Sem Funding): ${totalCost.toFixed(3)}%`}>{totalCost.toFixed(2)}%</span></td>
+            <td className="px-2 py-0 text-center">
+                <div className="relative inline-block w-20">
+                    <input type="number" step="0.01" className="w-full text-center text-xs font-bold text-green-700 bg-green-50/50 border border-transparent focus:bg-white focus:border-brand-primary/20 hover:border-green-200 rounded px-1 py-0.5 outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={spread.toFixed(2)} onChange={(e) => handleSpreadChange(safeFloat(e.target.value))} onFocus={(e) => e.target.select()} />
+                </div>
+            </td>
+            <td className="px-2 py-0 text-center">
+                <div className="relative inline-block w-20">
+                    <input type="number" step="0.01" className="w-full text-center text-xs font-extrabold text-brand-primary bg-brand-primary/5 border border-transparent focus:bg-white focus:border-brand-primary/20 hover:border-brand-primary/20 rounded px-1 py-0.5 outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={currentRate} onChange={(e) => handleRateChange(safeFloat(e.target.value))} onFocus={(e) => e.target.select()} />
+                </div>
+            </td>
+            <td className="px-4 py-0 text-center"><span className={`text-[11px] font-mono font-bold ${mcf2 < 0.1 ? 'text-red-500' : 'text-blue-600'}`}>{mcf2.toFixed(2)}%</span></td>
+        </tr>
+    );
+});
+
+// --- MAIN COMPONENT ---
+
+const ConfigTaxasPage: React.FC = () => {
+    const { currentUser } = useAppStore();
+    const [activeTab, setActiveTab] = useState<'COSTS' | 'RANGES'>('RANGES');
+    const [successMsg, setSuccessMsg] = useState<string|null>(null);
+    
+    // Configs
+    const [costs, setCosts] = useState<CostStructure>(appStore.getCostConfig());
+    const [rateRanges, setRateRanges] = useState<RateRangesConfig>(appStore.getRateRangesConfig());
+    
+    // Ranges State
+    const [selectedRangeId, setSelectedRangeId] = useState<number>(0);
+    const [selectedRangePlan, setSelectedRangePlan] = useState<'Full' | 'Simples'>('Full');
+    const [selectedSegment, setSelectedSegment] = useState<'OFICINA' | 'REVENDA'>('OFICINA');
+    
+    // Automatic TPV logic based on Range
+    const [simulationTpv, setSimulationTpv] = useState<number>(RANGE_AVERAGES[0]);
+
+    // Update Simulation TPV when Range changes
+    useEffect(() => {
+        setSimulationTpv(RANGE_AVERAGES[selectedRangeId] || 5000);
+    }, [selectedRangeId]);
+
+    // New: Financial Terms State
+    const [financialTerms, setFinancialTerms] = useState<FinancialTerms>({
+        debit: 0,
+        credit1x: 1,
+        credit2to6: 4, // Average
+        credit7to12: 9.5, // Average
+        credit13to18: 15.5 // Average
     });
 
-    // --- ESTADO MODELO SIMPLES ---
-    const [simplesSim, setSimplesSim] = useState<SimplesSimulationData>({
-        anticipationRate: 2.99,
-        buckets: {
-            debit: { rate: 0.90, concentration: 10, avgTerm: 0 },
-            credit1x: { rate: 2.90, concentration: 20, avgTerm: 1 },
-            credit2to6: { rate: 3.50, concentration: 40, avgTerm: 4 },
-            credit7to12: { rate: 4.50, concentration: 20, avgTerm: 9.5 },
-            credit13to18: { rate: 5.90, concentration: 10, avgTerm: 15.5 },
-        }
-    });
-
-    const [fullMetrics, setFullMetrics] = useState<any>({
-        competitor: { takeRateVal: 0, takeRatePct: 0, mcf2Val: 0, mcf2Pct: 0, spread: 0 },
-        pagmotors: { takeRateVal: 0, takeRatePct: 0, mcf2Val: 0, mcf2Pct: 0, spread: 0 }
-    });
+    useEffect(() => {
+        setCosts(appStore.getCostConfig());
+        setRateRanges(appStore.getRateRangesConfig());
+    }, []);
 
     const handleSaveCosts = () => {
-        // Here we would typically save to backend
-        setSuccessMsg("Custos de Interchange atualizados!");
+        const updatedCosts: CostStructure = {
+            ...costs,
+            lastUpdated: new Date().toISOString(),
+            updatedBy: currentUser?.name || 'Sistema'
+        };
+        setCosts(updatedCosts);
+        appStore.setCostConfig(updatedCosts);
+        setSuccessMsg("Custos e Prazos atualizados com sucesso!");
         setTimeout(() => setSuccessMsg(null), 3000);
     };
 
-    // --- CÁLCULO MODELO FULL (Linha a Linha) ---
-    useEffect(() => {
-        const calculateMetrics = (isCompetitor: boolean) => {
-            const { tpv, rows } = fullSim;
-            
-            let totalRevenue = 0;
-            let totalDirectCost = 0;
-
-            rows.forEach(row => {
-                const rate = isCompetitor ? row.concRate : row.propRate;
-                const volume = tpv * (row.mix / 100);
-                
-                // Revenue
-                totalRevenue += volume * (rate / 100);
-
-                // Cost Calculation
-                let interchange = 0;
-                if (row.id === 'debit') interchange = costs.debitCost;
-                else if (row.id === '1x') interchange = costs.creditSightCost;
-                else {
-                    const installmentNum = parseInt(row.id.replace('x', ''));
-                    if (installmentNum <= 6) interchange = costs.installment2to6Cost;
-                    else if (installmentNum <= 12) interchange = costs.installment7to12Cost;
-                    else interchange = costs.installment13to18Cost;
-                }
-
-                const funding = costs.anticipationCost * row.termMonths;
-                const mdrCostRate = interchange + funding;
-                
-                totalDirectCost += volume * (mdrCostRate / 100);
-            });
-
-            const takeRatePct = tpv > 0 ? (totalRevenue / tpv) * 100 : 0;
-            const taxes = totalRevenue * (costs.taxRate / 100);
-            const mcf2Val = totalRevenue - totalDirectCost - taxes;
-            const mcf2Pct = tpv > 0 ? (mcf2Val / tpv) * 100 : 0;
-            
-            // Spread = AvgRate - AvgCost (simplificado)
-            const avgCost = tpv > 0 ? (totalDirectCost / tpv) * 100 : 0;
-            const spread = takeRatePct - avgCost;
-
-            return { takeRateVal: totalRevenue, takeRatePct, mcf2Val, mcf2Pct, spread };
-        };
-
-        setFullMetrics({
-            competitor: calculateMetrics(true),
-            pagmotors: calculateMetrics(false)
-        });
-    }, [costs, fullSim]);
-
-    // --- CÁLCULO TOTAIS SIMPLES ---
-    const simplesTotals = React.useMemo(() => {
-        let totalConc = 0;
-        let weightedSpread = 0;
-        let weightedMCF2 = 0;
-
-        (Object.keys(simplesSim.buckets) as Array<keyof typeof simplesSim.buckets>).forEach(key => {
-            const bucket = simplesSim.buckets[key];
-            const weight = bucket.concentration / 100;
-            totalConc += bucket.concentration;
-
-            let interchange = 0;
-            if (key === 'debit') interchange = costs.debitCost;
-            else if (key === 'credit1x') interchange = costs.creditSightCost;
-            else if (key === 'credit2to6') interchange = costs.installment2to6Cost;
-            else if (key === 'credit7to12') interchange = costs.installment7to12Cost;
-            else if (key === 'credit13to18') interchange = costs.installment13to18Cost;
-
-            const funding = costs.anticipationCost * bucket.avgTerm;
-            const totalCost = interchange + funding;
-            const spread = bucket.rate - totalCost;
-
-            const taxes = bucket.rate * (costs.taxRate / 100);
-            const mcf2 = bucket.rate - totalCost - taxes;
-
-            weightedSpread += spread * weight;
-            weightedMCF2 += mcf2 * weight;
-        });
-
-        return {
-            totalConc,
-            totalWeightedSpread: weightedSpread,
-            mcf2: weightedMCF2
-        };
-    }, [simplesSim, costs]);
-
-    // --- COMPONENT: SimplesRow ---
-    const SimplesRow = ({ label, bucketKey }: { label: string, bucketKey: keyof typeof simplesSim.buckets }) => {
-        const bucket = simplesSim.buckets[bucketKey];
+    const handleSaveRanges = () => {
+        const now = new Date().toISOString();
+        const userName = currentUser?.name || 'Sistema';
+        const updatedConfig = { ...rateRanges };
         
-        let interchange = 0;
-        if (bucketKey === 'debit') interchange = costs.debitCost;
-        else if (bucketKey === 'credit1x') interchange = costs.creditSightCost;
-        else if (bucketKey === 'credit2to6') interchange = costs.installment2to6Cost;
-        else if (bucketKey === 'credit7to12') interchange = costs.installment7to12Cost;
-        else if (bucketKey === 'credit13to18') interchange = costs.installment13to18Cost;
+        if (selectedRangePlan === 'Full') {
+            if (updatedConfig.full[selectedRangeId]) {
+                updatedConfig.full[selectedRangeId] = {
+                    ...updatedConfig.full[selectedRangeId],
+                    lastUpdated: now,
+                    updatedBy: userName
+                };
+            }
+        } else {
+            if (updatedConfig.simples[selectedRangeId]) {
+                updatedConfig.simples[selectedRangeId] = {
+                    ...updatedConfig.simples[selectedRangeId],
+                    lastUpdated: now,
+                    updatedBy: userName
+                };
+            }
+        }
 
-        const funding = costs.anticipationCost * bucket.avgTerm;
-        const totalCost = interchange + funding;
-        
-        const spread = bucket.rate - totalCost;
-        
-        const updateBucket = (field: keyof SimplesBucket, val: number) => {
-            setSimplesSim(prev => ({
-                ...prev,
-                buckets: {
-                    ...prev.buckets,
-                    [bucketKey]: { ...prev.buckets[bucketKey], [field]: val }
-                }
-            }));
-        };
-
-        return (
-            <tr className="hover:bg-brand-gray-50 border-b border-brand-gray-100 last:border-0 transition-colors">
-                <td className="px-4 py-3 text-sm font-bold text-brand-gray-700">{label}</td>
-                <td className="px-4 py-2 text-center">
-                    <div className="relative inline-block w-20">
-                        <input 
-                            type="number" step="0.01"
-                            className="w-full text-center border border-transparent hover:border-blue-200 rounded py-1.5 text-sm font-bold text-blue-700 bg-transparent hover:bg-blue-50 focus:bg-blue-50 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                            value={bucket.rate}
-                            onChange={(e) => updateBucket('rate', safeFloat(e.target.value))}
-                        />
-                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-blue-300 pointer-events-none">%</span>
-                    </div>
-                </td>
-                <td className="px-4 py-2 text-center">
-                    <div className="relative inline-block w-16">
-                        <input 
-                            type="number" step="1"
-                            className="w-full text-center border border-transparent hover:border-yellow-200 rounded py-1.5 text-sm font-medium text-yellow-800 bg-transparent hover:bg-yellow-50 focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-500 outline-none transition-all"
-                            value={bucket.concentration}
-                            onChange={(e) => updateBucket('concentration', safeFloat(e.target.value))}
-                        />
-                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-yellow-400 pointer-events-none">%</span>
-                    </div>
-                </td>
-                <td className="px-4 py-3 text-right text-xs text-gray-500 font-mono">
-                    {totalCost.toFixed(2)}%
-                </td>
-                <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${spread < 0 ? 'text-red-500' : 'text-green-600'}`}>
-                    {spread.toFixed(2)}%
-                </td>
-            </tr>
-        );
+        appStore.setRateRangesConfig(updatedConfig);
+        setRateRanges(updatedConfig);
+        setSuccessMsg("Tabela de Taxas salva!");
+        setTimeout(() => setSuccessMsg(null), 3000);
     };
 
-    // --- REUSABLE CARD INPUT COMPONENT ---
-    const ConfigCard = ({ label, value, onChange }: { label: string, value: number, onChange: (val: number) => void }) => (
-        <div className="bg-white border border-brand-gray-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all group">
-            <label className="block text-[10px] font-bold text-brand-gray-500 uppercase tracking-wide mb-1.5 truncate group-hover:text-brand-primary transition-colors" title={label}>
-                {label}
-            </label>
-            <div className="flex items-center justify-center">
-                <input 
-                    type="number" step="0.01"
-                    value={value}
-                    onChange={(e) => onChange(safeFloat(e.target.value))}
-                    className="w-full text-center text-xl font-bold text-brand-gray-900 bg-transparent outline-none p-0 focus:text-brand-primary transition-colors"
-                />
-            </div>
-        </div>
-    );
+    // --- WEIGHTED TOTALS CALCULATION (RANGES TAB) ---
+    const rangesTotals = useMemo(() => {
+        const profile = CONCENTRATION_PROFILES[selectedSegment];
+        
+        if (selectedRangePlan === 'Full') {
+            const range = rateRanges.full[selectedRangeId];
+            if (!range) return { spread: 0, mcf2: 0, mcf2Reais: 0 };
 
-    // --- HANDLERS ---
-    const updateRow = (index: number, field: keyof FullRow, value: number) => {
-        const newRows = [...fullSim.rows];
-        newRows[index] = { ...newRows[index], [field]: value };
-        setFullSim({ ...fullSim, rows: newRows });
+            let totalSpread = 0, totalMcf2 = 0, totalWeight = 0;
+
+            const process = (rate: number, type: 'debit' | '1x' | number) => {
+                let weight = 0;
+                if (type === 'debit') weight = profile.debit;
+                else if (type === '1x') weight = profile.credit1x;
+                else if (type <= 6) weight = profile.credit2to6 / 5;
+                else if (type <= 12) weight = profile.credit7to12 / 6;
+                else weight = profile.credit13to18 / 6;
+
+                const { spread, mcf2 } = calculateMetrics(rate, type, costs, financialTerms, 'Full');
+                totalSpread += spread * (weight / 100);
+                totalMcf2 += mcf2 * (weight / 100);
+                totalWeight += weight;
+            };
+
+            process(range.debit, 'debit');
+            process(range.credit1x, '1x');
+            range.installments.forEach((rate, i) => process(rate, i + 2));
+
+            return { spread: totalSpread, mcf2: totalMcf2, mcf2Reais: simulationTpv * (totalMcf2 / 100) };
+        } else {
+            // SIMPLES CALCULATION
+            const range = rateRanges.simples[selectedRangeId];
+            if (!range) return { spread: 0, mcf2: 0, mcf2Reais: 0 };
+
+            let totalSpread = 0, totalMcf2 = 0;
+            
+            const process = (rate: number, type: 'debit' | '1x' | '2x-6x' | '7x-12x' | '13x-18x', weight: number) => {
+                const { spread, mcf2 } = calculateMetrics(rate, type, costs, financialTerms, 'Simples');
+                totalSpread += spread * (weight / 100);
+                totalMcf2 += mcf2 * (weight / 100);
+            };
+
+            process(range.debit, 'debit', profile.debit);
+            process(range.credit1x, '1x', profile.credit1x);
+            process(range.credit2x6x, '2x-6x', profile.credit2to6);
+            process(range.credit7x12x, '7x-12x', profile.credit7to12);
+            process(range.credit13x18x, '13x-18x', profile.credit13to18);
+
+            return { spread: totalSpread, mcf2: totalMcf2, mcf2Reais: simulationTpv * (totalMcf2 / 100) };
+        }
+
+    }, [rateRanges, selectedRangeId, selectedRangePlan, selectedSegment, costs, financialTerms, simulationTpv]);
+
+    // Helper to get concentration per row for display
+    const getConcentration = (type: string | number) => {
+        const p = CONCENTRATION_PROFILES[selectedSegment];
+        if (type === 'debit') return p.debit;
+        if (type === '1x') return p.credit1x;
+        if (type === '2x-6x') return p.credit2to6;
+        if (type === '7x-12x') return p.credit7to12;
+        if (type === '13x-18x') return p.credit13to18;
+        if (typeof type === 'number') {
+            if (type <= 6) return p.credit2to6 / 5;
+            if (type <= 12) return p.credit7to12 / 6;
+            return p.credit13to18 / 6;
+        }
+        return 0;
     };
 
-    const formatPct = (val: number) => val.toFixed(2).replace('.', ',') + '%';
-
-    // Total Mix Check
-    const totalMix = fullSim.rows.reduce((acc, row) => acc + row.mix, 0);
+    // Helper for audit info display in Ranges
+    const getRangeAuditInfo = () => {
+        if (selectedRangePlan === 'Full') {
+            const range = rateRanges.full[selectedRangeId];
+            return range ? { date: range.lastUpdated, user: range.updatedBy } : null;
+        } else {
+            const range = rateRanges.simples[selectedRangeId];
+            return range ? { date: range.lastUpdated, user: range.updatedBy } : null;
+        }
+    };
+    const rangeAudit = getRangeAuditInfo();
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6 pb-20 relative">
-            {/* Success Toast */}
+        <div className="max-w-7xl mx-auto space-y-4 pb-20 relative h-full flex flex-col">
             {successMsg && (
                 <div className="fixed top-4 right-4 z-50 animate-fade-in-down">
                     <div className="bg-brand-gray-900 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3">
@@ -310,328 +447,285 @@ const ConfigTaxasPage: React.FC = () => {
                 </div>
             )}
 
-            <header className="flex flex-col md:flex-row justify-between items-end gap-4 no-print">
+            <header className="flex flex-col md:flex-row justify-between items-end gap-2 no-print shrink-0">
                 <div>
-                    <h1 className="text-2xl font-bold text-brand-gray-900 flex items-center gap-2">
-                        <Settings className="w-6 h-6 text-brand-primary" />
+                    <h1 className="text-xl font-bold text-brand-gray-900 flex items-center gap-2">
+                        <Settings className="w-5 h-5 text-brand-primary" />
                         Configuração de Taxas
                     </h1>
-                    <p className="text-brand-gray-600 mt-1 text-sm">Definição de custos base e simulação de modelos comerciais.</p>
                 </div>
-                <div className="flex bg-brand-gray-200 p-1 rounded-xl">
+                <div className="flex bg-brand-gray-200 p-1 rounded-xl overflow-x-auto">
                     <button 
-                        onClick={() => setActiveTab('FULL')}
-                        className={`flex items-center px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'FULL' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
+                        onClick={() => setActiveTab('COSTS')}
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'COSTS' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
                     >
-                        <Layers className="w-4 h-4 mr-2" />
-                        Modelo Full
+                        <DollarSign className="w-4 h-4" />
+                        Custos
                     </button>
                     <button 
-                        onClick={() => setActiveTab('SIMPLES')}
-                        className={`flex items-center px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'SIMPLES' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
+                        onClick={() => setActiveTab('RANGES')}
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'RANGES' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}
                     >
-                        <PieChart className="w-4 h-4 mr-2" />
-                        Modelo Simples
+                        <Tag className="w-4 h-4" />
+                        Ranges
                     </button>
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                
-                {/* LEFT: Configuração de Custos (Comum) - Coluna Estreita */}
-                <div className="lg:col-span-3 space-y-6 no-print">
-                    <div className="bg-brand-gray-50 rounded-xl shadow-inner border border-brand-gray-200 p-5">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-brand-gray-900 flex items-center gap-2 text-sm uppercase tracking-wide">
-                                <TrendingUp className="w-4 h-4 text-brand-primary" />
-                                Custos Interchange
-                            </h3>
-                            <button 
-                                onClick={handleSaveCosts}
-                                className="text-brand-primary hover:bg-brand-primary/10 p-1.5 rounded transition-colors active:scale-90" 
-                                title="Salvar Custos"
-                            >
-                                <Save className="w-4 h-4" />
-                            </button>
-                        </div>
+            {/* --- TAB: CUSTOS INTERCHANGE --- */}
+            {activeTab === 'COSTS' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in flex-1 overflow-y-auto">
+                    {/* Column 1: Base Costs */}
+                    <div className="bg-white rounded-xl shadow-sm border border-brand-gray-200 p-5 h-fit">
+                        <h3 className="font-bold text-sm text-brand-gray-900 flex items-center gap-2 mb-4">
+                            <TrendingUp className="w-4 h-4 text-brand-primary" />
+                            Custos Base & Interchange
+                        </h3>
                         
                         <div className="space-y-3">
-                            <ConfigCard 
-                                label="Interchange Débito (%)" 
-                                value={costs.debitCost} 
-                                onChange={(val) => setCosts({...costs, debitCost: val})} 
-                            />
+                            <div className="grid grid-cols-2 gap-3">
+                                <ConfigInput label="Interchange Débito" value={costs.debitCost} onChange={(val) => setCosts({...costs, debitCost: val})} />
+                                <ConfigInput label="Interchange Crédito 1x" value={costs.creditSightCost} onChange={(val) => setCosts({...costs, creditSightCost: val})} />
+                            </div>
                             
-                            <ConfigCard 
-                                label="Interchange Crédito 1x (%)" 
-                                value={costs.creditSightCost} 
-                                onChange={(val) => setCosts({...costs, creditSightCost: val})} 
-                            />
-                            
-                            <div className="pt-2">
-                                <label className="block text-xs font-bold text-brand-gray-700 mb-2 pl-1">Interchange Parcelado (%)</label>
+                            <div className="bg-brand-gray-50 p-3 rounded-lg border border-brand-gray-100">
+                                <label className="block text-[10px] font-bold text-brand-gray-700 mb-2 pl-1">Interchange Parcelado (Médio)</label>
                                 <div className="grid grid-cols-3 gap-2">
-                                    <ConfigCard label="2x-6x" value={costs.installment2to6Cost} onChange={(val) => setCosts({...costs, installment2to6Cost: val})} />
-                                    <ConfigCard label="7x-12x" value={costs.installment7to12Cost} onChange={(val) => setCosts({...costs, installment7to12Cost: val})} />
-                                    <ConfigCard label="13x-18x" value={costs.installment13to18Cost} onChange={(val) => setCosts({...costs, installment13to18Cost: val})} />
+                                    <ConfigInput label="2x-6x" value={costs.installment2to6Cost} onChange={(val) => setCosts({...costs, installment2to6Cost: val})} />
+                                    <ConfigInput label="7x-12x" value={costs.installment7to12Cost} onChange={(val) => setCosts({...costs, installment7to12Cost: val})} />
+                                    <ConfigInput label="13x-18x" value={costs.installment13to18Cost} onChange={(val) => setCosts({...costs, installment13to18Cost: val})} />
                                 </div>
                             </div>
 
-                            <div className="border-t border-brand-gray-200 my-4"></div>
-
-                            <div className="grid grid-cols-2 gap-2">
-                                <ConfigCard label="Funding (a.m.)" value={costs.anticipationCost} onChange={(val) => setCosts({...costs, anticipationCost: val})} />
-                                <ConfigCard label="Impostos" value={costs.taxRate} onChange={(val) => setCosts({...costs, taxRate: val})} />
+                            <div className="border-t border-brand-gray-100 pt-3 grid grid-cols-2 gap-3">
+                                <ConfigInput label="Custo Funding (a.m.)" value={costs.anticipationCost} onChange={(val) => setCosts({...costs, anticipationCost: val})} />
+                                <ConfigInput label="Impostos Totais" value={costs.taxRate} onChange={(val) => setCosts({...costs, taxRate: val})} />
+                                <ConfigInput label="Custo Fixo (R$/Tx)" value={costs.fixedCostPerTx} onChange={(val) => setCosts({...costs, fixedCostPerTx: val})} suffix="" step={0.01} />
                             </div>
+                        </div>
+
+                        {/* Audit Footer in Card */}
+                        <div className="mt-4 pt-3 border-t border-brand-gray-100 flex justify-between items-center text-[9px] text-gray-400">
+                            <span>Configuração Global</span>
+                            {costs.lastUpdated && (
+                                <span className="flex items-center gap-1">
+                                    <Clock size={10} />
+                                    Atualizado em {new Date(costs.lastUpdated).toLocaleDateString()} às {new Date(costs.lastUpdated).toLocaleTimeString()} por <strong className="text-gray-600">{costs.updatedBy}</strong>
+                                </span>
+                            )}
                         </div>
                     </div>
 
-                    {/* Results Summary Mini */}
-                    <div className="bg-brand-gray-900 text-white rounded-xl p-5 shadow-lg">
-                        <h4 className="text-xs font-bold uppercase text-brand-gray-400 mb-4">Resultado Pagmotors</h4>
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                                <span className="text-sm">Take Rate</span>
-                                <span className="font-bold text-lg">{formatPct(fullMetrics.pagmotors.takeRatePct)}</span>
+                    {/* Column 2: Financial Terms & Summary */}
+                    <div className="space-y-4">
+                        <div className="bg-white rounded-xl shadow-sm border border-brand-gray-200 p-5">
+                            <h3 className="font-bold text-sm text-brand-gray-900 flex items-center gap-2 mb-4">
+                                <Clock className="w-4 h-4 text-blue-600" />
+                                Prazo Médio Financeiro (Meses)
+                            </h3>
+                            <p className="text-[10px] text-brand-gray-500 mb-3">Utilizado para calcular o custo de funding proporcional por parcela (somente tabela Simples ou agrupados).</p>
+                            
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="col-span-1">
+                                    <ConfigInput label="Débito (D+0)" value={financialTerms.debit} onChange={(val) => setFinancialTerms({...financialTerms, debit: val})} suffix="m" step={0.1} />
+                                </div>
+                                <div className="col-span-1">
+                                    <ConfigInput label="Crédito 1x" value={financialTerms.credit1x} onChange={(val) => setFinancialTerms({...financialTerms, credit1x: val})} suffix="m" step={0.1} />
+                                </div>
+                                <div className="col-span-1"></div>
+                                <ConfigInput label="2x-6x (Médio)" value={financialTerms.credit2to6} onChange={(val) => setFinancialTerms({...financialTerms, credit2to6: val})} suffix="m" step={0.1} />
+                                <ConfigInput label="7x-12x (Médio)" value={financialTerms.credit7to12} onChange={(val) => setFinancialTerms({...financialTerms, credit7to12: val})} suffix="m" step={0.1} />
+                                <ConfigInput label="13x-18x (Médio)" value={financialTerms.credit13to18} onChange={(val) => setFinancialTerms({...financialTerms, credit13to18: val})} suffix="m" step={0.1} />
                             </div>
-                            <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                                <span className="text-sm">Spread</span>
-                                <span className="font-bold text-lg text-yellow-400">{formatPct(fullMetrics.pagmotors.spread)}</span>
+                        </div>
+
+                        <div className="bg-brand-gray-900 text-white rounded-xl p-5 shadow-lg flex items-center justify-between">
+                            <div>
+                                <h4 className="font-bold text-sm">Salvar Configurações</h4>
+                                <p className="text-brand-gray-400 text-[10px]">Atualiza todos os simuladores.</p>
                             </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-sm">MCF2</span>
-                                <span className="font-bold text-lg text-green-400">{formatPct(fullMetrics.pagmotors.mcf2Pct)}</span>
-                            </div>
+                            <button onClick={handleSaveCosts} className="bg-brand-primary hover:bg-brand-dark px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-md transition-all">
+                                <Save className="w-4 h-4" /> Salvar Custos
+                            </button>
                         </div>
                     </div>
                 </div>
+            )}
 
-                {/* RIGHT: Simulator Area */}
-                <div className="lg:col-span-9 space-y-6">
-                    
-                    {/* --- MODELO FULL SIMULATOR --- */}
-                    {activeTab === 'FULL' && (
-                        <div className="bg-white rounded-xl shadow-md border border-brand-gray-200 overflow-hidden animate-fade-in flex flex-col h-full">
-                            {/* Header */}
-                            <div className="bg-brand-gray-50 p-4 border-b border-brand-gray-200 flex justify-between items-center">
-                                <div className="flex items-center gap-4">
-                                    <h3 className="font-bold text-brand-gray-900 flex items-center gap-2">
-                                        <Calculator className="w-5 h-5 text-brand-primary" />
-                                        Simulador Full (Individual)
-                                    </h3>
-                                    <div className="h-6 w-px bg-brand-gray-300"></div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-brand-gray-500 uppercase">TPV Simulado:</span>
-                                        <div className="relative w-32">
-                                            <CurrencyInput
-                                                value={fullSim.tpv} 
-                                                onChange={val => setFullSim({...fullSim, tpv: val})} 
-                                                className="w-full border border-brand-gray-300 rounded py-1 text-xs font-bold focus:border-brand-primary outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <div className={`text-xs font-bold px-3 py-1 rounded-full ${Math.abs(totalMix - 100) < 0.1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                        Mix Total: {totalMix.toFixed(1)}%
-                                    </div>
-                                    <button onClick={() => setFullSim({...fullSim, rows: generateInitialFullRows()})} className="text-xs text-brand-gray-500 hover:text-brand-primary flex items-center gap-1">
-                                        <RefreshCw className="w-3 h-3" /> Resetar
-                                    </button>
-                                </div>
+            {/* --- TAB: RANGES TAXAS (ADJUSTED - COMPACT) --- */}
+            {activeTab === 'RANGES' && (
+                <div className="bg-white rounded-xl shadow-md border border-brand-gray-200 overflow-hidden animate-fade-in flex flex-col flex-1 h-full min-h-0">
+                    {/* Header Controls */}
+                    <div className="bg-gray-50 p-3 border-b border-gray-200 flex flex-col lg:flex-row justify-between items-center gap-3 shrink-0">
+                        <div className="flex gap-4 items-center w-full lg:w-auto">
+                            {/* Logo Pagmotors Added Here */}
+                            <div className="pr-4 border-r border-gray-200 hidden md:block">
+                                <PagmotorsLogo variant="default" className="scale-75 origin-left" />
                             </div>
 
-                            {/* SPLIT VIEW: Market Data vs Proposal */}
-                            <div className="flex flex-1 divide-x divide-brand-gray-200">
-                                
-                                {/* LEFT QUADRANT: Market Data (Mix & Competitor) */}
-                                <div className="w-1/2 p-4 bg-gray-50/50">
-                                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
-                                        <Layers className="w-4 h-4" />
-                                        Cenário de Mercado
-                                    </h4>
-                                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                                        <table className="w-full text-xs">
-                                            <thead className="bg-gray-100 text-gray-600 font-bold border-b border-gray-200">
-                                                <tr>
-                                                    <th className="px-3 py-2 text-left w-16">Parc.</th>
-                                                    <th className="px-3 py-2 text-center">Mix (%)</th>
-                                                    <th className="px-3 py-2 text-center text-gray-700">Taxa Conc. (%)</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {fullSim.rows.map((row, idx) => (
-                                                    <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                                                        <td className="px-3 py-2 font-bold text-gray-700">{row.label}</td>
-                                                        <td className="px-3 py-1">
-                                                            <input 
-                                                                type="number" step="0.1"
-                                                                className="w-full text-center bg-transparent hover:bg-yellow-50 focus:bg-yellow-50 border border-transparent hover:border-yellow-200 rounded py-1 font-medium text-yellow-800 focus:ring-1 focus:ring-yellow-400 outline-none transition-all"
-                                                                value={row.mix}
-                                                                onChange={(e) => updateRow(idx, 'mix', safeFloat(e.target.value))}
-                                                            />
-                                                        </td>
-                                                        <td className="px-3 py-1">
-                                                            <input 
-                                                                type="number" step="0.01"
-                                                                className="w-full text-center border border-transparent hover:border-gray-200 rounded py-1 text-gray-600 focus:border-gray-400 bg-transparent hover:bg-gray-50 focus:bg-white outline-none transition-all"
-                                                                value={row.concRate}
-                                                                onChange={(e) => updateRow(idx, 'concRate', safeFloat(e.target.value))}
-                                                            />
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-
-                                {/* RIGHT QUADRANT: Proposal (Pagmotors) */}
-                                <div className="w-1/2 p-4 bg-white">
-                                    <h4 className="text-xs font-bold text-brand-primary uppercase mb-3 flex items-center gap-2">
-                                        <ArrowRight className="w-4 h-4" />
-                                        Proposta Pagmotors
-                                    </h4>
-                                    <div className="border border-brand-primary/20 rounded-lg overflow-hidden bg-white shadow-sm">
-                                        <table className="w-full text-xs">
-                                            <thead className="bg-brand-primary/5 text-brand-primary font-bold border-b border-brand-primary/10">
-                                                <tr>
-                                                    <th className="px-3 py-2 text-left w-16">Parc.</th>
-                                                    <th className="px-3 py-2 text-center">Taxa Prop. (%)</th>
-                                                    <th className="px-3 py-2 text-right">Spread Est.</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-brand-gray-100">
-                                                {fullSim.rows.map((row, idx) => {
-                                                    // Calculate estimated cost for this row to show spread preview
-                                                    let interchange = 0;
-                                                    if (row.id === 'debit') interchange = costs.debitCost;
-                                                    else if (row.id === '1x') interchange = costs.creditSightCost;
-                                                    else {
-                                                        const inst = parseInt(row.id.replace('x',''));
-                                                        if (inst <= 6) interchange = costs.installment2to6Cost;
-                                                        else if (inst <= 12) interchange = costs.installment7to12Cost;
-                                                        else interchange = costs.installment13to18Cost;
-                                                    }
-
-                                                    let cost = interchange + (costs.anticipationCost * row.termMonths);
-                                                    let spread = row.propRate - cost;
-                                                    
-                                                    return (
-                                                        <tr key={row.id} className="hover:bg-brand-gray-50 transition-colors">
-                                                            <td className="px-3 py-2 font-bold text-brand-gray-800">{row.label}</td>
-                                                            <td className="px-3 py-1">
-                                                                <input 
-                                                                    type="number" step="0.01"
-                                                                    className="w-full text-center border border-transparent hover:border-brand-primary/30 rounded py-1 font-bold text-brand-primary bg-transparent hover:bg-brand-primary/5 focus:bg-white focus:ring-1 focus:ring-brand-primary outline-none transition-all"
-                                                                    value={row.propRate}
-                                                                    onChange={(e) => updateRow(idx, 'propRate', safeFloat(e.target.value))}
-                                                                />
-                                                            </td>
-                                                            <td className={`px-3 py-2 text-right font-mono font-medium ${spread < 0 ? 'text-red-500' : 'text-green-600'}`}>
-                                                                {spread.toFixed(2)}%
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-
-                            </div>
-                        </div>
-                    )}
-
-                    {/* --- MODELO SIMPLES SIMULATOR --- */}
-                    {activeTab === 'SIMPLES' && (
-                        <div className="bg-white rounded-xl shadow-md border border-brand-gray-200 overflow-hidden animate-fade-in h-full flex flex-col">
-                            {/* Existing Simples Content */}
-                            <div className="bg-blue-600 p-4 border-b border-blue-700 flex justify-between items-center text-white">
-                                <h3 className="font-bold flex items-center gap-2">
-                                    <PieChart className="w-5 h-5 text-white" />
-                                    Simulador Modelo Simples (Agenda)
-                                </h3>
-                                <button onClick={() => setSimplesSim({...simplesSim, anticipationRate: 2.99})} className="text-xs text-blue-200 hover:text-white flex items-center gap-1">
-                                    <RefreshCw className="w-3 h-3" /> Resetar
+                            <div className="flex bg-white rounded-lg border border-brand-gray-300 p-0.5 shadow-sm">
+                                <button 
+                                    onClick={() => setSelectedRangePlan('Full')}
+                                    className={`px-3 py-1 text-xs font-bold rounded transition-all ${selectedRangePlan === 'Full' ? 'bg-green-100 text-green-700' : 'text-gray-500'}`}
+                                >
+                                    Full
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedRangePlan('Simples')}
+                                    className={`px-3 py-1 text-xs font-bold rounded transition-all ${selectedRangePlan === 'Simples' ? 'bg-blue-100 text-blue-700' : 'text-gray-500'}`}
+                                >
+                                    Simples
                                 </button>
                             </div>
 
-                            <div className="p-6">
-                                {/* Header / Legend */}
-                                <div className="flex gap-4 mb-4 items-center bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                                    <div className="flex-1">
-                                        <label className="block text-xs font-bold text-blue-800 uppercase tracking-wide mb-1">Tx de Antecipação (Cobrada)</label>
-                                        <input 
-                                            type="number" step="0.01" 
-                                            className="w-32 bg-white border border-blue-300 rounded px-2 py-1 text-sm font-bold text-blue-900 outline-none focus:ring-1 focus:ring-blue-500"
-                                            value={simplesSim.anticipationRate}
-                                            onChange={(e) => setSimplesSim({...simplesSim, anticipationRate: safeFloat(e.target.value)})}
-                                        />
-                                        <span className="text-xs ml-1 text-blue-600">% a.m.</span>
-                                    </div>
-                                    <div className="text-xs text-gray-500 italic max-w-xs text-right">
-                                        * No Simples, o MDR inclui o custo da antecipação ponderada pelo prazo.
-                                    </div>
-                                </div>
+                            <select 
+                                value={selectedRangeId}
+                                onChange={(e) => setSelectedRangeId(Number(e.target.value))}
+                                className="border border-brand-gray-300 rounded-lg px-2 py-1 text-xs font-bold text-gray-800 bg-white outline-none focus:ring-1 focus:ring-brand-primary h-7"
+                            >
+                                {appStore.TPV_RANGES.map(range => <option key={range.id} value={range.id}>{range.label}</option>)}
+                            </select>
+                        </div>
 
-                                {/* TABLE STRUCTURE from Image */}
-                                <div className="overflow-x-auto border border-brand-gray-200 rounded-lg shadow-sm">
-                                    <table className="w-full text-left">
-                                        <thead>
-                                            <tr className="bg-brand-gray-100 text-xs text-gray-500 uppercase font-bold border-b border-brand-gray-200">
-                                                <th className="px-4 py-3 bg-blue-100 text-blue-800 border-b border-blue-200 w-1/5">Simples (Agenda)</th>
-                                                <th className="px-4 py-3 bg-blue-50 text-blue-700 border-b border-blue-200 text-center w-1/5">Taxa (%)</th>
-                                                <th className="px-4 py-3 bg-yellow-100 text-yellow-800 border-b border-yellow-200 text-center w-1/5">Concentração</th>
-                                                <th className="px-4 py-3 border-b border-brand-gray-200 text-right w-1/5">Custo MDR</th>
-                                                <th className="px-4 py-3 border-b border-brand-gray-200 text-right w-1/5">Spread Pond.</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white">
-                                            <SimplesRow label="Débito" bucketKey="debit" />
-                                            <SimplesRow label="Crédito 1x" bucketKey="credit1x" />
-                                            <SimplesRow label="2x - 6x" bucketKey="credit2to6" />
-                                            <SimplesRow label="7x - 12x" bucketKey="credit7to12" />
-                                            <SimplesRow label="13x - 18x" bucketKey="credit13to18" />
-                                        </tbody>
-                                        {/* FOOTER TOTALS */}
-                                        <tfoot className="bg-brand-gray-50 border-t border-brand-gray-200">
-                                            <tr>
-                                                <td className="px-4 py-3 text-xs font-bold text-gray-900 uppercase">Totais</td>
-                                                <td className="px-4 py-3"></td>
-                                                <td className={`px-4 py-3 text-center text-xs font-bold ${Math.abs(simplesTotals.totalConc - 100) > 0.1 ? 'text-red-600' : 'text-green-600'}`}>
-                                                    {simplesTotals.totalConc.toFixed(0)}%
-                                                    {Math.abs(simplesTotals.totalConc - 100) > 0.1 && <AlertCircle className="inline w-3 h-3 ml-1" />}
-                                                </td>
-                                                <td className="px-4 py-3 text-right text-xs text-gray-400 font-mono">
-                                                    -
-                                                </td>
-                                                <td className="px-4 py-3 text-right text-sm font-bold text-brand-primary font-mono bg-white border-l border-brand-gray-200">
-                                                    {simplesTotals.totalWeightedSpread.toFixed(2)}%
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
+                        {/* Segment Selector & Actions */}
+                        <div className="flex gap-3 items-center w-full lg:w-auto justify-between lg:justify-end">
+                            <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-gray-200 h-7">
+                                <Briefcase className="w-3 h-3 text-brand-gray-400" />
+                                <select 
+                                    value={selectedSegment}
+                                    onChange={(e) => setSelectedSegment(e.target.value as any)}
+                                    className="text-[10px] font-bold text-gray-700 bg-transparent outline-none uppercase"
+                                >
+                                    <option value="OFICINA">Perfil Oficina</option>
+                                    <option value="REVENDA">Perfil Revenda</option>
+                                </select>
+                            </div>
 
-                                {/* Validation Footer / Alerts */}
-                                <div className="mt-4 flex justify-between items-center bg-brand-gray-50 p-3 rounded-lg border border-brand-gray-200">
-                                    <div className="flex gap-4 text-xs">
-                                        <div className={`font-bold ${simplesTotals.mcf2 < 0.10 ? 'text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded' : 'text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded'}`}>
-                                            MCF2 Estimado: {simplesTotals.mcf2.toFixed(2)}%
-                                            {simplesTotals.mcf2 < 0.10 && <span className="ml-1 text-[9px] uppercase">(Mínima = 0,10%)</span>}
-                                        </div>
-                                    </div>
-                                    <div className="text-[10px] text-gray-400 italic">
-                                        * Spread não pode ser negativo individualmente.
-                                    </div>
+                            <button onClick={handleSaveRanges} className="bg-brand-gray-900 hover:bg-black text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all h-7">
+                                <Save className="w-3 h-3" /> Salvar
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Table Content - Flex 1 to fill space, auto overflow, NO VISIBLE SCROLLBAR */}
+                    <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] flex justify-center bg-gray-50/50">
+                        <div className="w-full max-w-5xl bg-white border-x border-gray-100 shadow-sm">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-white sticky top-0 z-10 shadow-sm text-xs font-bold text-gray-500 uppercase border-b border-gray-200">
+                                    <tr>
+                                        <th className="px-4 py-3 bg-gray-50/50 text-left">Modalidade</th>
+                                        <th className="px-2 py-3 text-center bg-gray-50/50">Conc.(%)</th>
+                                        {/* Added Prazo Column for Full */}
+                                        {selectedRangePlan === 'Full' && <th className="px-2 py-3 text-center bg-gray-50/50">Prazo (m)</th>}
+                                        <th className="px-2 py-3 text-center bg-gray-50/50">Custo Total</th>
+                                        <th className="px-2 py-3 text-center text-green-600 bg-gray-50/50">Spread</th>
+                                        <th className="px-2 py-3 text-center text-brand-primary bg-gray-50/50">Taxa Final</th>
+                                        <th className="px-4 py-3 text-center bg-gray-50/50">MCF2</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-brand-gray-100 bg-white">
+                                    {selectedRangePlan === 'Full' ? (
+                                        <>
+                                            <FullModelRow 
+                                                label="Débito" type="debit" 
+                                                rateRanges={rateRanges} setRateRanges={setRateRanges} selectedRangeId={selectedRangeId} 
+                                                costs={costs} terms={financialTerms} concentration={getConcentration('debit')}
+                                            />
+                                            <FullModelRow 
+                                                label="Crédito 1x" type="1x" 
+                                                rateRanges={rateRanges} setRateRanges={setRateRanges} selectedRangeId={selectedRangeId} 
+                                                costs={costs} terms={financialTerms} concentration={getConcentration('1x')}
+                                            />
+                                            {Array.from({length: 17}).map((_, idx) => (
+                                                <FullModelRow 
+                                                    key={idx} label={`Crédito ${idx + 2}x`} type="installment" idx={idx} 
+                                                    rateRanges={rateRanges} setRateRanges={setRateRanges} selectedRangeId={selectedRangeId} 
+                                                    costs={costs} terms={financialTerms} concentration={getConcentration(idx + 2)}
+                                                />
+                                            ))}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <SimplesModelRow 
+                                                label="Débito" type="debit" 
+                                                rateRanges={rateRanges} setRateRanges={setRateRanges} selectedRangeId={selectedRangeId} 
+                                                costs={costs} terms={financialTerms} concentration={getConcentration('debit')}
+                                            />
+                                            <SimplesModelRow 
+                                                label="Crédito 1x" type="1x" 
+                                                rateRanges={rateRanges} setRateRanges={setRateRanges} selectedRangeId={selectedRangeId} 
+                                                costs={costs} terms={financialTerms} concentration={getConcentration('1x')}
+                                            />
+                                            <SimplesModelRow 
+                                                label="Crédito 2x - 6x" type="2x-6x" 
+                                                rateRanges={rateRanges} setRateRanges={setRateRanges} selectedRangeId={selectedRangeId} 
+                                                costs={costs} terms={financialTerms} concentration={getConcentration('2x-6x')}
+                                            />
+                                            <SimplesModelRow 
+                                                label="Crédito 7x - 12x" type="7x-12x" 
+                                                rateRanges={rateRanges} setRateRanges={setRateRanges} selectedRangeId={selectedRangeId} 
+                                                costs={costs} terms={financialTerms} concentration={getConcentration('7x-12x')}
+                                            />
+                                            <SimplesModelRow 
+                                                label="Crédito 13x - 18x" type="13x-18x" 
+                                                rateRanges={rateRanges} setRateRanges={setRateRanges} selectedRangeId={selectedRangeId} 
+                                                costs={costs} terms={financialTerms} concentration={getConcentration('13x-18x')}
+                                            />
+                                        </>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Summary Footer - Compact */}
+                    <div className="bg-brand-gray-50 border-t border-brand-gray-200 p-2 shrink-0">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
+                            <div className="flex items-center gap-2 md:col-span-2">
+                                <div className="p-1 px-2 bg-white rounded border border-gray-200 shadow-sm flex items-center gap-2">
+                                    <label className="block text-[9px] font-bold text-gray-400 uppercase">Simulação TPV</label>
+                                    <input 
+                                        type="number" 
+                                        value={simulationTpv} 
+                                        onChange={e => setSimulationTpv(Number(e.target.value))}
+                                        className="w-20 font-bold text-gray-800 outline-none text-xs bg-transparent text-right"
+                                    />
+                                    <span className="text-[9px] text-gray-400">R$</span>
+                                </div>
+                                <div className="text-[9px] text-gray-400 hidden lg:block">
+                                    Baseado no perfil <strong>{selectedSegment}</strong>.
                                 </div>
                             </div>
-                        </div>
-                    )}
 
+                            <div className="bg-white px-3 py-1 rounded border border-gray-200 shadow-sm flex items-center justify-between">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase">Spread Médio</span>
+                                <span className="text-sm font-bold text-green-600">{rangesTotals.spread.toFixed(2)}%</span>
+                            </div>
+
+                            <div className="bg-brand-primary text-white px-3 py-1 rounded shadow-sm flex items-center justify-between relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-1 opacity-10"><BarChart3 size={24}/></div>
+                                <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold uppercase opacity-80">MCF2 (R$)</span>
+                                    <span className="text-[9px] opacity-70">{rangesTotals.mcf2.toFixed(2)}%</span>
+                                </div>
+                                <span className="text-sm font-bold">R$ {rangesTotals.mcf2Reais.toLocaleString('pt-BR', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
+                            </div>
+                        </div>
+
+                        {/* Audit Info Footer */}
+                        <div className="mt-1 pt-1 border-t border-gray-200 text-[9px] text-gray-400 flex justify-end">
+                            {rangeAudit ? (
+                                <span className="flex items-center gap-1">
+                                    <Clock size={8} />
+                                    Ult. alt.: {new Date(rangeAudit.date || '').toLocaleDateString()} {new Date(rangeAudit.date || '').toLocaleTimeString()} por <strong className="text-gray-600">{rangeAudit.user || 'Sistema'}</strong>
+                                </span>
+                            ) : (
+                                <span>Sem histórico recente.</span>
+                            )}
+                        </div>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

@@ -18,19 +18,6 @@ export const MOCK_STATUS_DATA = [
   { name: 'Perdido', value: 100 },
 ];
 
-export const MOCK_CLIENTS: Client[] = [
-  { id: '1', name: 'Oficina do Zé', address: 'Rua das Flores, 123, São Paulo', status: 'Active', lastVisit: '2023-10-15' },
-  { id: '2', name: 'Auto Center Premium', address: 'Av. Paulista, 900, São Paulo', status: 'Lead' },
-  { id: '3', name: 'Mecânica Rápida', address: 'Rua Augusta, 500, São Paulo', status: 'Active', lastVisit: '2023-10-20' },
-  { id: '4', name: 'Pneus & Cia', address: 'Rua da Mooca, 45, São Paulo', status: 'Inactive', lastVisit: '2023-09-01' },
-];
-
-export const MOCK_VISITS: Visit[] = [
-  { id: '1', clientName: 'Oficina do Zé', date: '2023-10-27 09:00', status: 'Scheduled', address: 'Rua das Flores, 123' },
-  { id: '2', clientName: 'Mecânica Rápida', date: '2023-10-27 14:00', status: 'Completed', address: 'Rua Augusta, 500' },
-  { id: '3', clientName: 'Auto Center Premium', date: '2023-10-28 10:30', status: 'Scheduled', address: 'Av. Paulista, 900' },
-];
-
 export const MOCK_USERS: SystemUser[] = [
   { id: '1', name: 'Cleiton Freitas', role: UserRole.FIELD_SALES, email: 'cleiton.freitas@car10.com.br', whatsapp: '11 98940-7547', active: true, managerName: 'Douglas Galdino' },
   { id: '2', name: 'Samuel de Paula', role: UserRole.FIELD_SALES, email: 'samuel.paula@car10.com.br', whatsapp: '11 97848-6449', active: true, managerName: 'Douglas Galdino' },
@@ -45,6 +32,7 @@ export const MOCK_USERS: SystemUser[] = [
   { id: '11', name: 'Beatriz Santos', role: UserRole.INSIDE_SALES, email: 'beatriz.santos@car10.com.br', whatsapp: '11 99381-9083', active: true, managerName: 'Douglas Galdino' },
   { id: '12', name: 'Bruno Batista', role: UserRole.INSIDE_SALES, email: 'bruno.batista@car10.com.br', whatsapp: '11 93946-8320', active: true, managerName: 'Douglas Galdino' },
   { id: '13', name: 'Ligia Rosa', role: UserRole.GESTOR, email: 'ligia.rosa@car10.com.br', whatsapp: '11 97817-6134', active: true },
+  { id: '14', name: 'Carlos Pricing', role: UserRole.PRICING_MANAGER, email: 'pricing@car10.com.br', whatsapp: '11 99999-9999', active: true },
 ];
 
 // REALISTIC ADDRESS DATABASE FOR AUTOCOMPLETE & MOCKS
@@ -72,34 +60,133 @@ export const REALISTIC_ADDRESS_DB = [
 ];
 
 const generateMockClients = (): ClientBaseRow[] => {
-  const types = ['Mecânica Geral', 'Borracharia', 'Auto Elétrica', 'Funilaria', 'Centro Automotivo'];
-  const names = ['Auto Center', 'Mecânica', 'Oficina', 'Centro Automotivo', 'Garagem'];
-  const surnames = ['Silva', 'Santos', 'Oliveira', 'Souza', 'Pereira', 'Brasil', 'Express', 'Top', 'Prime'];
+  // CLIENTES HERO PARA TESTES DE JORNADA (DADOS FIXOS E COMPLETOS)
+  const heroClients: ClientBaseRow[] = [
+    {
+      id: '1001',
+      nomeEc: 'Auto Center Porto Real',
+      tipoSic: 'Centro Automotivo',
+      endereco: 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
+      responsavel: 'Carlos Eduardo',
+      contato: '11 98888-1234',
+      regiaoAgrupada: 'Zona Sul SP',
+      fieldSales: 'Cleiton Freitas',
+      insideSales: 'Cauana Sousa',
+      status: 'Active',
+      cnpj: '12.345.678/0001-90',
+      leadMetadata: { revenuePotential: 150000, outcome: 'Convertido' },
+      latitude: -23.5657,
+      longitude: -46.6513,
+      hasPagmotors: true
+    },
+    {
+      id: '1002',
+      nomeEc: 'Mecânica do Alemão',
+      tipoSic: 'Mecânica Geral',
+      endereco: 'Rua Augusta, 1500 - Consolação, São Paulo - SP',
+      responsavel: 'Roberto Alemão',
+      contato: '11 99999-5678',
+      regiaoAgrupada: 'Centro SP',
+      fieldSales: 'Cleiton Freitas',
+      insideSales: 'Cauana Sousa',
+      status: 'Lead',
+      cnpj: '98.765.432/0001-10',
+      leadMetadata: { revenuePotential: 45000, outcome: 'Em negociação' },
+      latitude: -23.5583,
+      longitude: -46.6603,
+      hasPagmotors: false
+    },
+    {
+      id: '1003',
+      nomeEc: 'Pneus & Cia Mooca',
+      tipoSic: 'Borracharia',
+      endereco: 'Rua da Mooca, 123 - Mooca, São Paulo - SP',
+      responsavel: 'Fernanda Santos',
+      contato: '11 97777-4321',
+      regiaoAgrupada: 'Zona Leste SP',
+      fieldSales: 'Samuel de Paula',
+      insideSales: 'Marcos Oliveira',
+      status: 'Active',
+      cnpj: '45.678.901/0001-23',
+      leadMetadata: { revenuePotential: 80000, outcome: 'Convertido' },
+      latitude: -23.5559,
+      longitude: -46.6111,
+      hasPagmotors: true
+    },
+    {
+      id: '1004',
+      nomeEc: 'Oficina Premium Barra',
+      tipoSic: 'Funilaria e Pintura',
+      endereco: 'Av. das Américas, 500 - Barra da Tijuca, Rio de Janeiro - RJ',
+      responsavel: 'Marcelo Rio',
+      contato: '21 96666-8888',
+      regiaoAgrupada: 'Zona Oeste RJ',
+      fieldSales: 'Jorge Jr',
+      insideSales: 'Jussara Oliveira',
+      status: 'Lead',
+      cnpj: '33.444.555/0001-67',
+      leadMetadata: { revenuePotential: 120000, outcome: 'Sem interesse' },
+      latitude: -23.0004,
+      longitude: -43.3182,
+      hasPagmotors: false
+    }
+  ];
 
-  return Array.from({ length: 55 }, (_, i) => {
-    // Pick a realistic address cyclically or randomly
+  // GERADOR PARA O RESTANTE DA BASE
+  const types = ['Mecânica Geral', 'Borracharia', 'Auto Elétrica', 'Funilaria', 'Centro Automotivo'];
+  const names = ['Auto Center', 'Mecânica', 'Oficina', 'Centro Automotivo', 'Garagem', 'Suspensão', 'Freios'];
+  const surnames = ['Silva', 'Santos', 'Oliveira', 'Souza', 'Pereira', 'Brasil', 'Express', 'Top', 'Prime', 'Elite', 'Master'];
+
+  const generatedClients = Array.from({ length: 45 }, (_, i) => {
     const addr = REALISTIC_ADDRESS_DB[i % REALISTIC_ADDRESS_DB.length];
-    
-    // Add small random offset to lat/lng so they don't stack perfectly on map
     const latOffset = (Math.random() - 0.5) * 0.005;
     const lngOffset = (Math.random() - 0.5) * 0.005;
-
     const nome = `${names[i % names.length]} ${surnames[i % surnames.length]}`;
+    
+    // Generate valid-looking CNPJ
+    const n1 = Math.floor(10 + Math.random() * 89);
+    const n2 = Math.floor(100 + Math.random() * 899);
+    const n3 = Math.floor(100 + Math.random() * 899);
+    const n4 = Math.floor(10 + Math.random() * 89);
+    const cnpj = `${n1}.${n2}.${n3}/0001-${n4}`;
+
+    const isLead = i % 4 === 0;
 
     return {
-      id: (1000 + i).toString(),
+      id: (2000 + i).toString(),
       nomeEc: nome,
       tipoSic: types[i % types.length],
       endereco: `${addr.street}, ${addr.neighborhood}, ${addr.city} - ${addr.state}`,
-      responsavel: `Gerente ${surnames[i % surnames.length]}`,
+      responsavel: `Gerente ${surnames[(i + 2) % surnames.length]}`,
       contato: `11 9${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
-      regiaoAgrupada: addr.state === 'RJ' ? 'Zona Oeste RJ' : (i % 2 === 0 ? 'Zona Sul SP' : 'Zona Norte SP'), // Simplified region logic for mock
+      regiaoAgrupada: addr.state === 'RJ' ? 'Zona Oeste RJ' : (i % 2 === 0 ? 'Zona Sul SP' : 'Zona Norte SP'),
       fieldSales: i % 3 === 0 ? 'Cleiton Freitas' : (i % 3 === 1 ? 'Samuel de Paula' : 'Jorge Jr'),
       insideSales: i % 2 === 0 ? 'Cauana Sousa' : 'Marcos Oliveira',
+      status: isLead ? 'Lead' : 'Active',
+      cnpj: cnpj,
+      leadMetadata: { revenuePotential: Math.floor(20000 + Math.random() * 100000) },
       latitude: addr.lat + latOffset,
-      longitude: addr.lng + lngOffset
-    };
+      longitude: addr.lng + lngOffset,
+      hasPagmotors: Math.random() > 0.6
+    } as ClientBaseRow;
   });
+
+  return [...heroClients, ...generatedClients];
 };
 
 export const MOCK_CLIENT_BASE: ClientBaseRow[] = generateMockClients();
+
+export const MOCK_CLIENTS: Client[] = MOCK_CLIENT_BASE.map(c => ({
+    id: c.id,
+    name: c.nomeEc,
+    address: c.endereco,
+    status: c.status === 'Active' ? 'Active' : 'Lead',
+    lastVisit: '2023-10-15'
+}));
+
+// MOCK VISITS derived from base
+export const MOCK_VISITS: Visit[] = [
+  { id: '1', clientName: 'Auto Center Porto Real', date: '2023-10-27 09:00', status: 'Scheduled', address: 'Av. Paulista, 1000' },
+  { id: '2', clientName: 'Mecânica do Alemão', date: '2023-10-27 14:00', status: 'Completed', address: 'Rua Augusta, 1500' },
+  { id: '3', clientName: 'Pneus & Cia Mooca', date: '2023-10-28 10:30', status: 'Scheduled', address: 'Rua da Mooca, 123' },
+];

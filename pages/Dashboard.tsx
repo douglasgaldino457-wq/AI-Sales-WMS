@@ -4,9 +4,10 @@ import { UserRole, Appointment, SystemUser, Page } from '../types';
 import { 
   PieChart, Pie, Cell, Legend, Tooltip, TooltipProps, ResponsiveContainer
 } from 'recharts';
-import { MOCK_SALES_DATA, MOCK_STATUS_DATA, MOCK_USERS } from '../constants';
+import { MOCK_SALES_DATA, MOCK_STATUS_DATA } from '../constants';
 import { getDashboardInsights } from '../services/geminiService';
 import { appStore } from '../services/store';
+import { useAppStore } from '../services/useAppStore'; // Hook
 import { 
     Sparkles, TrendingUp, CalendarCheck, CheckCircle2, Clock, 
     Briefcase, UserPlus, FileText, MapPin, Layout, Search, Filter, ArrowUpDown,
@@ -37,6 +38,8 @@ interface ConsultantStats {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
+  const { currentUser } = useAppStore(); // Get Current User Name
+  
   const [insight, setInsight] = useState<string>('');
   const [loadingAI, setLoadingAI] = useState(false);
   const [isInsightModalOpen, setIsInsightModalOpen] = useState(false);
@@ -44,6 +47,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
   
   // Real-time data state
   const [appointments, setAppointments] = useState(appStore.getAppointments());
+  const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]); // Dynamic Users
 
   // --- GESTOR STATE ---
   const [selectedMonth, setSelectedMonth] = useState<string>('all'); // 'YYYY-MM' or 'all'
@@ -67,6 +71,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
   useEffect(() => {
     // Refresh data on mount
     setAppointments(appStore.getAppointments());
+    setSystemUsers(appStore.getUsers());
   }, []);
 
   // ... (Data processing logic remains identical to preserve functionality)
@@ -90,7 +95,9 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
 
   const calculateConsultantStats = (): ConsultantStats[] => {
       const filteredData = getFilteredAppointmentsForGestor();
-      const usersToAnalyze = MOCK_USERS.filter(u => {
+      
+      // Use dynamic systemUsers instead of MOCK_USERS
+      const usersToAnalyze = systemUsers.filter(u => {
           if (teamView === 'FIELD') return u.role === UserRole.FIELD_SALES;
           if (teamView === 'INSIDE') return u.role === UserRole.INSIDE_SALES;
           return u.role === UserRole.FIELD_SALES || u.role === UserRole.INSIDE_SALES;
@@ -132,7 +139,9 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
          const lowPerformers = stats.filter(s => s.totalAppointments > 5 && s.conversionRate < 10).map(s => `${s.name}`).join(', ');
          summary = `Total Conversões: ${totalConv}. Topo: ${stats.slice(0,2).map(s => s.name).join(', ')}. Atenção: ${lowPerformers}.`;
       } else {
-         const myName = role === UserRole.FIELD_SALES ? 'Cleiton Freitas' : 'Cauana Sousa';
+         // USE CURRENT USER NAME HERE
+         const myName = currentUser?.name || (role === UserRole.FIELD_SALES ? 'Cleiton Freitas' : 'Cauana Sousa');
+         
          const myAppts = appointments.filter(a => role === UserRole.FIELD_SALES ? a.fieldSalesName === myName : a.insideSalesName === myName);
          const inNegotiation = myAppts.filter(a => a.visitReport?.outcome === 'Em negociação');
          const today = new Date().toISOString().split('T')[0];
@@ -143,8 +152,8 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
       setInsight(result);
       setLoadingAI(false);
     };
-    if (appointments.length > 0) fetchInsight();
-  }, [role, appointments, selectedMonth, teamView]);
+    if (appointments.length > 0 && systemUsers.length > 0) fetchInsight();
+  }, [role, appointments, selectedMonth, teamView, systemUsers, currentUser]);
 
   const handleExecutePlan = () => {
       setPlanExecuted(true);
@@ -269,9 +278,11 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
 
   // --- FIELD SALES VIEW ---
   if (role === UserRole.FIELD_SALES) {
+      // Use logged in user name
+      const myName = currentUser?.name || 'Consultor';
       const todayStr = new Date().toISOString().split('T')[0];
       
-      const todaysAppointments = appointments.filter(appt => appt.date === todayStr);
+      const todaysAppointments = appointments.filter(appt => appt.date === todayStr && appt.fieldSalesName === myName);
       
       const total = todaysAppointments.length;
       const completed = todaysAppointments.filter(a => a.status === 'Completed').length;
@@ -292,7 +303,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             <InsightModal />
             
             <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Olá, Consultor</h1>
+                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Olá, {myName.split(' ')[0]}</h1>
                 <p className="text-gray-500 mt-1">Aqui está o resumo da sua operação hoje.</p>
             </div>
 
@@ -378,15 +389,18 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
       );
   }
 
-  // ... (Keep existing code for Inside Sales and Gestor views exactly as is, just ensured Imports are correct)
   // --- INSIDE SALES VIEW ---
   if (role === UserRole.INSIDE_SALES) {
-      // Logic for Inside Sales Dashboard
-      const totalAppointments = appointments.length;
-      const completedVisits = appointments.filter(a => a.status === 'Completed').length;
-      const pendingVisits = appointments.filter(a => a.status === 'Scheduled').length;
+      // Use logged in user name
+      const myName = currentUser?.name || 'Inside Sales';
       
-      const filteredList = appointments.filter(a => {
+      const myAppointments = appointments.filter(a => a.insideSalesName === myName);
+      
+      const totalAppointments = myAppointments.length;
+      const completedVisits = myAppointments.filter(a => a.status === 'Completed').length;
+      const pendingVisits = myAppointments.filter(a => a.status === 'Scheduled').length;
+      
+      const filteredList = myAppointments.filter(a => {
          if (cardFilter === 'COMPLETED' && a.status !== 'Completed') return false;
          if (cardFilter === 'SCHEDULED' && a.status !== 'Scheduled') return false;
          return true;
@@ -399,14 +413,14 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             
             <div className="mb-8 flex justify-between items-end">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Inside Sales</h1>
+                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Inside Sales: {myName.split(' ')[0]}</h1>
                     <p className="text-gray-500 mt-1">Gestão de carteira e agendamentos.</p>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
-                <KpiCard title="Agendamentos" value={totalAppointments} icon={Calendar} colorClass="bg-brand-gray-900 text-white" onClick={() => setCardFilter('ALL')} active={cardFilter === 'ALL'} />
-                <KpiCard title="Realizadas" value={completedVisits} icon={CheckCircle2} colorClass="bg-green-500 text-green-600" onClick={() => setCardFilter('COMPLETED')} active={cardFilter === 'COMPLETED'} />
+                <KpiCard title="Meus Agendamentos" value={totalAppointments} icon={Calendar} colorClass="bg-brand-gray-900 text-white" onClick={() => setCardFilter('ALL')} active={cardFilter === 'ALL'} />
+                <KpiCard title="Realizadas (Field)" value={completedVisits} icon={CheckCircle2} colorClass="bg-green-500 text-green-600" onClick={() => setCardFilter('COMPLETED')} active={cardFilter === 'COMPLETED'} />
                 <KpiCard title="Pendentes" value={pendingVisits} icon={Clock} colorClass="bg-orange-500 text-orange-600" onClick={() => setCardFilter('SCHEDULED')} active={cardFilter === 'SCHEDULED'} />
             </div>
 
@@ -453,7 +467,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
       );
   }
 
-  // --- GESTOR VIEW ---
+  // --- GESTOR VIEW (UNCHANGED) ---
   const filteredGestorData = getFilteredAppointmentsForGestor();
   const consultantStats = calculateConsultantStats();
   const totalGestor = filteredGestorData.length;
@@ -523,7 +537,8 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             </div>
 
             <div className="tech-card rounded-2xl p-6 flex flex-col justify-center items-center text-center">
-                 <div style={{ width: 192, height: 192, position: 'relative', minWidth: 0 }}>
+                 {/* Explicitly defined style for container to prevent Recharts -1 width error */}
+                 <div style={{ width: '100%', height: '192px', position: 'relative', minWidth: '192px' }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                             <Pie

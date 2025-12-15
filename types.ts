@@ -5,7 +5,7 @@ export enum UserRole {
   GESTOR = 'Gestão Comercial',
   PRICING_MANAGER = 'Gestão de Pricing',
   LOGISTICA = 'Logística',
-  ADMIN = 'Gestão Administrativa',
+  ADMIN = 'Backoffice',
 }
 
 export enum Page {
@@ -27,8 +27,66 @@ export enum Page {
   PAINEL_LEADS = 'Painel de Leads', // New Page for Services Intelligence
   LOGISTICA_DASHBOARD = 'Dashboard Logística', // KPIs
   LOGISTICA_ATIVACOES = 'Ativações', // New Page: Gsurf Flow
+  LOGISTICA_ESTOQUE = 'Estoque Global', // New Page: Inventory Management
   LOGISTICA_SUPORTE = 'Gestão de Suporte', // New Page: Tickets & KB
   ADMIN_DEMANDS = 'Cadastros & Demandas', // New Page for Admin
+  PEDIDOS_RASTREIO = 'Pedidos & Rastreio', // New Page for Sales Tracking
+  PERFIL = 'Meu Perfil', // New Page: User Profile & Vehicle
+  DESPESAS = 'Despesas & Reembolso', // Restored
+}
+
+export interface CostStructure {
+    debitCost: number;
+    creditSightCost: number;
+    // Granular Installment Costs
+    installment2to6Cost: number;
+    installment7to12Cost: number;
+    installment13to18Cost: number;
+    anticipationCost: number; // Custo CDI/Funding a.m.
+    taxRate: number; // Impostos (PIS/COFINS/ISS)
+    fixedCostPerTx: number; // Custo fixo por transação
+    // Audit
+    lastUpdated?: string;
+    updatedBy?: string;
+}
+
+// --- NEW: RATE RANGE CONFIGURATION TYPES ---
+export interface TpvRange {
+    id: number;
+    label: string;
+}
+
+export interface FullRangeRates {
+    debit: number;
+    credit1x: number;
+    installments: number[]; // Array 0 = 2x, 1 = 3x ... 16 = 18x
+    lastUpdated?: string; // ISO String
+    updatedBy?: string;
+}
+
+export interface SimplesRangeRates {
+    debit: number;
+    credit1x: number;
+    credit2x6x: number;
+    credit7x12x: number;
+    credit13x18x: number;
+    lastUpdated?: string; // ISO String
+    updatedBy?: string;
+}
+
+export interface RateRangesConfig {
+    full: Record<number, FullRangeRates>;
+    simples: Record<number, SimplesRangeRates>;
+}
+
+export interface AppNotification {
+    id: string;
+    type: 'RATE_APPROVED' | 'OTP_ISSUED' | 'INFO';
+    title: string;
+    message: string;
+    date: string;
+    targetId?: string; // ID of the Demand to open
+    read: boolean;
 }
 
 export interface Client {
@@ -52,6 +110,15 @@ export interface SalesData {
   value: number;
 }
 
+// --- NEW TYPES FOR ROUTES & TRACKING ---
+export interface Vehicle {
+    plate: string;
+    model: string;
+    make: string;
+    year: string;
+    color: string;
+}
+
 export interface SystemUser {
   id: string; // Added ID
   name: string;
@@ -60,6 +127,8 @@ export interface SystemUser {
   whatsapp: string;
   active: boolean; // Added status
   managerName?: string; // Added Manager
+  password?: string; // Mock password field
+  vehicle?: Vehicle; // User's vehicle for GPS logs
 }
 
 export interface ClientBaseRow {
@@ -138,15 +207,28 @@ export interface ClientNote {
 
 // --- NEW TYPES FOR PRICING & REGISTRATION ---
 
+export type DemandActionType = 'Desativação de POS' | 'Troca de POS' | 'Alteração Bancária' | 'Alteração de Taxas' | 'Alteração Cadastral' | 'Outros';
+
+export interface HistoryLog {
+    date: string;
+    user: string;
+    action: string;
+    details?: string;
+}
+
 export interface ManualDemand {
     id: string;
-    type: string; // 'Alteração de Domicílio', 'Venda Taxa Full', etc.
+    type: string; // Legacy string or DemandActionType
+    actionCategory?: DemandActionType; // Structured Type
     clientName: string;
     date: string;
     status: 'Pendente' | 'Em Análise' | 'Concluído' | 'Rejeitado' | 'Aprovado Pricing';
+    adminStatus?: 'Pendente ADM' | 'Em Processamento' | 'Finalizado ADM'; // New Admin Status
+    otp?: string; // New Logistics OTP
     result?: string; // Outcome message
     requester: string;
     description?: string;
+    changeLog?: HistoryLog[]; // History of changes
     // Pricing Specifics
     pricingData?: {
         competitorRates: { debit: number, credit1x: number, credit12x: number };
@@ -157,6 +239,10 @@ export interface ManualDemand {
         context?: {
             potentialRevenue: number;
             minAgreed: number;
+        };
+        approvalMetadata?: {
+            approvedBy: string;
+            approvedAt: string;
         };
     };
 }
@@ -222,40 +308,118 @@ export interface RegistrationRequest {
 
     // Docs & Meta
     docs: {
-        contract?: boolean; // Legacy but kept for type compatibility
-        contractFile?: File | null;
+        contract?: boolean; // Legacy
         idCard?: boolean;
-        idCardFile?: File | null;
+        idCardFile?: File;
         addressProof?: boolean;
-        addressProofFile?: File | null;
-        thirdPartyTerm?: boolean;
-        facade?: boolean;
-        facadeFile?: File | null;
-        interiorFiles?: File[];
+        addressProofFile?: File;
+        facade?: boolean; // New
+        facadeFile?: File; // New
+        interiorFiles?: File[]; // New (Array)
     };
     requesterName: string;
-    requesterRole: string; // 'Inside Sales' | 'Field Sales'
+    requesterRole: string;
     dateSubmitted: string;
     status: RegistrationStatus;
-    notes?: string;
     
     // Admin Fields
-    finalClientId?: string; // The ID filled by Admin (EC Code)
+    finalClientId?: string; // The ID created in legacy system (EC)
     approvalData?: {
         date: string;
         approvedBy: string;
     };
+    notes?: string;
 }
 
-// --- NEW TYPES FOR PAINEL LEADS ---
+// --- LOGISTICS TYPES ---
+export interface LogisticsTask {
+    id: string;
+    type: 'FIELD_ACTIVATION' | 'POS_SHIPMENT' | 'POS_RETRIEVAL' | 'POS_EXCHANGE';
+    status: 'PENDING_SHIPMENT' | 'SHIPPED' | 'READY_FOR_GSURF' | 'COMPLETED' | 'RETURNED';
+    
+    // Client Info
+    clientName: string;
+    legalName?: string; // Needed for Gsurf
+    internalId?: string; // The "EC" code from Admin
+    documentNumber?: string; // CNPJ
+    address: string;
+    responsibleName?: string;
+    contactPhone?: string;
+    email?: string;
+
+    // Request Info
+    requesterName: string;
+    requesterRole: string;
+    date: string;
+    details: string; // What needs to be done
+    
+    // Tracking
+    trackingCode?: string;
+    carrier?: string;
+    
+    // Execution Data
+    posData?: { serialNumber: string; rcNumber?: string; model?: string; }; // Assigned POS
+    allocatedPosList?: PosRequestItem[]; // If multiple
+    otp?: string; // Generated OTP code from Gsurf
+}
+
+export interface PosDevice {
+    serialNumber: string;
+    rcNumber: string; // Patrimonio
+    model: string;
+    status: 'InStock' | 'WithField' | 'Active' | 'Defective' | 'Triage';
+    currentHolder: string; // Consultant Name or Client Name or 'Logística'
+    lastUpdated: string;
+    history?: { date: string; status: string; holder: string; description?: string }[];
+}
+
+export interface SupportTicket {
+    id: string;
+    clientId: string;
+    clientName: string;
+    requesterName: string;
+    requesterRole: string;
+    status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
+    priority: 'LOW' | 'MEDIUM' | 'HIGH';
+    category: string;
+    messages: SupportMessage[];
+    createdAt: string;
+}
+
+export interface SupportMessage {
+    id: string;
+    sender: 'user' | 'support' | 'ai';
+    text: string;
+    timestamp: string;
+    imageUrl?: string;
+}
+
+export interface KnowledgeBaseItem {
+    id: string;
+    errorPattern: string;
+    solution: string;
+    keywords: string[];
+}
+
+export interface TripLog {
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    distanceKm: number;
+    valueEarned: number;
+    vehiclePlate: string;
+    status: 'COMPLETED';
+}
+
 export interface LeadServiceItem {
     id: string;
+    date: string;
     flow: 'SIN' | 'SIR' | 'CAM';
     serviceType: string;
-    date: string;
     licensePlate: string;
+    status: 'Realizado' | 'Agendado' | 'Cancelado';
     value: number;
-    status: 'Agendado' | 'Realizado' | 'Cancelado';
 }
 
 export interface LeadStats {
@@ -266,87 +430,33 @@ export interface LeadStats {
         SIN: number;
         SIR: number;
         CAM: number;
-    }
+    };
 }
 
-// --- LOGISTICS TYPES ---
-export interface PosDevice {
-    serialNumber: string;
-    rcNumber: string;
-    model: string; // 'P2 Smart', 'X990', etc.
-    status: 'InStock' | 'WithField' | 'Active' | 'Defective' | 'Lost' | 'Triage';
-    currentHolder: string; // 'Logística Central', 'Nome Consultor', 'Nome EC'
-    lastUpdated: string;
-    history?: PosHistoryItem[];
+// --- EXPENSES & REIMBURSEMENT TYPES ---
+export type ExpenseCategory = 'Combustível' | 'Estacionamento' | 'Pedágio' | 'Uber/Táxi' | 'Hospedagem' | 'Alimentação' | 'Outros';
+
+export interface FinanceConfig {
+    kmRate: number;
+    expenseCategories: string[];
+    policyText: string;
 }
 
-export interface PosHistoryItem {
+export interface Expense {
+    id: string;
     date: string;
-    status: string;
-    holder: string;
-    description: string;
-}
-
-export type LogisticsTaskType = 'FIELD_ACTIVATION' | 'POS_EXCHANGE' | 'POS_SHIPMENT' | 'POS_RETRIEVAL' | 'MATERIAL_REQUEST' | 'GIFT_REQUEST';
-export type LogisticsTaskStatus = 'PENDING_SHIPMENT' | 'SHIPPED' | 'DELIVERED' | 'READY_FOR_GSURF' | 'WAITING_OTP' | 'COMPLETED' | 'PENDING_RETRIEVAL' | 'SENT_TO_ADMIN';
-
-export interface LogisticsTask {
-    id: string;
-    type: LogisticsTaskType;
-    status: LogisticsTaskStatus;
-    
-    // Context
-    clientName: string;
-    legalName?: string;
-    internalId?: string;
-    documentNumber?: string;
-    address: string;
-    responsibleName?: string;
-    contactPhone?: string;
-    email?: string; // Added Email
-    
+    category: ExpenseCategory;
+    amount: number;
+    establishment: string;
+    imageUrl?: string; // Base64 or URL
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
     requesterName: string;
-    requesterRole: string;
-    date: string; // Creation Date
-    
-    // Details
-    details?: string;
-    itemsRequested?: string[];
-    
-    // POS Specifics
-    posData?: { serialNumber: string; rcNumber?: string; model?: string; };
-    allocatedPosList?: PosRequestItem[];
-    
-    otp?: string;
-    trackingCode?: string;
-    returnLabelUrl?: string;
-}
-
-// --- SUPPORT & AI TYPES ---
-export interface SupportTicket {
-    id: string;
-    clientId: string;
-    clientName: string;
-    requesterName: string;
-    requesterRole: string;
-    status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
-    priority: 'LOW' | 'MEDIUM' | 'HIGH';
-    category: 'Erro POS' | 'Troca de Bobina' | 'Conectividade' | 'Outros';
-    createdAt: string;
-    messages: SupportMessage[];
-}
-
-export interface SupportMessage {
-    id: string;
-    sender: 'user' | 'support' | 'ai';
-    text: string;
-    imageUrl?: string; // For error screenshots
-    timestamp: string;
-}
-
-export interface KnowledgeBaseItem {
-    id: string;
-    errorPattern: string; // e.g. "Erro 99", "Tela Branca"
-    solution: string; // Step by step
-    keywords: string[];
+    isCorporateCard?: boolean;
+    // Fuel Specifics
+    fuelDetails?: {
+        fuelType: 'Gasolina' | 'Etanol' | 'Diesel' | 'GNV';
+        liters: number;
+        pricePerLiter: number;
+    };
+    notes?: string;
 }

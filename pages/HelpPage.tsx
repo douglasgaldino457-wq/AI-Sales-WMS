@@ -1,23 +1,16 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-    HelpCircle, BookOpen, Send, Bot, User, MessageSquare, 
-    ChevronRight, Sparkles, Youtube, FileText, BadgePercent, Map, Users, Settings, MapPinned,
-    CheckCircle2
+    HelpCircle, BookOpen, FileText, BadgePercent, Map, Users, Settings, MapPinned,
+    CheckCircle2, Download, Table, ExternalLink, Bot, AlertCircle, Loader2, LifeBuoy,
+    MessageSquare, Sparkles, ChevronRight, ArrowRight
 } from 'lucide-react';
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { UserRole } from '../types';
-import { runWithRetry } from '../services/geminiService';
+import { appStore } from '../services/store';
+import { useAppStore } from '../services/useAppStore';
 
 interface HelpPageProps {
     role: UserRole;
-}
-
-interface ChatMessage {
-    id: string;
-    role: 'user' | 'model';
-    text: string;
-    timestamp: Date;
 }
 
 interface Tutorial {
@@ -25,353 +18,266 @@ interface Tutorial {
     desc: string;
     icon: any;
     colorClass: string;
-    query: string; // The prompt to send to AI
 }
 
 const HelpPage: React.FC<HelpPageProps> = ({ role }) => {
-    const [messages, setMessages] = useState<ChatMessage[]>([
-        {
-            id: 'welcome',
-            role: 'model',
-            text: `Olá, ${role}! Sou o assistente virtual do AISales. Selecione um dos tutoriais ao lado ou digite sua dúvida sobre o sistema.`,
-            timestamp: new Date()
-        }
-    ]);
-    const [inputText, setInputText] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const { currentUser, setAiOpen } = useAppStore(); 
     const [ticketSent, setTicketSent] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     // --- Role-Based Tutorials Configuration ---
     const getTutorials = (): Tutorial[] => {
         switch (role) {
             case UserRole.FIELD_SALES:
                 return [
-                    {
-                        title: "Minha Rota Diária",
-                        desc: "Como otimizar a rota e usar o GPS.",
-                        icon: Map,
-                        colorClass: "bg-blue-100 text-blue-600",
-                        query: "Explique passo a passo como uso a funcionalidade de Rotas e Otimização no perfil Field Sales."
-                    },
-                    {
-                        title: "Check-in e Relatórios",
-                        desc: "Registrando visitas e feedback.",
-                        icon: FileText,
-                        colorClass: "bg-orange-100 text-orange-600",
-                        query: "Como faço check-in em uma visita e preencho o relatório final no app?"
-                    },
-                    {
-                        title: "Simulador de Taxas",
-                        desc: "Calculando antecipação e comparando.",
-                        icon: BadgePercent,
-                        colorClass: "bg-green-100 text-green-600",
-                        query: "Como uso o Pricing para simular taxas e comparar com concorrentes como a Stone?"
-                    }
+                    { title: "Minha Rota Diária", desc: "Aprenda a otimizar sua rota e usar o GPS integrado.", icon: Map, colorClass: "text-blue-600 bg-blue-100" },
+                    { title: "Check-in e Relatórios", desc: "Como registrar visitas e preencher o relatório final.", icon: FileText, colorClass: "text-orange-600 bg-orange-100" },
+                    { title: "Simulador de Taxas", desc: "Use o Pricing para simular taxas e comparar.", icon: BadgePercent, colorClass: "text-green-600 bg-green-100" }
                 ];
             case UserRole.INSIDE_SALES:
                 return [
-                    {
-                        title: "Agendar Visitas",
-                        desc: "Criando demandas para o time de rua.",
-                        icon: BookOpen,
-                        colorClass: "bg-purple-100 text-purple-600",
-                        query: "Como faço para criar um novo agendamento de visita para um consultor Field?"
-                    },
-                    {
-                        title: "Gestão de Carteira",
-                        desc: "Filtrando e acionando clientes.",
-                        icon: Users,
-                        colorClass: "bg-blue-100 text-blue-600",
-                        query: "Como filtro e visualizo os clientes da minha carteira na página de Agendamentos?"
-                    },
-                    {
-                        title: "Cadastro de Leads",
-                        desc: "Inserindo novos clientes manualmente.",
-                        icon: FileText,
-                        colorClass: "bg-orange-100 text-orange-600",
-                        query: "Qual o processo para cadastrar um novo Lead manualmente no sistema?"
-                    }
+                    { title: "Agendar Visitas", desc: "Criando demandas para o time de rua.", icon: BookOpen, colorClass: "text-purple-600 bg-purple-100" },
+                    { title: "Gestão de Carteira", desc: "Filtrando e acionando clientes da base.", icon: Users, colorClass: "text-blue-600 bg-blue-100" },
+                    { title: "Cadastro de Leads", desc: "Inserindo novos clientes manualmente.", icon: FileText, colorClass: "text-orange-600 bg-orange-100" }
                 ];
             case UserRole.GESTOR:
                 return [
-                    {
-                        title: "Importação de Base",
-                        desc: "Como carregar planilhas de clientes.",
-                        icon: FileText,
-                        colorClass: "bg-green-100 text-green-600",
-                        query: "Explique como funciona a importação de planilhas Excel na página Base de Clientes para o Gestor."
-                    },
-                    {
-                        title: "Mapa de Gestão",
-                        desc: "Analisando territórios e conflitos.",
-                        icon: MapPinned,
-                        colorClass: "bg-red-100 text-red-600",
-                        query: "Como uso o Mapa de Gestão para ver a distribuição dos meus consultores e gerar insights?"
-                    },
-                    {
-                        title: "Gestão de Usuários",
-                        desc: "Adicionando e editando a equipe.",
-                        icon: Settings,
-                        colorClass: "bg-gray-100 text-gray-600",
-                        query: "Como adiciono, edito ou inativo usuários no módulo de Configuração?"
-                    }
+                    { title: "Importação de Base", desc: "Como carregar planilhas de clientes.", icon: FileText, colorClass: "text-green-600 bg-green-100" },
+                    { title: "Mapa de Gestão", desc: "Analisando territórios e conflitos.", icon: MapPinned, colorClass: "text-red-600 bg-red-100" },
+                    { title: "Gestão de Usuários", desc: "Adicionando e editando a equipe.", icon: Settings, colorClass: "text-gray-600 bg-gray-100" }
                 ];
             default:
                 return [
-                    {
-                        title: "Visão Geral",
-                        desc: "Entendendo os módulos do sistema.",
-                        icon: HelpCircle,
-                        colorClass: "bg-brand-light/10 text-brand-primary",
-                        query: "Faça um resumo geral de todos os módulos disponíveis no sistema AISales."
-                    }
+                    { title: "Visão Geral", desc: "Entendendo os módulos do sistema.", icon: HelpCircle, colorClass: "text-brand-primary bg-brand-light/10" }
                 ];
         }
     };
 
     const tutorials = getTutorials();
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    const handleSendMessage = async (textOverride?: string) => {
-        const textToSend = textOverride || inputText;
-        if (!textToSend.trim()) return;
-
-        const userMsg: ChatMessage = {
-            id: Date.now().toString(),
-            role: 'user',
-            text: textToSend,
-            timestamp: new Date()
-        };
-
-        setMessages(prev => [...prev, userMsg]);
-        if (!textOverride) setInputText('');
-        setIsLoading(true);
-
-        try {
-            const apiKey = process.env.API_KEY;
-            const ai = new GoogleGenAI({ apiKey: apiKey! });
-            
-            const systemPrompt = `
-                Você é o assistente oficial de suporte do aplicativo "AISales WMS" (Webmotors Serviços Automotivos).
-                
-                PERFIL DO USUÁRIO ATUAL: ${role}
-                
-                FUNCIONALIDADES DO APP:
-                1. Dashboard: KPIs e metas.
-                2. Agendamentos (Agenda):
-                   - Inside: Cria visitas, gere carteira.
-                   - Field: Visualiza agenda, faz check-in, preenche relatórios.
-                3. Rotas (Apenas Field): Otimização de visitas no mapa.
-                4. Pricing: Simulador de taxas (MDR + Antecipação). Comparação com concorrentes.
-                5. Cadastro: Formulário manual de Leads/Clientes.
-                6. Base de Clientes: Lista geral. Gestor pode importar Excel.
-                7. Mapa de Gestão (Gestor): Visão global de territórios.
-                8. Configuração (Gestor): Cadastrar usuários, editar motivos de visita.
-                
-                SEU TOM DE VOZ:
-                Didático, amigável e direto. Use emojis para separar tópicos.
-                Foque na ação prática ("Clique em X", "Vá para Y").
-            `;
-
-            const chat = ai.chats.create({
-                model: 'gemini-2.5-flash',
-                config: {
-                    systemInstruction: systemPrompt,
-                },
-                history: messages.map(m => ({
-                    role: m.role,
-                    parts: [{ text: m.text }]
-                }))
-            });
-
-            // Using retry logic for the message sending
-            const result = await runWithRetry<GenerateContentResponse>(() => chat.sendMessage({ message: userMsg.text }));
-            
-            const modelMsg: ChatMessage = {
-                id: (Date.now() + 1).toString(),
-                role: 'model',
-                text: result.text || "Desculpe, não consegui processar sua dúvida.",
-                timestamp: new Date()
-            };
-
-            setMessages(prev => [...prev, modelMsg]);
-
-        } catch (error) {
-            console.error("Erro no chat:", error);
-            const errorMsg: ChatMessage = {
-                id: (Date.now() + 1).toString(),
-                role: 'model',
-                text: "Estou enfrentando uma instabilidade momentânea na IA. Tente novamente em alguns segundos.",
-                timestamp: new Date()
-            };
-            setMessages(prev => [...prev, errorMsg]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
-        }
-    };
-
-    const handleTutorialClick = (tutorial: Tutorial) => {
-        handleSendMessage(tutorial.query);
-    };
-
     const handleOpenTicket = () => {
         setTicketSent(true);
-        // Simulate ticket creation
+        // Simulate API call
         setTimeout(() => {
-            alert("Chamado #9023 aberto com sucesso! A equipe de TI entrará em contato.");
+            alert("✅ Chamado #9023 aberto com sucesso!\n\nA equipe de TI entrará em contato via e-mail em até 24h.");
             setTicketSent(false);
-        }, 1500);
+        }, 1000);
+    };
+
+    // --- REPORT GENERATION LOGIC ---
+    const generateExcelReport = () => {
+        setIsExporting(true);
+        const XLSX = (window as any).XLSX;
+
+        if (!XLSX) {
+            alert("Erro: Biblioteca de Excel não carregada. Tente recarregar a página.");
+            setIsExporting(false);
+            return;
+        }
+
+        setTimeout(() => {
+            try {
+                const wb = XLSX.utils.book_new();
+                let hasData = false;
+                const userName = currentUser?.name || '';
+
+                // --- 1. RELATÓRIO DE CLIENTES/CARTEIRA ---
+                if ([UserRole.FIELD_SALES, UserRole.INSIDE_SALES, UserRole.GESTOR, UserRole.ADMIN].includes(role)) {
+                    let clients = appStore.getClients();
+                    
+                    // Filter Logic
+                    let filteredClients = clients;
+                    if (role === UserRole.FIELD_SALES) {
+                        filteredClients = clients.filter(c => c.fieldSales === userName);
+                    } else if (role === UserRole.INSIDE_SALES) {
+                        filteredClients = clients.filter(c => c.insideSales === userName);
+                    }
+
+                    // Fallback for demo
+                    if (filteredClients.length === 0 && clients.length > 0) {
+                        console.warn("Filtro vazio. Exportando base completa (Demo).");
+                        filteredClients = clients; 
+                    }
+
+                    if (filteredClients.length > 0) {
+                        const clientSheetData = filteredClients.map(c => ({
+                            "ID Cliente": c.id,
+                            "Nome Fantasia": c.nomeEc,
+                            "Endereço": c.endereco,
+                            "Contato": c.contato,
+                            "Responsável": c.responsavel,
+                            "Status": c.status || 'Ativo',
+                            "Field Sales": c.fieldSales,
+                            "Inside Sales": c.insideSales,
+                            "Região": c.regiaoAgrupada
+                        }));
+                        const wsClients = XLSX.utils.json_to_sheet(clientSheetData);
+                        XLSX.utils.book_append_sheet(wb, wsClients, "Carteira de Clientes");
+                        hasData = true;
+                    }
+                }
+
+                // --- 2. RELATÓRIO DE VISITAS/AGENDA ---
+                if ([UserRole.FIELD_SALES, UserRole.INSIDE_SALES, UserRole.GESTOR].includes(role)) {
+                    const appointments = appStore.getAppointments();
+                    if (appointments.length > 0) {
+                        const apptSheetData = appointments.map(a => ({
+                            "Data Visita": a.date,
+                            "Período": a.period,
+                            "Cliente": a.clientName,
+                            "Endereço": a.address,
+                            "Status": a.status,
+                            "Resultado": a.visitReport?.outcome || a.visitReport?.walletAction || 'Pendente',
+                            "Responsável Field": a.fieldSalesName
+                        }));
+                        const wsAppt = XLSX.utils.json_to_sheet(apptSheetData);
+                        XLSX.utils.book_append_sheet(wb, wsAppt, "Relatório de Visitas");
+                        hasData = true;
+                    }
+                }
+
+                if (hasData) {
+                    const fileName = `Relatorio_Car10_${role.replace(' ','_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+                    XLSX.writeFile(wb, fileName);
+                } else {
+                    alert("Não há dados disponíveis para exportação no momento.");
+                }
+
+            } catch (error) {
+                console.error("Erro na exportação Excel:", error);
+                alert("Ocorreu um erro ao gerar o arquivo. Tente novamente.");
+            } finally {
+                setIsExporting(false);
+            }
+        }, 800);
     };
 
     return (
-        <div className="h-[calc(100vh-6rem)] flex flex-col lg:flex-row gap-6">
+        <div className="max-w-7xl mx-auto space-y-8 pb-20 animate-fade-in">
             
-            {/* LEFT: Tutorials & FAQ */}
-            <div className="w-full lg:w-1/3 flex flex-col gap-6 overflow-y-auto pr-2 pb-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-brand-gray-900 flex items-center gap-2">
-                        <HelpCircle className="w-8 h-8 text-brand-primary" />
-                        Ajuda & Suporte
+            {/* HERO SECTION - AI HIGHLIGHT */}
+            <div className="relative bg-brand-gray-900 rounded-3xl p-8 md:p-12 overflow-hidden shadow-2xl text-white group">
+                <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-brand-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-brand-primary/30 transition-colors duration-500"></div>
+                <div className="relative z-10 max-w-2xl">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-xs font-bold uppercase tracking-wider mb-4 backdrop-blur-sm">
+                        <Sparkles className="w-3 h-3 text-yellow-400" /> Central de Inteligência
+                    </div>
+                    <h1 className="text-3xl md:text-4xl font-bold mb-4 leading-tight">
+                        Olá, {currentUser?.name.split(' ')[0]}. <br/>
+                        Como posso te ajudar hoje?
                     </h1>
-                    <p className="text-brand-gray-600 mt-1 text-sm">Tutoriais para o perfil <strong>{role}</strong>.</p>
+                    <p className="text-gray-300 text-base md:text-lg mb-8 max-w-xl leading-relaxed">
+                        Acesse relatórios detalhados, tire dúvidas instantâneas com nossa IA ou abra chamados para a equipe de TI.
+                    </p>
+                    
+                    <button 
+                        onClick={() => setAiOpen(true)}
+                        className="group bg-white text-brand-gray-900 px-8 py-4 rounded-xl font-bold shadow-lg hover:bg-brand-gray-100 transition-all flex items-center gap-3 transform hover:-translate-y-1"
+                    >
+                        <Bot className="w-6 h-6 text-brand-primary" />
+                        <span>Falar com Assistente IA</span>
+                        <ChevronRight className="w-4 h-4 text-gray-400 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                </div>
+            </div>
+
+            {/* ACTION GRID */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                {/* 1. AI ASSISTANT CARD (Alternative Entry) */}
+                <div 
+                    onClick={() => setAiOpen(true)}
+                    className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group relative overflow-hidden"
+                >
+                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <MessageSquare size={100} />
+                    </div>
+                    <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <Bot className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-brand-gray-900 mb-2">Dúvidas Gerais</h3>
+                    <p className="text-sm text-brand-gray-500 leading-relaxed mb-6 h-10">
+                        Pergunte sobre processos, taxas, e funcionalidades do sistema em tempo real.
+                    </p>
+                    <div className="text-purple-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                        Iniciar Chat <ArrowRight className="w-4 h-4" />
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+                {/* 2. REPORTS CARD */}
+                <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden flex flex-col">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <Table size={100} />
+                    </div>
+                    <div className="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <Download className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-brand-gray-900 mb-2">Relatórios em Excel</h3>
+                    <p className="text-sm text-brand-gray-500 leading-relaxed mb-6 h-10">
+                        Baixe planilhas completas com dados da sua carteira, visitas e status.
+                    </p>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); generateExcelReport(); }}
+                        disabled={isExporting}
+                        className="mt-auto w-full bg-brand-gray-50 hover:bg-brand-gray-100 text-brand-gray-900 py-3 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 border border-brand-gray-200"
+                    >
+                        {isExporting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Table className="w-4 h-4"/>}
+                        {isExporting ? 'Gerando...' : 'Baixar Planilha'}
+                    </button>
+                </div>
+
+                {/* 3. SUPPORT CARD */}
+                <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden flex flex-col">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <LifeBuoy size={100} />
+                    </div>
+                    <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <AlertCircle className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-brand-gray-900 mb-2">Suporte Técnico</h3>
+                    <p className="text-sm text-brand-gray-500 leading-relaxed mb-6 h-10">
+                        Encontrou um erro ou precisa de acesso? Abra um chamado para a TI.
+                    </p>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); handleOpenTicket(); }}
+                        disabled={ticketSent}
+                        className="mt-auto w-full bg-brand-gray-50 hover:bg-brand-gray-100 text-brand-gray-900 py-3 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 border border-brand-gray-200"
+                    >
+                        {ticketSent ? <CheckCircle2 className="w-4 h-4 text-green-600"/> : <LifeBuoy className="w-4 h-4"/>}
+                        {ticketSent ? 'Chamado Enviado!' : 'Abrir Chamado'}
+                    </button>
+                </div>
+            </div>
+
+            {/* TUTORIALS SECTION */}
+            <div className="pt-8 border-t border-brand-gray-200">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-brand-primary/10 rounded-lg text-brand-primary">
+                        <BookOpen className="w-5 h-5" />
+                    </div>
+                    <h2 className="text-xl font-bold text-brand-gray-900">Tutoriais & Guias Rápidos</h2>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {tutorials.map((t, idx) => {
                         const Icon = t.icon;
                         return (
                             <div 
                                 key={idx}
-                                onClick={() => handleTutorialClick(t)}
-                                className="bg-white p-4 rounded-xl border border-brand-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group active:scale-95"
+                                onClick={() => setAiOpen(true)}
+                                className="flex items-start gap-4 p-4 rounded-xl bg-white border border-brand-gray-100 hover:border-brand-primary/30 hover:shadow-sm cursor-pointer transition-all group"
                             >
-                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${t.colorClass}`}>
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${t.colorClass}`}>
                                     <Icon className="w-5 h-5" />
                                 </div>
-                                <h3 className="font-bold text-brand-gray-900 text-sm mb-1 group-hover:text-brand-primary transition-colors">{t.title}</h3>
-                                <p className="text-xs text-brand-gray-500 leading-relaxed">{t.desc}</p>
-                                <div className="mt-3 flex items-center text-[10px] font-bold text-brand-gray-400 uppercase tracking-wide group-hover:text-brand-primary">
-                                    Ver Tutorial <ChevronRight className="w-3 h-3 ml-1" />
+                                <div>
+                                    <h4 className="font-bold text-brand-gray-900 text-sm group-hover:text-brand-primary transition-colors">{t.title}</h4>
+                                    <p className="text-xs text-brand-gray-500 mt-1 line-clamp-2">{t.desc}</p>
                                 </div>
+                                <ExternalLink className="w-3 h-3 text-brand-gray-300 ml-auto group-hover:text-brand-primary transition-colors" />
                             </div>
                         );
                     })}
-                </div>
-
-                <div className="bg-brand-gray-900 rounded-xl p-5 text-white relative overflow-hidden mt-auto">
-                    <div className="relative z-10">
-                        <h3 className="font-bold text-lg mb-2">Precisa de suporte humano?</h3>
-                        <p className="text-xs text-gray-400 mb-4">Se o assistente virtual não resolver, abra um chamado para TI.</p>
-                        <button 
-                            onClick={handleOpenTicket}
-                            disabled={ticketSent}
-                            className="bg-white text-brand-gray-900 px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-100 transition-colors flex items-center gap-2 disabled:opacity-50"
-                        >
-                            {ticketSent ? 'Abrindo...' : 'Abrir Chamado'}
-                            {ticketSent && <CheckCircle2 className="w-3 h-3 text-green-500"/>}
-                        </button>
-                    </div>
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary rounded-full blur-3xl opacity-20 transform translate-x-10 -translate-y-10"></div>
-                </div>
-            </div>
-
-            {/* RIGHT: AI Chat Interface */}
-            <div className="flex-1 bg-white rounded-2xl shadow-lg border border-brand-gray-200 flex flex-col overflow-hidden relative">
-                {/* Chat Header */}
-                <div className="bg-brand-gray-50 border-b border-brand-gray-100 p-4 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-primary to-brand-dark flex items-center justify-center text-white shadow-lg">
-                            <Bot className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-brand-gray-900 text-sm">Assistente IA</h3>
-                            <p className="text-xs text-brand-gray-500 flex items-center">
-                                <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse"></span>
-                                Online • Gemini 2.5 Flash
-                            </p>
-                        </div>
-                    </div>
-                    <div className="bg-brand-light/10 text-brand-primary px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                        BETA
-                    </div>
-                </div>
-
-                {/* Chat Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white/50 relative">
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
-                    
-                    {messages.map((msg) => (
-                        <div 
-                            key={msg.id} 
-                            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                            <div className={`max-w-[85%] rounded-2xl p-4 shadow-sm text-sm leading-relaxed relative whitespace-pre-wrap
-                                ${msg.role === 'user' 
-                                    ? 'bg-brand-primary text-white rounded-tr-none' 
-                                    : 'bg-brand-gray-100 text-brand-gray-800 rounded-tl-none border border-brand-gray-200'}
-                            `}>
-                                {msg.role === 'model' && (
-                                    <Sparkles className="w-3 h-3 text-brand-primary absolute -top-1.5 -left-1.5 bg-white rounded-full" />
-                                )}
-                                {msg.text}
-                                <span className={`block text-[9px] mt-2 opacity-60 text-right
-                                    ${msg.role === 'user' ? 'text-white' : 'text-brand-gray-500'}
-                                `}>
-                                    {msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                </span>
-                            </div>
-                        </div>
-                    ))}
-                    {isLoading && (
-                        <div className="flex justify-start">
-                            <div className="bg-brand-gray-50 rounded-2xl rounded-tl-none p-4 border border-brand-gray-100 flex items-center gap-2">
-                                <div className="w-2 h-2 bg-brand-gray-400 rounded-full animate-bounce"></div>
-                                <div className="w-2 h-2 bg-brand-gray-400 rounded-full animate-bounce delay-75"></div>
-                                <div className="w-2 h-2 bg-brand-gray-400 rounded-full animate-bounce delay-150"></div>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                </div>
-
-                {/* Chat Input */}
-                <div className="p-4 bg-white border-t border-brand-gray-100">
-                    <div className="relative flex items-center">
-                        <input 
-                            type="text" 
-                            className="w-full bg-brand-gray-50 border border-brand-gray-200 rounded-xl pl-4 pr-12 py-3.5 text-sm focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all shadow-inner"
-                            placeholder="Digite sua dúvida sobre o sistema..."
-                            value={inputText}
-                            onChange={(e) => setInputText(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            disabled={isLoading}
-                        />
-                        <button 
-                            onClick={() => handleSendMessage()}
-                            disabled={!inputText.trim() || isLoading}
-                            className="absolute right-2 p-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
-                        >
-                            <Send className="w-4 h-4" />
-                        </button>
-                    </div>
-                    <p className="text-[10px] text-center text-brand-gray-400 mt-2">
-                        A IA pode cometer erros. Verifique informações críticas com seu gestor.
-                    </p>
                 </div>
             </div>
         </div>

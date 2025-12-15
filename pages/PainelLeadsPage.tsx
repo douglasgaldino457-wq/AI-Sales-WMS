@@ -2,11 +2,202 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
     Activity, Search, Car, Wrench, Shield, AlertCircle, Map as MapIcon, List, 
-    TrendingUp, MousePointerClick, DollarSign, MapPin, CheckCircle2, X, Clock
+    TrendingUp, MousePointerClick, DollarSign, MapPin, CheckCircle2, X, Clock,
+    BarChart2, PieChart as PieIcon, ArrowLeft, Trophy
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { ClientBaseRow, LeadServiceItem, LeadStats } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { 
+    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
+    AreaChart, Area, CartesianGrid, PieChart, Pie, Legend 
+} from 'recharts';
+
+// --- MOCK DATA FOR PORTFOLIO OVERVIEW ---
+const MOCK_PORTFOLIO_DATA = {
+    monthlyTrend: [
+        { month: 'Mai', leads: 420, revenue: 18500 },
+        { month: 'Jun', leads: 480, revenue: 22400 },
+        { month: 'Jul', leads: 510, revenue: 25800 },
+        { month: 'Ago', leads: 490, revenue: 24100 },
+        { month: 'Set', leads: 560, revenue: 29500 },
+        { month: 'Out', leads: 620, revenue: 34200 },
+    ],
+    serviceDistribution: [
+        { name: 'Sinistro (SIN)', value: 45, color: '#F59E0B' },
+        { name: 'Guincho (SIR)', value: 30, color: '#3B82F6' },
+        { name: 'Manutenção (CAM)', value: 25, color: '#EC4899' },
+    ],
+    topPerformers: [
+        { name: 'Auto Center Paulista', conversion: 82, revenue: 12500 },
+        { name: 'Mecânica do Alemão', conversion: 78, revenue: 9800 },
+        { name: 'Oficina Premium', conversion: 75, revenue: 8900 },
+        { name: 'Centro Automotivo ZS', conversion: 71, revenue: 7500 },
+        { name: 'Fast Repair', conversion: 68, revenue: 6200 },
+    ]
+};
+
+const PortfolioOverview: React.FC = () => {
+    return (
+        <div className="space-y-6 animate-fade-in">
+            {/* KPI ROW */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Leads Totais (Mês)</p>
+                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">620</p>
+                        <span className="text-xs text-green-600 font-bold flex items-center mt-1">
+                            <TrendingUp size={12} className="mr-1"/> +12% vs mês anterior
+                        </span>
+                    </div>
+                    <div className="p-3 bg-brand-primary/10 text-brand-primary rounded-xl">
+                        <MousePointerClick size={24} />
+                    </div>
+                </div>
+                
+                <div className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Receita Gerada</p>
+                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">R$ 34.2k</p>
+                        <span className="text-xs text-green-600 font-bold flex items-center mt-1">
+                            <TrendingUp size={12} className="mr-1"/> +15% vs mês anterior
+                        </span>
+                    </div>
+                    <div className="p-3 bg-green-50 text-green-600 rounded-xl">
+                        <DollarSign size={24} />
+                    </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Conversão Média</p>
+                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">68.5%</p>
+                        <span className="text-xs text-brand-gray-400 font-medium mt-1">
+                            Média da carteira
+                        </span>
+                    </div>
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                        <Activity size={24} />
+                    </div>
+                </div>
+            </div>
+
+            {/* CHARTS ROW */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Trend Chart */}
+                <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm lg:col-span-2 flex flex-col h-[350px]">
+                    <h3 className="font-bold text-brand-gray-900 mb-6 flex items-center gap-2">
+                        <BarChart2 className="w-5 h-5 text-brand-primary" /> Tendência de Receita & Leads
+                    </h3>
+                    {/* Fixed Height Wrapper to prevent Recharts -1 error */}
+                    <div style={{ width: '100%', height: '250px', minWidth: '0' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={MOCK_PORTFOLIO_DATA.monthlyTrend}>
+                                <defs>
+                                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.1}/>
+                                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                                    </linearGradient>
+                                    <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#F3123C" stopOpacity={0.1}/>
+                                        <stop offset="95%" stopColor="#F3123C" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6B7280'}} />
+                                <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6B7280'}} tickFormatter={(val) => `R$${val/1000}k`} />
+                                <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6B7280'}} />
+                                <Tooltip 
+                                    contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
+                                    labelStyle={{fontWeight: 'bold', color: '#111827'}}
+                                />
+                                <Legend />
+                                <Area yAxisId="left" type="monotone" dataKey="revenue" name="Receita (R$)" stroke="#10B981" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={2} />
+                                <Area yAxisId="right" type="monotone" dataKey="leads" name="Leads (Qtd)" stroke="#F3123C" fillOpacity={1} fill="url(#colorLeads)" strokeWidth={2} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Distribution Chart */}
+                <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm flex flex-col h-[350px]">
+                    <h3 className="font-bold text-brand-gray-900 mb-2 flex items-center gap-2">
+                        <PieIcon className="w-5 h-5 text-brand-primary" /> Mix de Serviços
+                    </h3>
+                    {/* Fixed Height Wrapper to prevent Recharts -1 error */}
+                    <div style={{ width: '100%', height: '250px', minWidth: '0', position: 'relative' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={MOCK_PORTFOLIO_DATA.serviceDistribution}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={60}
+                                    outerRadius={80}
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                >
+                                    {MOCK_PORTFOLIO_DATA.serviceDistribution.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend verticalAlign="bottom" height={36}/>
+                            </PieChart>
+                        </ResponsiveContainer>
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center -mt-4">
+                            <span className="text-3xl font-bold text-brand-gray-900">100%</span>
+                            <span className="block text-[10px] text-brand-gray-400 uppercase">Distribuição</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Ranking Table */}
+            <div className="bg-white rounded-2xl border border-brand-gray-100 shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-brand-gray-100 bg-brand-gray-50 flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-yellow-500" />
+                    <h3 className="font-bold text-brand-gray-900">Top Oficinas (Performance)</h3>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="text-xs text-brand-gray-500 uppercase bg-white border-b border-brand-gray-100">
+                            <tr>
+                                <th className="px-6 py-3">Ranking</th>
+                                <th className="px-6 py-3">Estabelecimento</th>
+                                <th className="px-6 py-3 text-center">Taxa Conversão</th>
+                                <th className="px-6 py-3 text-right">Receita (Mês)</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-brand-gray-50">
+                            {MOCK_PORTFOLIO_DATA.topPerformers.map((item, idx) => (
+                                <tr key={idx} className="hover:bg-brand-gray-50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                                            idx === 0 ? 'bg-yellow-100 text-yellow-700' : 
+                                            idx === 1 ? 'bg-gray-100 text-gray-700' : 
+                                            idx === 2 ? 'bg-orange-50 text-orange-700' : 'text-gray-500'
+                                        }`}>
+                                            {idx + 1}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 font-bold text-brand-gray-900">{item.name}</td>
+                                    <td className="px-6 py-4 text-center">
+                                        <span className="inline-block px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-bold">
+                                            {item.conversion}%
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-mono text-brand-gray-700">
+                                        R$ {item.revenue.toLocaleString('pt-BR')}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const PainelLeadsPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -87,6 +278,12 @@ const PainelLeadsPage: React.FC = () => {
             );
             setNearbyClients(nearby);
         }
+    };
+
+    const handleClearSelection = () => {
+        setSelectedClient(null);
+        setSearchTerm('');
+        setStats(null);
     };
 
     // Close suggestions on click outside
@@ -197,7 +394,7 @@ const PainelLeadsPage: React.FC = () => {
                     <input 
                         type="text" 
                         className="w-full pl-12 pr-4 py-3 border border-brand-gray-300 rounded-xl text-brand-gray-900 placeholder:text-brand-gray-400 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all shadow-inner"
-                        placeholder="Digite o Nome da Oficina ou ID..."
+                        placeholder="Digite o Nome da Oficina ou ID para ver detalhes..."
                         value={searchTerm}
                         onChange={handleSearch}
                     />
@@ -229,8 +426,13 @@ const PainelLeadsPage: React.FC = () => {
                     {/* Header Info */}
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-brand-gray-900 text-white p-6 rounded-2xl shadow-lg">
                         <div>
-                            <h2 className="text-xl font-bold">{selectedClient.nomeEc}</h2>
-                            <p className="text-sm text-brand-gray-400 mt-1 flex items-center gap-2">
+                            <div className="flex items-center gap-3">
+                                <button onClick={handleClearSelection} className="p-1 bg-white/10 rounded hover:bg-white/20 transition-colors">
+                                    <ArrowLeft size={16} />
+                                </button>
+                                <h2 className="text-xl font-bold">{selectedClient.nomeEc}</h2>
+                            </div>
+                            <p className="text-sm text-brand-gray-400 mt-1 flex items-center gap-2 pl-9">
                                 <MapPin className="w-4 h-4" /> {selectedClient.endereco}
                             </p>
                         </div>
@@ -285,12 +487,13 @@ const PainelLeadsPage: React.FC = () => {
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                {/* Chart */}
-                                <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm lg:col-span-1 flex flex-col">
+                                {/* Chart with fixed height to prevent Recharts error */}
+                                <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm lg:col-span-1 flex flex-col h-[400px]">
                                     <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
                                         <TrendingUp className="w-5 h-5 text-brand-primary" /> Distribuição por Fluxo
                                     </h3>
-                                    <div className="flex-1 min-h-[200px]">
+                                    {/* FIX: Set Explicit Height for ResponsiveContainer Parent */}
+                                    <div style={{ width: '100%', height: '250px', minWidth: '0' }}>
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 30 }}>
                                                 <XAxis type="number" hide />
@@ -439,15 +642,7 @@ const PainelLeadsPage: React.FC = () => {
                     )}
                 </div>
             ) : (
-                <div className="flex flex-col items-center justify-center min-h-[400px] bg-brand-gray-50 rounded-3xl border-2 border-dashed border-brand-gray-200">
-                    <div className="bg-white p-6 rounded-full shadow-sm mb-4">
-                        <Search className="w-10 h-10 text-brand-gray-300" />
-                    </div>
-                    <h3 className="text-lg font-bold text-brand-gray-900">Selecione uma oficina</h3>
-                    <p className="text-brand-gray-500 text-sm max-w-xs text-center mt-1">
-                        Utilize a barra de busca acima para carregar os dados de leads e serviços.
-                    </p>
-                </div>
+                <PortfolioOverview />
             )}
         </div>
     );

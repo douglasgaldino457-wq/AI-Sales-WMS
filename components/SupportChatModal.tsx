@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Image as ImageIcon, Loader2, Bot, User, LifeBuoy, AlertCircle } from 'lucide-react';
+import { X, Send, Image as ImageIcon, Loader2, Bot, User, LifeBuoy, AlertCircle, Paperclip } from 'lucide-react';
 import { SupportTicket, SupportMessage } from '../types';
 import { appStore } from '../services/store';
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
@@ -25,58 +25,112 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Initial Greeting
+    // Initial Setup & Polling
     useEffect(() => {
-        if (isOpen && messages.length === 0) {
-            setMessages([{
-                id: 'init',
-                sender: 'support',
-                text: `Olá, ${currentUser}. Sou o assistente virtual da Logística. Como posso ajudar com a maquininha do cliente ${clientName}?`,
-                timestamp: new Date().toISOString()
-            }]);
+        if (isOpen) {
+            // Check if there is already an open ticket for this client to resume chat
+            // (Simplification: For now, we create a new one or find the last open one)
+            const existingTickets = appStore.getSupportTickets().filter(t => t.clientId === clientId && t.status !== 'RESOLVED');
             
-            // Create a ticket session implicitly or explicitly
-            const newTicketId = `TKT-${Math.floor(Math.random() * 10000)}`;
-            setTicketId(newTicketId);
-            
-            // Register ticket in store
-            const ticket: SupportTicket = {
-                id: newTicketId,
-                clientId,
-                clientName,
-                requesterName: currentUser,
-                requesterRole: currentRole,
-                status: 'OPEN',
-                priority: 'MEDIUM',
-                category: 'Outros',
-                createdAt: new Date().toISOString(),
-                messages: []
-            };
-            appStore.addSupportTicket(ticket);
+            let currentTicketId = '';
+
+            if (existingTickets.length > 0) {
+                // Resume existing
+                const ticket = existingTickets[existingTickets.length - 1]; // Last one
+                setTicketId(ticket.id);
+                currentTicketId = ticket.id;
+                setMessages(ticket.messages);
+            } else {
+                // Create New
+                const newTicketId = `TKT-${Math.floor(Math.random() * 10000)}`;
+                setTicketId(newTicketId);
+                currentTicketId = newTicketId;
+                
+                const initialMsg: SupportMessage = {
+                    id: 'init',
+                    sender: 'support',
+                    text: `Olá, ${currentUser}. Sou o assistente virtual da Logística. Como posso ajudar com a maquininha do cliente ${clientName}?`,
+                    timestamp: new Date().toISOString()
+                };
+
+                const ticket: SupportTicket = {
+                    id: newTicketId,
+                    clientId,
+                    clientName,
+                    requesterName: currentUser,
+                    requesterRole: currentRole,
+                    status: 'OPEN',
+                    priority: 'MEDIUM',
+                    category: 'Outros',
+                    createdAt: new Date().toISOString(),
+                    messages: [initialMsg]
+                };
+                appStore.addSupportTicket(ticket);
+                setMessages([initialMsg]);
+            }
+
+            // Start Polling for new messages (simulating real-time)
+            const interval = setInterval(() => {
+                const updatedTicket = appStore.getSupportTickets().find(t => t.id === currentTicketId);
+                if (updatedTicket) {
+                    setMessages(updatedTicket.messages);
+                }
+            }, 2000);
+
+            return () => clearInterval(interval);
         }
-    }, [isOpen]);
+    }, [isOpen, clientId]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
+    const convertFileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = error => reject(error);
+        });
+    };
+
     const handleSendMessage = async (text?: string, imageFile?: File) => {
         if ((!text && !imageFile) || !ticketId) return;
+
+        let imageUrl: string | undefined = undefined;
+        let cleanBase64 = '';
+
+        if (imageFile) {
+            try {
+                imageUrl = await convertFileToBase64(imageFile);
+                cleanBase64 = imageUrl.split(',')[1];
+            } catch (e) {
+                console.error("Error converting image", e);
+                return;
+            }
+        }
 
         const userMsg: SupportMessage = {
             id: Date.now().toString(),
             sender: 'user',
-            text: text || (imageFile ? 'Enviei uma imagem do erro.' : ''),
+            text: text || (imageFile ? 'Imagem enviada.' : ''),
             timestamp: new Date().toISOString(),
-            imageUrl: imageFile ? URL.createObjectURL(imageFile) : undefined
+            imageUrl: imageUrl
         };
 
+        // Optimistic UI Update
         setMessages(prev => [...prev, userMsg]);
         setInputText('');
         setIsSending(true);
 
-        // --- AI LOGIC ---
+        // PERSIST USER MESSAGE TO STORE
+        appStore.addMessageToTicket(ticketId, userMsg);
+
+        // --- AI LOGIC (Only runs if no human operator has replied recently? For now, always runs as 'First Line') ---
         try {
+            // Check if last message was from support (human), if so, maybe skip AI? 
+            // For this demo, AI always tries to help unless disabled.
+            
             // 1. Prepare Prompt
             let prompt = `
                 Você é um especialista em suporte técnico de maquininhas de cartão (POS).
@@ -90,35 +144,24 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                 Se identificar um erro conhecido na base, forneça a solução passo a passo.
                 Se não souber, peça mais detalhes ou diga que encaminhará para um humano.
                 Se for uma imagem, descreva o erro que vê na tela da maquininha e sugira a solução.
+                Se o usuário enviou apenas uma imagem sem texto, analise a imagem.
             `;
 
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            
             let responseText = '';
 
             if (imageFile) {
-                // Image Analysis
-                const reader = new FileReader();
-                const base64Promise = new Promise<string>((resolve) => {
-                    reader.onload = () => resolve(reader.result as string);
-                    reader.readAsDataURL(imageFile);
-                });
-                const base64Data = await base64Promise;
-                const cleanBase64 = base64Data.split(',')[1];
-
                 const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
                     model: 'gemini-2.5-flash',
                     contents: {
                         parts: [
                             { inlineData: { mimeType: imageFile.type, data: cleanBase64 } },
-                            { text: prompt + " \n\n[Analise a imagem anexada]" }
+                            { text: prompt + " \n\n[Analise a imagem anexada e identifique o erro na tela da maquininha]" }
                         ]
                     }
                 }));
                 responseText = response.text || "Não consegui analisar a imagem.";
-
             } else {
-                // Text Analysis
                 const chat = ai.chats.create({
                     model: 'gemini-2.5-flash',
                     config: { systemInstruction: prompt },
@@ -137,19 +180,14 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                 text: responseText,
                 timestamp: new Date().toISOString()
             };
-            setMessages(prev => [...prev, aiMsg]);
-
-            // Update Ticket in Store
-            // In a real app, we would append messages properly
             
+            // PERSIST AI MESSAGE TO STORE
+            appStore.addMessageToTicket(ticketId, aiMsg);
+            setMessages(prev => [...prev, aiMsg]); // Update local too just in case poll is slow
+
         } catch (error) {
             console.error("AI Support Error", error);
-            setMessages(prev => [...prev, {
-                id: Date.now().toString(),
-                sender: 'support',
-                text: "Estou com dificuldade de conexão. Um analista humano assumirá em breve.",
-                timestamp: new Date().toISOString()
-            }]);
+            // Don't show error to user, just let them wait for human or retry
         } finally {
             setIsSending(false);
         }
@@ -174,7 +212,9 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                         </div>
                         <div>
                             <h3 className="font-bold text-sm">Suporte Logística</h3>
-                            <p className="text-xs text-brand-gray-400">Atendimento Inteligente</p>
+                            <p className="text-xs text-brand-gray-400">
+                                {ticketId ? `Ticket #${ticketId}` : 'Atendimento Inteligente'}
+                            </p>
                         </div>
                     </div>
                     <button onClick={onClose} className="text-brand-gray-400 hover:text-white"><X size={20}/></button>
@@ -192,11 +232,13 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                                     : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
                             }`}>
                                 {msg.sender === 'ai' && <Bot className="w-3 h-3 absolute -top-1.5 -left-1.5 bg-purple-600 text-white rounded-full p-0.5" />}
+                                {msg.sender === 'support' && <User className="w-3 h-3 absolute -top-1.5 -left-1.5 bg-blue-600 text-white rounded-full p-0.5" />}
+                                
                                 {msg.imageUrl && (
-                                    <img src={msg.imageUrl} alt="Upload" className="w-full h-32 object-cover rounded-lg mb-2" />
+                                    <img src={msg.imageUrl} alt="Anexo" className="w-full h-32 object-cover rounded-lg mb-2 border border-white/20" />
                                 )}
                                 <p className="whitespace-pre-wrap">{msg.text}</p>
-                                <span className="text-[9px] opacity-60 block text-right mt-1">
+                                <span className={`text-[9px] block text-right mt-1 ${msg.sender === 'user' ? 'text-white/60' : 'text-gray-400'}`}>
                                     {new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                                 </span>
                             </div>
@@ -221,7 +263,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                         className="p-2 text-gray-400 hover:text-brand-primary hover:bg-gray-100 rounded-lg transition-colors"
                         title="Enviar Foto do Erro"
                     >
-                        <ImageIcon size={20} />
+                        <Paperclip size={20} />
                         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                     </button>
                     <div className="flex-1 relative">

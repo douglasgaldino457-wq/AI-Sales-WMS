@@ -2,13 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
     Truck, BarChart2, TrendingUp, AlertTriangle, CheckCircle2, 
-    Calendar, Users, Map, Package, Activity, Smartphone
+    Calendar, Users, Map, Package, Activity, Smartphone, Search
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { PosDevice, SupportTicket } from '../types';
 import { 
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
 } from 'recharts';
+import { InventoryModal } from '../components/InventoryModal';
 
 const LogisticaDashboardPage: React.FC = () => {
     // State
@@ -19,6 +20,10 @@ const LogisticaDashboardPage: React.FC = () => {
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [selectedConsultant, setSelectedConsultant] = useState('Todos');
     const [selectedRegion, setSelectedRegion] = useState('Todas');
+
+    // Modal State
+    const [selectedDevice, setSelectedDevice] = useState<PosDevice | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         setInventory(appStore.getPosInventory());
@@ -66,6 +71,20 @@ const LogisticaDashboardPage: React.FC = () => {
     const openTickets = tickets.filter(t => t.status !== 'RESOLVED').length;
     const resolvedTickets = tickets.filter(t => t.status === 'RESOLVED').length;
 
+    // Search Logic
+    const handleSearch = () => {
+        if (!searchTerm) return;
+        const device = inventory.find(p => 
+            p.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            p.rcNumber.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        if (device) {
+            setSelectedDevice(device);
+        } else {
+            alert("Dispositivo não encontrado.");
+        }
+    };
+
     return (
         <div className="space-y-6 max-w-7xl mx-auto pb-20">
             <header className="flex flex-col md:flex-row justify-between items-end gap-4">
@@ -77,31 +96,36 @@ const LogisticaDashboardPage: React.FC = () => {
                     <p className="text-brand-gray-600 mt-1">Monitoramento de ativos, estoque e saúde da base instalada.</p>
                 </div>
                 
-                {/* Filters */}
-                <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-brand-gray-200 shadow-sm">
-                    <div className="flex items-center gap-2 px-2">
-                        <Calendar className="w-4 h-4 text-brand-gray-400" />
-                        <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="text-xs font-bold outline-none" />
-                        <span className="text-gray-300">-</span>
-                        <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="text-xs font-bold outline-none" />
+                {/* Search & Filters */}
+                <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            placeholder="Buscar Serial ou RC..." 
+                            className="pl-9 pr-3 py-2 text-xs border border-brand-gray-300 rounded-lg focus:ring-1 focus:ring-brand-primary outline-none w-full md:w-48"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                        />
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-400 cursor-pointer" onClick={handleSearch} />
                     </div>
-                    <div className="w-px h-6 bg-brand-gray-200"></div>
-                    <div className="flex items-center gap-2 px-2">
-                        <Users className="w-4 h-4 text-brand-gray-400" />
-                        <select className="text-xs font-bold outline-none bg-transparent" value={selectedConsultant} onChange={e => setSelectedConsultant(e.target.value)}>
-                            <option value="Todos">Todos Consultores</option>
-                            <option value="Cleiton Freitas">Cleiton Freitas</option>
-                            <option value="Samuel de Paula">Samuel de Paula</option>
-                        </select>
-                    </div>
-                    <div className="w-px h-6 bg-brand-gray-200"></div>
-                    <div className="flex items-center gap-2 px-2">
-                        <Map className="w-4 h-4 text-brand-gray-400" />
-                        <select className="text-xs font-bold outline-none bg-transparent" value={selectedRegion} onChange={e => setSelectedRegion(e.target.value)}>
-                            <option value="Todas">Todas Regiões</option>
-                            <option value="Zona Sul SP">Zona Sul SP</option>
-                            <option value="Zona Norte SP">Zona Norte SP</option>
-                        </select>
+
+                    <div className="flex flex-wrap gap-2 bg-white p-2 rounded-xl border border-brand-gray-200 shadow-sm">
+                        <div className="flex items-center gap-2 px-2">
+                            <Calendar className="w-4 h-4 text-brand-gray-400" />
+                            <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="text-xs font-bold outline-none" />
+                            <span className="text-gray-300">-</span>
+                            <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="text-xs font-bold outline-none" />
+                        </div>
+                        <div className="w-px h-6 bg-brand-gray-200"></div>
+                        <div className="flex items-center gap-2 px-2">
+                            <Users className="w-4 h-4 text-brand-gray-400" />
+                            <select className="text-xs font-bold outline-none bg-transparent" value={selectedConsultant} onChange={e => setSelectedConsultant(e.target.value)}>
+                                <option value="Todos">Todos Consultores</option>
+                                <option value="Cleiton Freitas">Cleiton Freitas</option>
+                                <option value="Samuel de Paula">Samuel de Paula</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -150,16 +174,39 @@ const LogisticaDashboardPage: React.FC = () => {
                 
                 {/* 1. STOCK BREAKDOWN */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100 flex flex-col h-[400px]">
-                    <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
-                        <Package className="w-5 h-5 text-brand-primary" /> Distribuição de Estoque
-                    </h3>
-                    <div className="flex-1">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                            <Package className="w-5 h-5 text-brand-primary" /> Distribuição de Estoque
+                        </h3>
+                        <span className="text-[10px] text-gray-400 italic">Clique na barra para detalhes</span>
+                    </div>
+                    {/* FIX: Set Explicit Height for ResponsiveContainer Parent */}
+                    <div style={{ width: '100%', height: '300px', minWidth: '0' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={stockChartData} layout="vertical" margin={{ left: 20, right: 20 }}>
                                 <XAxis type="number" hide />
                                 <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11}} axisLine={false} tickLine={false} />
                                 <Tooltip cursor={{fill: 'transparent'}} />
-                                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={30}>
+                                <Bar 
+                                    dataKey="value" 
+                                    radius={[0, 4, 4, 0]} 
+                                    barSize={30}
+                                    onClick={(data) => {
+                                        // Mock: when clicking a bar, open first item of that type
+                                        // In real app, this would filter a list
+                                        const typeMap: Record<string, string> = {
+                                            'Estoque Central': 'InStock',
+                                            'Em Campo (Cons.)': 'WithField',
+                                            'Instalado (EC)': 'Active',
+                                            'Defeito/Troca': 'Defective',
+                                            'Triagem': 'Triage'
+                                        };
+                                        const status = typeMap[data.name];
+                                        const sample = inventory.find(p => p.status === status);
+                                        if (sample) setSelectedDevice(sample);
+                                    }}
+                                    className="cursor-pointer hover:opacity-80"
+                                >
                                     {stockChartData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={entry.color} />
                                     ))}
@@ -174,7 +221,8 @@ const LogisticaDashboardPage: React.FC = () => {
                     <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
                         <Smartphone className="w-5 h-5 text-brand-primary" /> Eficiência da Base Instalada
                     </h3>
-                    <div className="flex-1">
+                    {/* FIX: Set Explicit Height for ResponsiveContainer Parent */}
+                    <div style={{ width: '100%', height: '300px', minWidth: '0' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
@@ -204,6 +252,13 @@ const LogisticaDashboardPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Inventory Details Modal */}
+            <InventoryModal 
+                isOpen={!!selectedDevice} 
+                onClose={() => setSelectedDevice(null)} 
+                device={selectedDevice} 
+            />
         </div>
     );
 };
