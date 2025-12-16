@@ -7,21 +7,20 @@ export enum UserRole {
   LOGISTICA = 'Logística',
   ADMIN = 'Backoffice',
   FINANCEIRO = 'Financeiro',
-  QUALIDADE = 'Qualidade (CX)',
+  QUALIDADE = 'Qualidade',
 }
 
 export enum Page {
   DASHBOARD = 'Dashboard',
   AGENDAMENTOS = 'Agendamentos', // Inside & Field
-  VISITAS = 'Visitas', // Field
   ROTAS = 'Rotas', // Field
   CONFIGURACAO = 'Configuração', // Gestor
   USUARIOS = 'Usuários', // Gestor
   BASE_CLIENTES = 'Base de Clientes', // All
   DASHBOARD_GERAL = 'Dashboard Geral', // Gestor
   MAPA_GESTAO = 'Mapa de Gestão', // Gestor
-  PRICING = 'Pricing',
-  CADASTRO = 'Cadastro', // Sales (Submit only)
+  CADASTRO_PRICING = 'Cadastro & Pricing', // UNIFICADO (Antigo Pricing + Cadastro)
+  // CADASTRO = 'Cadastro', // REMOVIDO - Unificado acima
   AJUDA = 'Ajuda & IA', // New Page
   PRICING_DASHBOARD = 'Dash Pricing', // New
   MESA_NEGOCIACAO = 'Mesa Negociação', // New
@@ -91,14 +90,7 @@ export interface AppNotification {
     read: boolean;
 }
 
-export interface Client {
-  id: string;
-  name: string;
-  address: string;
-  status: 'Active' | 'Lead' | 'Inactive';
-  lastVisit?: string;
-}
-
+// Visit Type used by Route Optimizer
 export interface Visit {
   id: string;
   clientName: string;
@@ -209,13 +201,27 @@ export interface ClientNote {
 
 // --- NEW TYPES FOR PRICING & REGISTRATION ---
 
-export type DemandActionType = 'Desativação de POS' | 'Troca de POS' | 'Alteração Bancária' | 'Alteração de Taxas' | 'Alteração Cadastral' | 'Outros';
+export type DemandActionType = 
+    'Desativação de POS' | 
+    'Troca de POS' | 
+    'Alteração Bancária' | 
+    'Alteração Cadastral' | 
+    'Solicitação de Material' | // NEW
+    'Envio de POS (Novo Cliente)' | // NEW INSIDE
+    'Retirada de POS (Logística)'; // NEW INSIDE
 
 export interface HistoryLog {
     date: string;
     user: string;
     action: string;
     details?: string;
+}
+
+export interface MaterialRequestData {
+    posQuantity: number;
+    coils?: boolean;
+    chargers?: boolean;
+    gifts?: boolean; // Brindes
 }
 
 export interface ManualDemand {
@@ -225,7 +231,7 @@ export interface ManualDemand {
     clientName: string;
     date: string;
     status: 'Pendente' | 'Em Análise' | 'Concluído' | 'Rejeitado' | 'Aprovado Pricing';
-    adminStatus?: 'Pendente ADM' | 'Em Processamento' | 'Finalizado ADM'; // New Admin Status
+    adminStatus?: 'Pendente ADM' | 'Em Processamento' | 'Finalizado ADM' | 'Aguardando Logística'; // Updated Status
     otp?: string; // New Logistics OTP
     result?: string; // Outcome message
     requester: string;
@@ -247,6 +253,8 @@ export interface ManualDemand {
             approvedAt: string;
         };
     };
+    // Material Specifics
+    materialData?: MaterialRequestData;
 }
 
 export interface BankAccount {
@@ -336,7 +344,7 @@ export interface RegistrationRequest {
 // --- LOGISTICS TYPES ---
 export interface LogisticsTask {
     id: string;
-    type: 'FIELD_ACTIVATION' | 'POS_SHIPMENT' | 'POS_RETRIEVAL' | 'POS_EXCHANGE';
+    type: 'FIELD_ACTIVATION' | 'POS_SHIPMENT' | 'POS_RETRIEVAL' | 'POS_EXCHANGE' | 'MATERIAL_REQUEST';
     status: 'PENDING_SHIPMENT' | 'SHIPPED' | 'READY_FOR_GSURF' | 'COMPLETED' | 'RETURNED';
     
     // Client Info
@@ -363,6 +371,9 @@ export interface LogisticsTask {
     posData?: { serialNumber: string; rcNumber?: string; model?: string; }; // Assigned POS
     allocatedPosList?: PosRequestItem[]; // If multiple
     otp?: string; // Generated OTP code from Gsurf
+    
+    // Material Data
+    materialData?: MaterialRequestData;
 }
 
 export interface PosDevice {
@@ -373,6 +384,12 @@ export interface PosDevice {
     currentHolder: string; // Consultant Name or Client Name or 'Logística'
     lastUpdated: string;
     history?: { date: string; status: string; holder: string; description?: string }[];
+    problemReport?: { // NEW
+        date: string;
+        type: 'Defeito' | 'Sem Carregador' | 'Sem Bobina' | 'Conectividade' | 'Outros';
+        description: string;
+        reportedBy: string;
+    };
 }
 
 export interface SupportTicket {
@@ -411,7 +428,8 @@ export interface TripLog {
     distanceKm: number;
     valueEarned: number;
     vehiclePlate: string;
-    status: 'COMPLETED';
+    status: 'OPEN' | 'COMPLETED' | 'WAITING_MANAGER' | 'WAITING_FINANCE' | 'PAID' | 'REJECTED'; // Updated Status
+    reportId?: string; // Link to report
 }
 
 export interface LeadServiceItem {
@@ -437,6 +455,8 @@ export interface LeadStats {
 
 // --- EXPENSES & REIMBURSEMENT TYPES ---
 export type ExpenseCategory = 'Combustível' | 'Estacionamento' | 'Pedágio' | 'Uber/Táxi' | 'Hospedagem' | 'Alimentação' | 'Outros';
+export type ExpensePaymentMethod = 'CORPORATE_CARD' | 'OWN_MONEY';
+export type ExpenseStatus = 'OPEN' | 'WAITING_MANAGER' | 'WAITING_FINANCE' | 'APPROVED' | 'REJECTED' | 'PAID';
 
 export interface FinanceConfig {
     kmRate: number;
@@ -451,9 +471,12 @@ export interface Expense {
     amount: number;
     establishment: string;
     imageUrl?: string; // Base64 or URL
-    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    status: ExpenseStatus; // Updated status flow
     requesterName: string;
-    isCorporateCard?: boolean;
+    paymentMethod: ExpensePaymentMethod; // New field
+    reimbursable: boolean; // Computed or explicit
+    reportId?: string; // Grouping ID
+    rejectionReason?: string;
     // Fuel Specifics
     fuelDetails?: {
         fuelType: 'Gasolina' | 'Etanol' | 'Diesel' | 'GNV';
@@ -461,4 +484,17 @@ export interface Expense {
         pricePerLiter: number;
     };
     notes?: string;
+}
+
+export interface ExpenseReport {
+    id: string;
+    requesterName: string;
+    period: string; // e.g. "2023-10"
+    createdDate: string;
+    status: 'SUBMITTED_GESTOR' | 'APPROVED_GESTOR' | 'APPROVED_FINANCEIRO' | 'PAID' | 'REJECTED';
+    totalAmount: number;
+    totalReimbursable: number;
+    itemCount: number;
+    history: { date: string; action: string; user: string }[];
+    validationToken?: string; // Generated by Finance on final approval
 }

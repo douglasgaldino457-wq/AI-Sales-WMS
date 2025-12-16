@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-    Search, Server, Download, Filter, ChevronRight, User, Plus, Trash2, Edit, Save, X, Box
+    Search, Download, Filter, ChevronRight, User, Plus, Trash2, Save, X, Box
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { PosDevice } from '../types';

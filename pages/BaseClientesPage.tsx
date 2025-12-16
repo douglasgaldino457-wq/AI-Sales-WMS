@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, FileSpreadsheet, CheckCircle2, Download, Trash2, Search, Filter, X, ChevronLeft, ChevronRight, History, Calendar, MessageSquare, Send, User, Eye, AlertCircle, MapPin, Phone, AlertTriangle, ClipboardList, Briefcase, MapPinned, Zap, MoreVertical, LayoutList, Target, LifeBuoy, Settings, BadgePercent, RefreshCw, Terminal, Database, ArrowRightLeft, FileCheck, Server, ArrowDownCircle, Network, ArrowRight } from 'lucide-react';
 import { UserRole, ClientBaseRow, ClientNote, Page } from '../types';
@@ -200,7 +199,7 @@ const BaseClientesPage: React.FC<BaseClientesPageProps> = ({ role }) => {
           document: selectedClient.id, 
           potential: selectedClient.leadMetadata?.revenuePotential || ''
       }));
-      navigate(Page.PRICING);
+      navigate(Page.CADASTRO_PRICING);
   };
 
   const handleNavigateToLogistics = () => {

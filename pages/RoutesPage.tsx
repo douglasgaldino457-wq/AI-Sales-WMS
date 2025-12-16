@@ -4,8 +4,8 @@ import { appStore } from '../services/store';
 import { Appointment } from '../types';
 import { optimizeRoute } from '../services/geminiService';
 import { 
-    Map as MapIcon, Navigation, CheckSquare, Square, ArrowRight, 
-    Calendar, MapPin, Loader2, ListOrdered, Sparkles, X, User
+    Map as MapIcon, Navigation, CheckSquare, Square, 
+    Calendar, MapPin, Loader2, ListOrdered, Sparkles, User, ArrowRight
 } from 'lucide-react';
 
 const RoutesPage: React.FC = () => {
@@ -29,7 +29,6 @@ const RoutesPage: React.FC = () => {
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
-                console.log("Got location:", pos.coords);
                 setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
             },
             (err) => {
@@ -42,36 +41,56 @@ const RoutesPage: React.FC = () => {
     }
   }, []);
 
-  // Initialize Map
+  // Initialize Map - ONCE
   useEffect(() => {
-      const initMap = () => {
-          const L = (window as any).L;
-          if (!L || !mapRef.current) return;
+      if (!mapRef.current) return;
+      
+      const L = (window as any).L;
+      if (!L) return;
 
-          if (!mapInstance.current) {
-              const startCoords = userLocation ? [userLocation.lat, userLocation.lng] : [-23.5505, -46.6333];
-              
-              const map = L.map(mapRef.current).setView(startCoords, 12);
-              L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                  attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-              }).addTo(map);
-              mapInstance.current = map;
+      // Safe check for existing instance on DOM element
+      const container = mapRef.current as any;
+      if (container._leaflet_id) {
+          container._leaflet_id = null; // Force clear identifier to prevent "Map container is already initialized" error
+      }
+
+      if (mapInstance.current) {
+          mapInstance.current.remove();
+          mapInstance.current = null;
+      }
+
+      const startCoords = userLocation ? [userLocation.lat, userLocation.lng] : [-23.5505, -46.6333];
+      
+      const map = L.map(mapRef.current).setView(startCoords, 12);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; CARTO'
+      }).addTo(map);
+      
+      mapInstance.current = map;
+
+      return () => {
+          if (mapInstance.current) {
+              mapInstance.current.remove();
+              mapInstance.current = null;
           }
       };
-      
-      // Delay slightly to ensure container is ready and location is fetched
-      if (userLocation) {
-          setTimeout(initMap, 500);
-      }
-  }, [userLocation]);
+  }, []); // Run once on mount
 
-  // Update Map Markers when route changes
+  // Update Map Layers/View when data changes
   useEffect(() => {
-      if (!mapInstance.current || !optimizedRoute) return;
+      if (!mapInstance.current) return;
       const L = (window as any).L;
       const map = mapInstance.current;
 
-      // Clear existing layers
+      // Update View Center if Location Found
+      if (userLocation) {
+          // Only pan if we haven't set a route yet to avoid jumping
+          if (!optimizedRoute) {
+              map.setView([userLocation.lat, userLocation.lng], 13);
+          }
+      }
+
+      // Clear existing layers (Markers/Polylines)
       map.eachLayer((layer: any) => {
           if (layer instanceof L.Marker || layer instanceof L.Polyline) {
               map.removeLayer(layer);
@@ -98,33 +117,34 @@ const RoutesPage: React.FC = () => {
       }
 
       // 2. Add Destinations
-      optimizedRoute.forEach((appt, index) => {
-          const client = clients.find(c => c.id === appt.clientId);
-          // Use real coords if available in mock db, else fuzz around start
-          const lat = client?.latitude || (userLocation ? userLocation.lat + (Math.random() * 0.05) : -23.5505);
-          const lng = client?.longitude || (userLocation ? userLocation.lng + (Math.random() * 0.05) : -46.6333);
-          
-          points.push([lat, lng]);
+      if (optimizedRoute) {
+          optimizedRoute.forEach((appt, index) => {
+              const client = clients.find(c => c.id === appt.clientId);
+              const lat = client?.latitude || (userLocation ? userLocation.lat + (Math.random() * 0.05) : -23.5505);
+              const lng = client?.longitude || (userLocation ? userLocation.lng + (Math.random() * 0.05) : -46.6333);
+              
+              points.push([lat, lng]);
 
-          const icon = L.divIcon({
-              className: 'custom-div-icon',
-              html: `<div style="background-color: #F3123C; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${index + 1}</div>`,
-              iconSize: [24, 24],
-              iconAnchor: [12, 12]
+              const icon = L.divIcon({
+                  className: 'custom-div-icon',
+                  html: `<div style="background-color: #F3123C; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${index + 1}</div>`,
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12]
+              });
+
+              L.marker([lat, lng], { icon })
+                .addTo(map)
+                .bindPopup(`<b>${index + 1}. ${appt.clientName}</b><br/>${appt.address}`);
           });
 
-          L.marker([lat, lng], { icon })
-            .addTo(map)
-            .bindPopup(`<b>${index + 1}. ${appt.clientName}</b><br/>${appt.address}`);
-      });
-
-      // 3. Draw Path
-      if (points.length > 1) {
-          const polyline = L.polyline(points, { color: '#3B82F6', weight: 4, opacity: 0.8, dashArray: '10, 10' }).addTo(map);
-          map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+          // 3. Draw Path
+          if (points.length > 1) {
+              const polyline = L.polyline(points, { color: '#3B82F6', weight: 4, opacity: 0.8, dashArray: '10, 10' }).addTo(map);
+              map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+          }
       }
 
-  }, [optimizedRoute, userLocation]);
+  }, [optimizedRoute, userLocation]); // Dependencies for updates
 
   const toggleSelection = (id: string) => {
       setSelectedIds(prev => 
@@ -151,22 +171,18 @@ const RoutesPage: React.FC = () => {
       const selectedVisits = appointments.filter(a => selectedIds.includes(a.id));
       
       try {
-          // Pass User Location Context
           const startContext = userLocation 
             ? `Latitude: ${userLocation.lat}, Longitude: ${userLocation.lng}`
             : 'Sede da Empresa (Centro SP)';
 
-          // The Service now returns an ordered ARRAY of IDs
           const orderedIds = await optimizeRoute(selectedVisits, startContext);
           
-          // Reconstruct the array based on the returned ID order
           const optimized: Appointment[] = [];
           orderedIds.forEach((id: string) => {
               const visit = selectedVisits.find(v => v.id === id);
               if (visit) optimized.push(visit);
           });
           
-          // Add any missing ones (fallback if AI halluncinates ID)
           selectedVisits.forEach(v => {
               if (!optimized.find(o => o.id === v.id)) optimized.push(v);
           });
@@ -174,7 +190,7 @@ const RoutesPage: React.FC = () => {
           setOptimizedRoute(optimized);
       } catch (error) {
           console.error("Erro na otimização", error);
-          setOptimizedRoute(selectedVisits); // Fallback to unordered
+          setOptimizedRoute(selectedVisits); 
       } finally {
           setIsOptimizing(false);
       }
@@ -187,35 +203,26 @@ const RoutesPage: React.FC = () => {
       }
 
       const clients = appStore.getClients();
-
-      // 1. Origin: User Location
       const origin = `${userLocation.lat},${userLocation.lng}`;
 
-      // 2. Helper to get clean coordinates/address
       const getDestinationParam = (appt: Appointment) => {
           const client = clients.find(c => c.id === appt.clientId);
           if (client?.latitude && client?.longitude) {
               return `${client.latitude},${client.longitude}`;
           }
-          // Fallback to address string, encoded
           return encodeURIComponent(appt.address);
       };
 
-      // 3. Destination is the LAST point
       const lastStop = optimizedRoute[optimizedRoute.length - 1];
       const destination = getDestinationParam(lastStop);
 
-      // 4. Waypoints are all points BETWEEN start and end
       let waypoints = '';
       if (optimizedRoute.length > 1) {
           const intermediate = optimizedRoute.slice(0, optimizedRoute.length - 1);
           waypoints = intermediate.map(appt => getDestinationParam(appt)).join('|');
       }
 
-      // 5. Construct URL
-      // https://www.google.com/maps/dir/?api=1&origin=...&destination=...&waypoints=...&travelmode=driving
       let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-      
       if (waypoints) {
           url += `&waypoints=${waypoints}`;
       }
@@ -271,7 +278,6 @@ const RoutesPage: React.FC = () => {
          <div className="w-full lg:w-1/3 flex flex-col bg-white rounded-2xl shadow-lg border border-brand-gray-100 overflow-hidden relative z-10">
              
              {!optimizedRoute ? (
-                 // SELECTION MODE
                  <>
                     <div className="p-4 bg-brand-gray-50 border-b border-brand-gray-100 flex justify-between items-center">
                         <h3 className="font-bold text-brand-gray-800 flex items-center gap-2">
@@ -335,7 +341,6 @@ const RoutesPage: React.FC = () => {
                     </div>
                  </>
              ) : (
-                 // ROUTE RESULT MODE
                  <>
                     <div className="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
                         <h3 className="font-bold text-blue-900 flex items-center gap-2">
@@ -348,10 +353,8 @@ const RoutesPage: React.FC = () => {
                     </div>
                     
                     <div className="flex-1 overflow-y-auto p-4 space-y-0 relative">
-                        {/* Connecting Line */}
                         <div className="absolute left-[27px] top-6 bottom-6 w-0.5 bg-brand-gray-200 z-0"></div>
 
-                        {/* Start Point Item */}
                         <div className="relative z-10 flex gap-4 mb-6 group opacity-70">
                             <div className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm shadow-md shrink-0 border-2 border-white ring-2 ring-green-500/10">
                                 <User size={14} />
@@ -372,11 +375,6 @@ const RoutesPage: React.FC = () => {
                                         <span className="text-[10px] font-bold text-gray-400">{appt.period}</span>
                                     </div>
                                     <p className="text-xs text-gray-500 mt-1 truncate">{appt.address}</p>
-                                    <div className="mt-2 flex justify-end">
-                                        <button className="text-[10px] text-blue-600 font-bold flex items-center hover:underline">
-                                            Ver Detalhes <ArrowRight size={10} className="ml-1"/>
-                                        </button>
-                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -389,7 +387,6 @@ const RoutesPage: React.FC = () => {
          <div className="flex-1 bg-brand-gray-200 rounded-2xl shadow-inner border border-brand-gray-300 relative overflow-hidden group">
              <div ref={mapRef} className="w-full h-full z-0"></div>
              
-             {/* Map Overlay Info */}
              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-white/50 z-[400] text-xs max-w-xs">
                  <p className="font-bold text-brand-gray-900 mb-1 flex items-center gap-1">
                      <MapIcon size={12} className="text-brand-primary"/> Trajeto Inteligente

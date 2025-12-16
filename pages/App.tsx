@@ -11,7 +11,7 @@ import AgendamentosPage from './pages/AgendamentosPage';
 import ConfiguracaoPage from './pages/ConfiguracaoPage';
 import MapaGestaoPage from './pages/MapaGestaoPage';
 import PricingPage from './pages/PricingPage';
-import CadastroPage from './pages/CadastroPage';
+// import CadastroPage from './pages/CadastroPage'; // REMOVIDO ROTA ISOLADA
 import HelpPage from './pages/HelpPage'; 
 import PricingDashboardPage from './pages/PricingDashboardPage';
 import MesaNegociacaoPage from './pages/MesaNegociacaoPage';
@@ -29,11 +29,12 @@ import ProfilePage from './pages/ProfilePage';
 import DespesasPage from './pages/DespesasPage';
 import { Logo } from './components/Logo';
 import { AIAssistant } from './components/AIAssistant';
-import { NotificationToast } from './components/NotificationToast';
-import { User, ArrowRight, RefreshCw, TrendingUp, Truck, ShieldCheck, Mail, Lock, KeyRound, WifiOff, ChevronRight, DollarSign, Star } from 'lucide-react';
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { runWithRetry } from './services/geminiService';
+import { NotificationToast } from './components/NotificationToast'; 
+import { User, ArrowRight, Truck, ShieldCheck, Mail, Lock, KeyRound, WifiOff, ChevronRight, DollarSign, Star } from 'lucide-react';
 import { MOCK_USERS } from './constants';
+
+// Imagem estática otimizada que corresponde ao prompt "futuristic automotive workshop"
+const STATIC_BG_URL = "https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?q=80&w=2574&auto=format&fit=crop";
 
 const App: React.FC = () => {
   const { 
@@ -42,12 +43,8 @@ const App: React.FC = () => {
     currentPage, 
     targetDemandId, 
     bgImage, 
-    isGeneratingBg, 
     login,
-    logout, 
-    navigate,
-    setBgImage, 
-    setGeneratingBg 
+    setBgImage
   } = useAppStore();
 
   const [loginStep, setLoginStep] = useState<'CREDENTIALS' | 'OTP'>('CREDENTIALS');
@@ -63,6 +60,12 @@ const App: React.FC = () => {
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
+    // Set default background if not present
+    if (!bgImage) {
+        setBgImage(STATIC_BG_URL);
+    }
+
     return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
@@ -128,30 +131,10 @@ const App: React.FC = () => {
       }, 1000);
   };
 
-  const generateBackground = async (force = false) => {
-    if (bgImage && !force) return;
-    if (isOffline) return;
-    if (sessionStorage.getItem('gemini_quota_exceeded') === 'true') return;
-    setGeneratingBg(true);
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: 'Wide angle view of a futuristic automotive workshop interior...',
-        }));
-        if (response.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
-            const url = `data:image/png;base64,${response.candidates[0].content.parts[0].inlineData.data}`;
-            setBgImage(url);
-        }
-    } catch (e) { console.error(e); } finally { setGeneratingBg(false); }
-  };
-
-  useEffect(() => { if (!userRole && !bgImage) generateBackground(); }, [userRole, bgImage]);
-
   if (!userRole) {
     return (
-      <div className="min-h-screen flex flex-col md:flex-row relative overflow-hidden transition-all duration-1000 ease-in-out bg-brand-gray-900" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-        <div className={`absolute inset-0 transition-opacity duration-1000 ${bgImage ? 'bg-black/60 backdrop-blur-[4px]' : 'bg-brand-gray-900'}`}></div>
+      <div className="min-h-screen flex flex-col md:flex-row relative overflow-hidden transition-all duration-1000 ease-in-out bg-brand-gray-900" style={{ backgroundImage: `url(${bgImage || STATIC_BG_URL})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
         {isOffline && <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-xs font-bold text-center py-2 z-50"><WifiOff size={14} className="inline mr-2" /> Modo Offline.</div>}
         
         {/* LOGIN FORM */}
@@ -247,8 +230,8 @@ const App: React.FC = () => {
                 {currentPage === Page.AGENDAMENTOS && <AgendamentosPage role={userRole} />}
                 {currentPage === Page.CONFIGURACAO && <ConfiguracaoPage />}
                 {currentPage === Page.MAPA_GESTAO && <MapaGestaoPage />}
-                {currentPage === Page.PRICING && <PricingPage role={userRole} />}
-                {currentPage === Page.CADASTRO && <CadastroPage role={userRole} />}
+                {currentPage === Page.CADASTRO_PRICING && <PricingPage role={userRole} />}
+                {/* REMOVIDO Page.CADASTRO ISOLADO */}
                 {currentPage === Page.PRICING_DASHBOARD && <PricingDashboardPage />}
                 {currentPage === Page.MESA_NEGOCIACAO && <MesaNegociacaoPage />}
                 {currentPage === Page.CONFIG_TAXAS && <ConfigTaxasPage />}

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Search, Filter, Phone, Mail, ArrowUpDown, Power, Edit2, X, CheckCircle2, UserCheck, UserX, Briefcase, ChevronRight, Lock } from 'lucide-react';
 import { UserRole, SystemUser } from '../types';
@@ -43,8 +44,8 @@ const UsuariosPage: React.FC = () => {
   const filterVisibleUsers = (allUsers: SystemUser[], myRole: UserRole | null): SystemUser[] => {
       if (!myRole) return [];
       
-      // Admin and Gestor see everyone
-      if (myRole === UserRole.ADMIN || myRole === UserRole.GESTOR) return allUsers;
+      // Admin, Gestor and Qualidade see everyone
+      if (myRole === UserRole.ADMIN || myRole === UserRole.GESTOR || myRole === UserRole.QUALIDADE) return allUsers;
 
       // Financeiro: Sees people who generate expenses/costs (Sales & Managers)
       if (myRole === UserRole.FINANCEIRO) {
@@ -52,15 +53,6 @@ const UsuariosPage: React.FC = () => {
               u.role === UserRole.FIELD_SALES || 
               u.role === UserRole.INSIDE_SALES || 
               u.role === UserRole.GESTOR
-          );
-      }
-
-      // Qualidade: Sees people who interact with clients (Sales & Logistics)
-      if (myRole === UserRole.QUALIDADE) {
-          return allUsers.filter(u => 
-              u.role === UserRole.FIELD_SALES || 
-              u.role === UserRole.INSIDE_SALES || 
-              u.role === UserRole.LOGISTICA
           );
       }
 
@@ -305,7 +297,7 @@ const UsuariosPage: React.FC = () => {
                       ${user.role === UserRole.LOGISTICA ? 'bg-amber-100 text-amber-800 border-amber-200' : ''}
                       ${user.role === UserRole.ADMIN ? 'bg-gray-100 text-gray-800 border-gray-200' : ''}
                       ${user.role === UserRole.FINANCEIRO ? 'bg-green-100 text-green-800 border-green-200' : ''}
-                      ${user.role === UserRole.QUALIDADE ? 'bg-teal-100 text-teal-800 border-teal-200' : ''}
+                      ${user.role === UserRole.QUALIDADE ? 'bg-cyan-100 text-cyan-800 border-cyan-200' : ''}
                     `}>
                       {user.role}
                     </span>

@@ -249,8 +249,17 @@ export const identifyVehicleByPlate = async (plate: string): Promise<Vehicle | n
     if (!ai) return null;
 
     const prompt = `
-        Com base na placa brasileira "${plate}", gere dados PLAUSÍVEIS de um veículo comum no Brasil.
-        Retorne JSON: { "plate", "make", "model", "year", "color" }.
+        Atue como um simulador de banco de dados veicular brasileiro (DETRAN/FIPE).
+        Com base na placa "${plate}", gere dados PLAUSÍVEIS de um veículo comum no Brasil que corresponda ao padrão da placa.
+        
+        Retorne APENAS um JSON válido com a seguinte estrutura (sem blocos de código):
+        { 
+            "plate": "${plate}", 
+            "make": "Marca (ex: Volkswagen, Chevrolet)", 
+            "model": "Modelo completo (ex: T-Cross Highline 1.4 TSI)", 
+            "year": "Ano Modelo (ex: 2023)", 
+            "color": "Cor (ex: Branco Cristal)" 
+        }
     `;
 
     try {

@@ -22,10 +22,12 @@ const ProfilePage: React.FC = () => {
     const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' });
     const [showPassword, setShowPassword] = useState(false);
     
+    // AI Loading State
+    const [isIdentifying, setIsIdentifying] = useState(false);
+    
     // Feedback State
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
-    const [loadingVehicle, setLoadingVehicle] = useState(false);
 
     useEffect(() => {
         if (currentUser) {
@@ -46,33 +48,35 @@ const ProfilePage: React.FC = () => {
         }));
     };
 
-    const handleAutoFillVehicle = async () => {
+    const handleIdentifyVehicle = async () => {
         if (!vehicleForm.plate || vehicleForm.plate.length < 7) {
-            setErrorMsg("Digite uma placa válida para buscar (7 dígitos).");
+            setErrorMsg("Digite uma placa válida para buscar.");
             return;
         }
+        
+        setIsIdentifying(true);
         setErrorMsg(null);
-        setLoadingVehicle(true);
+        
         try {
-            const info = await identifyVehicleByPlate(vehicleForm.plate);
-            if (info) {
-                setVehicleForm(prev => ({
-                    ...prev,
-                    make: info.make,
-                    model: info.model,
-                    year: info.year,
-                    color: info.color
-                }));
-                setSuccessMsg("Dados do veículo identificados com sucesso!");
+            const result = await identifyVehicleByPlate(vehicleForm.plate);
+            if (result) {
+                setVehicleForm({
+                    ...vehicleForm,
+                    make: result.make,
+                    model: result.model,
+                    year: result.year,
+                    color: result.color
+                });
+                setSuccessMsg("Veículo identificado com IA!");
                 setTimeout(() => setSuccessMsg(null), 3000);
             } else {
-                setErrorMsg("Veículo não identificado na base.");
+                setErrorMsg("Não foi possível identificar o veículo. Tente preencher manualmente.");
             }
         } catch (error) {
             console.error(error);
-            setErrorMsg("Erro ao conectar com serviço de identificação.");
+            setErrorMsg("Erro na identificação.");
         } finally {
-            setLoadingVehicle(false);
+            setIsIdentifying(false);
         }
     };
 
@@ -324,17 +328,16 @@ const ProfilePage: React.FC = () => {
                                                 placeholder="ABC1D23"
                                                 value={vehicleForm.plate}
                                                 onChange={handleVehicleChange}
-                                                className="flex-1 border border-brand-gray-300 rounded-lg px-3 py-2 text-lg font-mono font-bold uppercase tracking-widest text-center focus:ring-1 focus:ring-brand-primary outline-none"
+                                                className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-lg font-mono font-bold uppercase tracking-widest text-center focus:ring-1 focus:ring-brand-primary outline-none"
                                             />
                                             <button 
                                                 type="button"
-                                                onClick={handleAutoFillVehicle}
-                                                disabled={loadingVehicle || !vehicleForm.plate || vehicleForm.plate.length < 7}
-                                                className="bg-brand-gray-900 text-white px-3 rounded-lg hover:bg-black disabled:opacity-50 transition-colors flex items-center justify-center gap-1 shadow-sm"
-                                                title="Buscar dados do veículo (IA)"
+                                                onClick={handleIdentifyVehicle}
+                                                disabled={isIdentifying || !vehicleForm.plate || vehicleForm.plate.length < 7}
+                                                className="bg-brand-primary text-white p-2 rounded-lg disabled:opacity-50 hover:bg-brand-dark transition-colors"
+                                                title="Preencher com IA"
                                             >
-                                                {loadingVehicle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                                                <span className="text-xs font-bold">Autopreencher</span>
+                                                {isIdentifying ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
                                             </button>
                                         </div>
                                     </div>

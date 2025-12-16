@@ -19,6 +19,7 @@ import { analyzeDocument } from '../services/geminiService';
 
 interface CadastroPageProps {
     role?: UserRole | null;
+    embed?: boolean; // NEW: Allow hiding header for embedded use
 }
 
 const BANKS = [
@@ -390,7 +391,7 @@ const RatesModal: React.FC<{
     );
 };
 
-const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
+const CadastroPage: React.FC<CadastroPageProps> = ({ role, embed = false }) => {
     // VIEW STATE
     const [viewMode, setViewMode] = useState<'LIST' | 'FORM'>('FORM');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -731,13 +732,25 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role }) => {
 
     return (
         <div className="max-w-5xl mx-auto space-y-6 pb-20">
-            <header className="flex justify-between items-center mb-6">
-                <div><h1 className="text-2xl font-bold text-brand-gray-900">Credenciamento</h1><p className="text-brand-gray-600 text-sm">Novo estabelecimento ou acompanhamento.</p></div>
-                <div className="flex space-x-1 bg-brand-gray-200 p-1 rounded-xl">
-                    <button onClick={() => setViewMode('FORM')} className={`px-4 py-2 rounded-lg text-sm font-bold ${viewMode === 'FORM' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-600'}`}>Novo</button>
-                    <button onClick={() => setViewMode('LIST')} className={`px-4 py-2 rounded-lg text-sm font-bold ${viewMode === 'LIST' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-600'}`}>Histórico</button>
-                </div>
-            </header>
+            {/* Conditional Header based on embed state */}
+            {!embed && (
+                <header className="flex justify-between items-center mb-6">
+                    <div><h1 className="text-2xl font-bold text-brand-gray-900">Credenciamento</h1><p className="text-brand-gray-600 text-sm">Novo estabelecimento ou acompanhamento.</p></div>
+                    <div className="flex space-x-1 bg-brand-gray-200 p-1 rounded-xl">
+                        <button onClick={() => setViewMode('FORM')} className={`px-4 py-2 rounded-lg text-sm font-bold ${viewMode === 'FORM' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-600'}`}>Novo</button>
+                        <button onClick={() => setViewMode('LIST')} className={`px-4 py-2 rounded-lg text-sm font-bold ${viewMode === 'LIST' ? 'bg-white shadow text-brand-primary' : 'text-brand-gray-600'}`}>Histórico</button>
+                    </div>
+                </header>
+            )}
+
+            {/* If Embedded, show Tabs Controls if needed, or just content */}
+            {embed && viewMode === 'LIST' && (
+                 <div className="flex justify-end mb-4">
+                    <button onClick={() => setViewMode('FORM')} className="bg-brand-gray-900 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-black transition-colors flex items-center gap-2">
+                        <Plus className="w-4 h-4"/> Novo Cadastro
+                    </button>
+                 </div>
+            )}
 
             {viewMode === 'FORM' && (
                 <>

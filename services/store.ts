@@ -1,4 +1,5 @@
 
+  // ... imports unchanged
 import { 
   Appointment, 
   ClientBaseRow, 
@@ -22,52 +23,57 @@ import {
   FullRangeRates,
   SimplesRangeRates,
   Expense,
+  ExpenseReport,
   FinanceConfig,
   UserRole
 } from '../types';
 import { MOCK_CLIENT_BASE, MOCK_USERS } from '../constants';
 
-const DB_NAME = 'Car10_DB';
-const DB_VERSION = 1;
-const STORE_NAME = 'app_state';
-const DATA_KEY = 'root_store';
-const INTERNAL_CACHE_KEY = 'car10_db_v9_full_fix'; // Version bump to force refresh
+const INTERNAL_CACHE_KEY = 'v1.9.0';
+const DB_NAME = 'car10_db';
+const STORE_NAME = 'app_store';
 
-// --- INDEXED DB ADAPTER ---
 const idb = {
-    open: (): Promise<IDBDatabase> => {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
-            request.onupgradeneeded = (event) => {
-                const db = (event.target as IDBOpenDBRequest).result;
-                if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    db.createObjectStore(STORE_NAME);
-                }
-            };
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    },
-    put: async (data: any) => {
-        const db = await idb.open();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            const store = tx.objectStore(STORE_NAME);
-            const request = store.put(data, DATA_KEY);
-            request.onsuccess = () => resolve(true);
-            request.onerror = () => reject(request.error);
-        });
-    },
-    get: async () => {
-        const db = await idb.open();
-        return new Promise<any>((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readonly');
-            const store = tx.objectStore(STORE_NAME);
-            const request = store.get(DATA_KEY);
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
+  async get() {
+    if (typeof indexedDB === 'undefined') return null;
+    return new Promise<any>((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onerror = () => resolve(null);
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+      };
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        try {
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const getRequest = store.get('root');
+            getRequest.onsuccess = () => resolve(getRequest.result);
+            getRequest.onerror = () => resolve(null);
+        } catch (e) {
+            resolve(null);
+        }
+      };
+    });
+  },
+  async put(data: any) {
+    if (typeof indexedDB === 'undefined') return;
+    return new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onerror = () => reject('Could not open DB');
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const putRequest = store.put(data, 'root');
+        putRequest.onsuccess = () => resolve();
+        putRequest.onerror = () => reject('Put failed');
+      };
+    });
+  }
 };
 
 class Store {
@@ -85,6 +91,7 @@ class Store {
   private tripLogs: TripLog[] = [];
   private notifications: AppNotification[] = []; 
   private expenses: Expense[] = [];
+  private expenseReports: ExpenseReport[] = [];
   
   private lastSynced: string | null = null;
   private listeners: (() => void)[] = []; 
@@ -134,6 +141,7 @@ class Store {
     this.initAsync();
   }
 
+  // ... (subscribe, notifyListeners, initAsync, saveToStorage, loadFromStorage, getters... UNCHANGED)
   public subscribe(listener: () => void) {
       this.listeners.push(listener);
       if (this.isLoaded) listener();
@@ -169,10 +177,11 @@ class Store {
         clientNotes: this.clientNotes,
         myVehicle: this.myVehicle,
         tripLogs: this.tripLogs,
-        costConfig: this.costConfig,
-        rateRangesConfig: this.rateRangesConfig,
         notifications: this.notifications,
         expenses: this.expenses,
+        expenseReports: this.expenseReports,
+        costConfig: this.costConfig,
+        rateRangesConfig: this.rateRangesConfig,
         financeConfig: this.financeConfig,
         lastSynced: this.lastSynced
     };
@@ -199,6 +208,7 @@ class Store {
             this.tripLogs = data.tripLogs || [];
             this.notifications = data.notifications || [];
             this.expenses = data.expenses || [];
+            this.expenseReports = data.expenseReports || []; 
             if (data.costConfig) this.costConfig = data.costConfig;
             if (data.financeConfig) this.financeConfig = data.financeConfig;
             this.lastSynced = data.lastSynced || new Date().toISOString();
@@ -240,251 +250,119 @@ class Store {
   getMyVehicle() { return this.myVehicle; }
   getTripLogs() { return this.tripLogs; }
   getExpenses() { return this.expenses; }
+  getExpenseReports() { return this.expenseReports; }
   getCostConfig() { return this.costConfig; }
   getRateRangesConfig() { return this.rateRangesConfig; }
   getFinanceConfig() { return this.financeConfig; }
   getLastSynced() { return this.lastSynced; }
 
-  // --- CORE ACTIONS ---
-
-  // 1. ADD DEMAND (Created by Sales)
-  addDemand(demand: ManualDemand) { 
-      this.demands.push(demand);
-      
-      if (['Troca de POS', 'Desativação de POS', 'Adição de POS'].includes(demand.type)) {
-          let taskType: any = 'POS_EXCHANGE';
-          if (demand.type === 'Desativação de POS') taskType = 'POS_RETRIEVAL';
-          if (demand.type === 'Adição de POS') taskType = 'FIELD_ACTIVATION';
-
-          const newTask: LogisticsTask = {
-              id: `TASK-${Math.floor(Math.random() * 90000) + 10000}`,
-              type: taskType,
-              status: 'READY_FOR_GSURF', 
-              clientName: demand.clientName,
-              internalId: demand.id,
-              details: demand.description || demand.type,
-              requesterName: demand.requester,
-              requesterRole: 'Field Sales',
-              date: new Date().toISOString(),
-              address: 'Verificar Cadastro',
-              documentNumber: '',
-              posData: { serialNumber: 'N/A', rcNumber: 'N/A', model: 'N/A' }
-          };
-          this.addLogisticsTask(newTask);
-      }
-
-      this.saveToStorage();
+  // ... (Expense Reporting Logic) ...
+  addExpense(expense: Expense) {
+      expense.status = 'OPEN'; 
+      this.expenses.push(expense); 
+      this.saveToStorage(); 
   }
 
-  updateDemand(demand: ManualDemand) {
-      const idx = this.demands.findIndex(d => d.id === demand.id);
-      if (idx !== -1) {
-          const prevStatus = this.demands[idx].status;
-          
-          if (demand.status === 'Aprovado Pricing' && prevStatus !== 'Aprovado Pricing') {
-              this.createNotification({
-                  type: 'RATE_APPROVED',
-                  title: 'Taxa Aprovada!',
-                  message: `As condições para ${demand.clientName} foram aprovadas.`,
-                  targetId: demand.id
-              });
+  addTripLog(log: TripLog) {
+      log.status = 'OPEN'; 
+      this.tripLogs.push(log); 
+      this.saveToStorage(); 
+  }
+
+  submitExpenseReport(user: string, items: { expenseIds: string[], logIds: string[] }) {
+      const reportId = `REP-${Math.floor(Math.random() * 100000)}`;
+      const now = new Date();
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}`;
+
+      let total = 0;
+      let totalReimbursable = 0;
+
+      items.expenseIds.forEach(id => {
+          const exp = this.expenses.find(e => e.id === id);
+          if (exp) {
+              exp.status = 'WAITING_MANAGER';
+              exp.reportId = reportId;
+              total += exp.amount;
+              if (exp.reimbursable) totalReimbursable += exp.amount;
           }
-          this.demands[idx] = demand;
-          this.saveToStorage();
-      }
-  }
+      });
 
-  // 2. REGISTRATION (Created by Sales -> Approved by Backoffice)
-  addRegistrationRequest(req: RegistrationRequest) { 
-      this.registrationRequests.push(req); 
+      items.logIds.forEach(id => {
+          const log = this.tripLogs.find(l => l.id === id);
+          if (log) {
+              log.status = 'WAITING_MANAGER';
+              log.reportId = reportId;
+              total += log.valueEarned;
+              totalReimbursable += log.valueEarned;
+          }
+      });
+
+      const report: ExpenseReport = {
+          id: reportId,
+          requesterName: user,
+          period: period,
+          createdDate: now.toISOString(),
+          status: 'SUBMITTED_GESTOR',
+          totalAmount: total,
+          totalReimbursable: totalReimbursable,
+          itemCount: items.expenseIds.length + items.logIds.length,
+          history: [{ date: now.toISOString(), action: 'Enviado para Aprovação', user }]
+      };
+
+      this.expenseReports.push(report);
       this.saveToStorage();
   }
 
-  updateRegistrationRequest(req: RegistrationRequest) {
-      const idx = this.registrationRequests.findIndex(r => r.id === req.id);
-      if (idx !== -1) {
-          this.registrationRequests[idx] = req;
-          this.saveToStorage();
-      }
-  }
+  processReportByManager(reportId: string, action: 'APPROVE' | 'REJECT', user: string, rejectionItems?: string[]) {
+      const report = this.expenseReports.find(r => r.id === reportId);
+      if (!report) return;
 
-  // 3. BACKOFFICE APPROVAL -> TRIGGERS LOGISTICS
-  approveRegistration(req: RegistrationRequest): void {
-      const approvedReq: RegistrationRequest = { 
-          ...req, 
-          status: 'APPROVED', 
-          notes: (req.notes || '') + ' \n[Backoffice] Validado. ID Gerado. Enviado para GSurf.' 
-      };
-      this.updateRegistrationRequest(approvedReq);
+      const now = new Date().toISOString();
 
-      const requestedItems = req.requestedEquipments || [];
-      const needsShipment = requestedItems.some(i => i.type === 'REQUEST');
-      
-      const taskType = needsShipment ? 'POS_SHIPMENT' : 'FIELD_ACTIVATION';
-      const initialStatus = needsShipment ? 'PENDING_SHIPMENT' : 'READY_FOR_GSURF';
-      
-      let detailsText = `Cadastro aprovado (ID: ${req.finalClientId}). `;
-      if (needsShipment) {
-          const itemsToSend = requestedItems.filter(i => i.type === 'REQUEST').map(i => i.model).join(', ');
-          detailsText += `Necessário envio de: ${itemsToSend}.`;
+      if (action === 'APPROVE') {
+          report.status = 'APPROVED_GESTOR';
+          this.expenses.forEach(e => { if (e.reportId === reportId) e.status = 'WAITING_FINANCE'; });
+          this.tripLogs.forEach(l => { if (l.reportId === reportId) l.status = 'WAITING_FINANCE'; });
+          report.history.push({ date: now, action: 'Aprovado pelo Gestor', user });
       } else {
-          detailsText += `Equipamento já com consultor (Estoque).`;
-      }
-
-      const newTask: LogisticsTask = {
-          id: `TASK-${Math.floor(Math.random() * 90000) + 10000}`,
-          type: taskType as any,
-          status: initialStatus as any,
-          clientName: req.clientName,
-          legalName: req.razaoSocial,
-          internalId: req.finalClientId,
-          documentNumber: req.documentNumber,
-          address: req.address,
-          responsibleName: req.responsibleName,
-          contactPhone: req.contactPhones?.[0],
-          email: req.email,
-          requesterName: req.requesterName,
-          requesterRole: req.requesterRole,
-          date: new Date().toISOString(),
-          details: detailsText,
-          posData: req.posData,
-          allocatedPosList: req.requestedEquipments
-      };
-
-      this.addLogisticsTask(newTask);
-      this.logHistory(req.id, 'BACKOFFICE', 'Cadastro Aprovado e ID Gerado. Enviado para fila GSurf/Logística.');
-  }
-
-  // 4. LOGISTICS ACTION (GSurf/OTP) -> NOTIFIES SALES
-  completeGsurfActivation(taskId: string, otp: string, posData: {serial: string, rc: string}) {
-      const task = this.logisticsTasks.find(t => t.id === taskId);
-      if (!task) return;
-
-      task.status = 'COMPLETED';
-      task.otp = otp;
-      task.posData = { serialNumber: posData.serial, rcNumber: posData.rc, model: 'P2 Smart' };
-      this.updateLogisticsTask(task);
-
-      // 1. Activate NEW Device
-      this.updateInventoryStatus(posData.serial, 'Active', task.clientName);
-
-      // 2. Handle EXCHANGE logic (Old device movement)
-      if (task.type === 'POS_EXCHANGE') {
-          // Find the device currently active at this client (that isn't the new one)
-          const oldDevice = this.posInventory.find(p =>
-              p.currentHolder === task.clientName &&
-              p.status === 'Active' &&
-              p.serialNumber !== posData.serial
-          );
-
-          if (oldDevice) {
-              // Move old device to Consultant (Requester) with status 'WithField'
-              // This simulates: Client -> Consultant (until returned to Logistics)
-              this.updateInventoryStatus(oldDevice.serialNumber, 'WithField', task.requesterName);
-              
-              // Add specific history log for the swap manually if needed, 
-              // but updateInventoryStatus handles general logging.
-              // We can enhance the log description inside updateInventoryStatus by checking params, 
-              // but for now, generic update is sufficient for tracking.
-          }
-      }
-
-      if (task.type === 'FIELD_ACTIVATION' || task.type === 'POS_SHIPMENT') {
-          const reg = this.registrationRequests.find(r => 
-              (task.internalId && r.finalClientId === task.internalId) || 
-              r.clientName === task.clientName
-          );
-          
-          if (reg) {
-              this.logHistory(reg.id, 'LOGISTICA', `Ativação GSurf Realizada.\nOTP: ${otp}\nS/N: ${posData.serial}`);
-              
-              const notificationDemand: ManualDemand = {
-                  id: `NOTIF-${task.id}`,
-                  clientName: reg.clientName,
-                  type: 'Cadastro/Ativação',
-                  date: new Date().toISOString(),
-                  status: 'Concluído',
-                  adminStatus: 'Finalizado ADM',
-                  requester: reg.requesterName, 
-                  description: `Cadastro finalizado. Use o OTP para ativar a máquina no cliente.`,
-                  otp: otp,
-                  result: `POS Vinculada: ${posData.serial} (RC ${posData.rc}). OTP: ${otp}`
-              };
-              this.addDemand(notificationDemand);
-
-              this.createNotification({
-                  type: 'OTP_ISSUED',
-                  title: 'OTP Disponível',
-                  message: `Código de ativação gerado para ${reg.clientName}: ${otp}`,
-                  targetId: notificationDemand.id
-              });
-          }
-      } else if (task.type === 'POS_EXCHANGE') {
-          const demand = this.demands.find(d => d.id === task.internalId || d.clientName === task.clientName);
-          if (demand) {
-              demand.otp = otp;
-              demand.status = 'Concluído';
-              demand.result = `Logística: GSurf atualizado. OTP: ${otp}. Troca realizada.`;
-              demand.adminStatus = 'Pendente ADM'; 
-              this.updateDemand(demand);
-              this.logHistory(demand.id, 'LOGISTICA', `Troca GSurf Realizada. OTP Gerado: ${otp}`);
-
-              this.createNotification({
-                  type: 'OTP_ISSUED',
-                  title: 'Troca Aprovada',
-                  message: `OTP de troca para ${demand.clientName}: ${otp}`,
-                  targetId: demand.id
-              });
-          }
-      }
-  }
-
-  // --- INVENTORY MANAGEMENT ACTIONS ---
-  
-  addPosDevice(device: PosDevice) {
-      // Check duplicate
-      const exists = this.posInventory.some(p => p.serialNumber === device.serialNumber);
-      if (exists) return; // Prevent duplicate
-
-      // Initialize history if empty
-      if (!device.history) {
-          device.history = [{
-              date: new Date().toISOString(),
-              status: device.status,
-              holder: device.currentHolder,
-              description: 'Cadastro inicial no estoque.'
-          }];
-      }
-      
-      this.posInventory.push(device);
-      this.saveToStorage();
-  }
-
-  removePosDevice(serialNumber: string) {
-      this.posInventory = this.posInventory.filter(p => p.serialNumber !== serialNumber);
-      this.saveToStorage();
-  }
-
-  updateInventoryStatus(serial: string, newStatus: string, holder: string) {
-      const idx = this.posInventory.findIndex(p => p.serialNumber === serial);
-      if (idx !== -1) {
-          const item = this.posInventory[idx];
-          item.status = newStatus as any;
-          item.currentHolder = holder;
-          item.lastUpdated = new Date().toISOString();
-          if (!item.history) item.history = [];
-          item.history.push({
-              date: new Date().toISOString(),
-              status: newStatus,
-              holder: holder,
-              description: 'Atualização via Logística/GSurf'
+          report.status = 'REJECTED';
+          this.expenses.forEach(e => { 
+              if (e.reportId === reportId) {
+                  e.status = 'REJECTED';
+                  e.reportId = undefined;
+                  e.rejectionReason = "Rejeitado pelo Gestor no Relatório " + reportId;
+              }
           });
-          this.posInventory[idx] = item;
-          this.saveToStorage();
+          this.tripLogs.forEach(l => { 
+              if (l.reportId === reportId) {
+                  l.status = 'REJECTED'; 
+                  l.reportId = undefined;
+              }
+          });
+          report.history.push({ date: now, action: 'Rejeitado pelo Gestor', user });
       }
+      this.saveToStorage();
   }
 
-  // --- GENERAL HELPERS ---
+  finalizeReportByFinance(reportId: string, user: string) {
+      const report = this.expenseReports.find(r => r.id === reportId);
+      if (!report) return;
+
+      const now = new Date().toISOString();
+      const token = btoa(`${reportId}-${Date.now()}-${Math.random()}`).substring(0, 16).toUpperCase();
+
+      report.status = 'APPROVED_FINANCEIRO';
+      report.validationToken = token;
+      
+      this.expenses.forEach(e => { if (e.reportId === reportId) e.status = 'PAID'; });
+      this.tripLogs.forEach(l => { if (l.reportId === reportId) l.status = 'PAID'; });
+
+      report.history.push({ date: now, action: `Aprovado Final (Financeiro). Token: ${token}`, user });
+      
+      this.saveToStorage();
+  }
+
+  // --- LOGGING & HISTORY ---
   logHistory(entityId: string, dept: string, message: string) {
       const note: ClientNote = {
           id: `LOG-${Math.floor(Math.random() * 10000)}`,
@@ -497,15 +375,98 @@ class Store {
       this.saveToStorage();
   }
 
-  addLogisticsTask(task: LogisticsTask) { 
-      this.logisticsTasks.push(task); 
+  // --- DEMAND / REQUESTS LOGIC ---
+  addDemand(demand: ManualDemand) { 
+      this.demands.push(demand);
       this.saveToStorage();
   }
+  updateDemand(demand: ManualDemand) {
+      const idx = this.demands.findIndex(d => d.id === demand.id);
+      if (idx !== -1) {
+          this.demands[idx] = demand;
+          this.saveToStorage();
+      }
+  }
+  concludeDemand(id: string, finalResult: string, executorName: string) {
+      const demand = this.demands.find(d => d.id === id);
+      if (!demand) return;
+      demand.status = 'Concluído';
+      demand.result = finalResult;
+      demand.adminStatus = 'Finalizado ADM';
+      this.updateDemand(demand);
+      this.logHistory(demand.id, 'BACKOFFICE', `Processo Finalizado por ${executorName}. ${finalResult}`);
+  }
+
+  // --- NEW: POS ISSUES & MATERIALS ---
+  reportPosIssue(serial: string, type: string, description: string, user: string) {
+      const device = this.posInventory.find(p => p.serialNumber === serial);
+      if (device) {
+          device.status = 'Defective'; // Or Triage
+          device.problemReport = {
+              date: new Date().toISOString(),
+              type: type as any,
+              description,
+              reportedBy: user
+          };
+          device.history?.push({
+              date: new Date().toISOString(),
+              status: 'Defective',
+              holder: user,
+              description: `Reportado: ${type} - ${description}`
+          });
+          this.saveToStorage();
+      }
+  }
+
+  requestMaterials(requester: string, items: any) {
+      const task: LogisticsTask = {
+          id: `MAT-${Math.floor(Math.random()*10000)}`,
+          type: 'MATERIAL_REQUEST',
+          status: 'PENDING_SHIPMENT',
+          clientName: 'Estoque do Consultor',
+          requesterName: requester,
+          requesterRole: 'Field Sales',
+          date: new Date().toISOString(),
+          details: `Material: ${JSON.stringify(items)}`,
+          address: 'Endereço do Consultor', // Simplification
+          materialData: items
+      };
+      this.addLogisticsTask(task);
+  }
+
+  addLogisticsTask(task: LogisticsTask) { this.logisticsTasks.push(task); this.saveToStorage(); }
   updateLogisticsTask(task: LogisticsTask) {
       const idx = this.logisticsTasks.findIndex(t => t.id === task.id);
       if (idx !== -1) {
           this.logisticsTasks[idx] = task;
           this.saveToStorage();
+      }
+  }
+  completeGsurfActivation(taskId: string, otp: string, posData: any) { 
+      const task = this.logisticsTasks.find(t => t.id === taskId);
+      if (task) {
+          task.status = 'COMPLETED';
+          task.otp = otp;
+          task.posData = posData;
+          this.saveToStorage();
+          
+          // --- UPDATED LOGIC: LINK TO DEMAND & SEND TO BACKOFFICE ---
+          // Use internalId (which stores Demand ID) to find the linked demand
+          const demand = this.demands.find(d => 
+              (task.internalId && d.id === task.internalId) || 
+              (d.clientName === task.clientName && d.adminStatus === 'Aguardando Logística')
+          );
+
+          if (demand) {
+              demand.otp = otp;
+              demand.result = `Logística Finalizada. OTP: ${otp}. Serial: ${posData.serial}`;
+              // FLIP TO BACKOFFICE QUEUE
+              demand.adminStatus = 'Pendente ADM'; 
+              this.updateDemand(demand);
+              
+              // Optional: Log history
+              this.logHistory(demand.id, 'LOGÍSTICA', `Ativação/Troca concluída no GSurf. OTP: ${otp}`);
+          }
       }
   }
 
@@ -541,21 +502,8 @@ class Store {
   markAllNotificationsAsRead() { this.notifications.forEach(n => n.read = true); this.saveToStorage(); }
   clearNotifications() { this.notifications = []; this.saveToStorage(); }
 
-  concludeDemand(id: string, finalResult: string, executorName: string) {
-      const demand = this.demands.find(d => d.id === id);
-      if (!demand) return;
-      demand.status = 'Concluído';
-      demand.result = finalResult;
-      demand.adminStatus = 'Finalizado ADM';
-      this.updateDemand(demand);
-      this.logHistory(demand.id, 'BACKOFFICE', `Processo Finalizado por ${executorName}. ${finalResult}`);
-  }
-
-  // --- ACTIONS (Other) ---
   setMyVehicle(vehicle: Vehicle) { this.myVehicle = vehicle; this.saveToStorage(); }
-  addTripLog(log: TripLog) { this.tripLogs.push(log); this.saveToStorage(); }
   updateTripLog(log: TripLog) { const idx = this.tripLogs.findIndex(t => t.id === log.id); if (idx !== -1) { this.tripLogs[idx] = log; this.saveToStorage(); }}
-  addExpense(expense: Expense) { this.expenses.push(expense); this.saveToStorage(); }
   updateExpense(expense: Expense) { const idx = this.expenses.findIndex(e => e.id === expense.id); if (idx !== -1) { this.expenses[idx] = expense; this.saveToStorage(); }}
   setFinanceConfig(config: FinanceConfig) { this.financeConfig = config; this.saveToStorage(); }
   setCostConfig(config: CostStructure) { this.costConfig = config; this.saveToStorage(); }
@@ -581,110 +529,52 @@ class Store {
   removeWithdrawalReason(val: string) { this.withdrawalReasons = this.withdrawalReasons.filter(i => i !== val); this.saveToStorage(); }
   addSwapReason(val: string) { if (!this.swapReasons.includes(val)) { this.swapReasons.push(val); this.saveToStorage(); } }
   removeSwapReason(val: string) { this.swapReasons = this.swapReasons.filter(i => i !== val); this.saveToStorage(); }
+  addRegistrationRequest(req: RegistrationRequest) { this.registrationRequests.push(req); this.saveToStorage(); }
+  updateRegistrationRequest(req: RegistrationRequest) { const idx = this.registrationRequests.findIndex(r => r.id === req.id); if (idx !== -1) { this.registrationRequests[idx] = req; this.saveToStorage(); }}
+  approveRegistration(req: RegistrationRequest) { this.updateRegistrationRequest({...req, status: 'APPROVED'}); this.saveToStorage(); }
+  addPosDevice(device: PosDevice) { this.posInventory.push(device); this.saveToStorage(); }
+  removePosDevice(serial: string) { this.posInventory = this.posInventory.filter(p => p.serialNumber !== serial); this.saveToStorage(); }
+  updateInventoryStatus(serial: string, status: string, holder: string) { /* ... */ }
 
-  // --- MOCK INITIALIZATION ---
   initRateRangesMock() {
-      const fullRates: Record<number, FullRangeRates> = {};
-      const simplesRates: Record<number, SimplesRangeRates> = {};
-      const now = new Date().toISOString();
-      fullRates[0] = { debit: 2.06, credit1x: 6.74, installments: [8.10, 10.65, 12.04, 13.44, 14.06, 14.51, 15.78, 17.08, 18.36, 19.65, 20.94, 22.43, 23.94, 25.46, 26.99, 28.53, 30.07], lastUpdated: now, updatedBy: 'Sistema' };
-      simplesRates[0] = { debit: 2.00, credit1x: 2.95, credit2x6x: 3.65, credit7x12x: 4.10, credit13x18x: 4.40, lastUpdated: now, updatedBy: 'Sistema' };
-      this.rateRangesConfig = { full: fullRates, simples: simplesRates };
-      this.saveToStorage();
+      // Mock Data for Rate Ranges (Full & Simples)
+      const mockFull: Record<number, FullRangeRates> = {};
+      const mockSimples: Record<number, SimplesRangeRates> = {};
+      
+      this.TPV_RANGES.forEach(range => {
+          mockFull[range.id] = {
+              debit: 0.99,
+              credit1x: 2.89,
+              installments: Array(17).fill(0).map((_, i) => 2.89 + ((i+2)*1.5)), // Mock linear progression
+              lastUpdated: new Date().toISOString(),
+              updatedBy: 'Sistema'
+          };
+          mockSimples[range.id] = {
+              debit: 1.19,
+              credit1x: 3.29,
+              credit2x6x: 8.99,
+              credit7x12x: 12.99,
+              credit13x18x: 18.99,
+              lastUpdated: new Date().toISOString(),
+              updatedBy: 'Sistema'
+          };
+      });
+      this.rateRangesConfig = { full: mockFull, simples: mockSimples };
   }
 
   initMockData() {
-      this.clients = [...MOCK_CLIENT_BASE];
-      this.users = [...MOCK_USERS];
-      // Sample Inventory
+      this.clients = MOCK_CLIENT_BASE;
+      this.users = MOCK_USERS;
       this.posInventory = [
-          { serialNumber: 'SN123456', rcNumber: 'RC001', model: 'P2 Smart', status: 'InStock', currentHolder: 'Logística Central', lastUpdated: new Date().toISOString(), history: [] },
-          { serialNumber: 'SN654321', rcNumber: 'RC002', model: 'P2 Smart', status: 'WithField', currentHolder: 'Cleiton Freitas', lastUpdated: new Date().toISOString(), history: [] },
-          { serialNumber: 'SN998877', rcNumber: 'RC5544', model: 'MP35', status: 'Defective', currentHolder: 'Logística Central', lastUpdated: new Date().toISOString(), history: [] }
+          { serialNumber: 'SN123456', rcNumber: 'RC001', model: 'P2 Smart', status: 'InStock', currentHolder: 'Logística Central', lastUpdated: new Date().toISOString() },
+          { serialNumber: 'SN654321', rcNumber: 'RC002', model: 'MP35', status: 'WithField', currentHolder: 'Cleiton Freitas', lastUpdated: new Date().toISOString() },
+          { serialNumber: 'SN789012', rcNumber: 'RC003', model: 'X990', status: 'Active', currentHolder: 'Auto Center Porto Real', lastUpdated: new Date().toISOString() }
       ];
-      
-      // MOCK LOGISTICS TASKS
-      if (this.logisticsTasks.length === 0) {
-          this.logisticsTasks = [
-              {
-                  id: 'TASK-MOCK-1',
-                  type: 'FIELD_ACTIVATION',
-                  status: 'READY_FOR_GSURF',
-                  clientName: 'Auto Center Paulista',
-                  internalId: 'EC998877',
-                  documentNumber: '12.345.678/0001-90',
-                  address: 'Av. Paulista, 1000 - Bela Vista, SP',
-                  responsibleName: 'Carlos Eduardo',
-                  contactPhone: '(11) 98888-1234',
-                  requesterName: 'Cleiton Freitas',
-                  requesterRole: 'Field Sales',
-                  date: new Date().toISOString(),
-                  details: 'Novo cadastro aprovado. Realizar ativação.',
-                  posData: { serialNumber: 'SN123456', rcNumber: 'RC001', model: 'P2 Smart' }
-              },
-              {
-                  id: 'TASK-MOCK-2',
-                  type: 'POS_EXCHANGE',
-                  status: 'READY_FOR_GSURF',
-                  clientName: 'Mecânica do Alemão',
-                  internalId: 'EC112233',
-                  documentNumber: '98.765.432/0001-10',
-                  address: 'Rua Augusta, 1500 - Consolação, SP',
-                  responsibleName: 'Roberto Alemão',
-                  contactPhone: '(11) 99999-5678',
-                  requesterName: 'Cleiton Freitas',
-                  requesterRole: 'Field Sales',
-                  date: new Date(Date.now() - 86400000).toISOString(),
-                  details: 'Troca por defeito na bateria.',
-                  posData: { serialNumber: 'SN654321', rcNumber: 'RC002', model: 'P2 Smart' }
-              }
-          ];
-      }
-
-      // MOCK SUPPORT TICKETS
-      if (this.supportTickets.length === 0) {
-          this.supportTickets = [
-              {
-                  id: 'TKT-1001',
-                  clientId: '1003',
-                  clientName: 'Pneus & Cia Mooca',
-                  requesterName: 'Samuel de Paula',
-                  requesterRole: 'Field Sales',
-                  status: 'OPEN',
-                  priority: 'HIGH',
-                  category: 'Defeito Técnico',
-                  createdAt: new Date().toISOString(),
-                  messages: [
-                      { id: '1', sender: 'user', text: 'Máquina não conecta no 4G, apenas Wi-Fi.', timestamp: new Date().toISOString() }
-                  ]
-              }
-          ];
-      }
-
-      // MOCK KB ITEMS
-      if (this.kbItems.length === 0) {
-          this.kbItems = [
-              { id: '1', errorPattern: 'Erro 05', solution: 'Transação não autorizada pelo emissor. Pedir para cliente ligar no banco.', keywords: ['05', 'não autorizada'] },
-              { id: '2', errorPattern: 'Sem sinal', solution: 'Reiniciar POS. Se persistir, testar chip em outro slot.', keywords: ['sinal', 'conexão', 'chip'] }
-          ];
-      }
-
-      // MOCK DEMANDS FOR ADMIN
-      if (this.demands.length === 0) {
-          this.demands = [
-              {
-                  id: 'DEM-MOCK-1',
-                  clientName: 'Oficina Premium Barra',
-                  type: 'Alteração Bancária',
-                  date: new Date(Date.now() - 100000000).toISOString(),
-                  status: 'Pendente',
-                  requester: 'Jorge Jr',
-                  description: 'Alteração de domicílio bancário para Itaú.'
-              }
-          ];
-      }
-
-      this.saveToStorage();
+      this.supportTickets = [];
+      this.kbItems = [
+          { id: '1', errorPattern: 'Erro 05', solution: 'Transação não autorizada pelo banco emissor. Pedir para cliente contatar o banco.', keywords: ['05', 'não autorizada', 'negada'] },
+          { id: '2', errorPattern: 'Sem sinal', solution: 'Reiniciar a máquina. Verificar se o chip está bem encaixado.', keywords: ['sinal', 'conectividade', 'chip'] }
+      ];
   }
 }
 

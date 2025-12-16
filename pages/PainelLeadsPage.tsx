@@ -88,7 +88,6 @@ const PortfolioOverview: React.FC = () => {
                     <h3 className="font-bold text-brand-gray-900 mb-6 flex items-center gap-2">
                         <BarChart2 className="w-5 h-5 text-brand-primary" /> Tendência de Receita & Leads
                     </h3>
-                    {/* Fixed Height Wrapper to prevent Recharts -1 error */}
                     <div className="h-[250px] w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={MOCK_PORTFOLIO_DATA.monthlyTrend}>
@@ -123,7 +122,6 @@ const PortfolioOverview: React.FC = () => {
                     <h3 className="font-bold text-brand-gray-900 mb-2 flex items-center gap-2">
                         <PieIcon className="w-5 h-5 text-brand-primary" /> Mix de Serviços
                     </h3>
-                    {/* Fixed Height Wrapper to prevent Recharts -1 error */}
                     <div className="h-[250px] w-full min-w-0 relative">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
@@ -207,18 +205,16 @@ const PainelLeadsPage: React.FC = () => {
     const [viewMode, setViewMode] = useState<'STATS' | 'MAP'>('STATS');
     const [nearbyClients, setNearbyClients] = useState<ClientBaseRow[]>([]);
 
-    // Search Suggestions
     const [allClients, setAllClients] = useState<ClientBaseRow[]>([]);
     const [suggestions, setSuggestions] = useState<ClientBaseRow[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
 
-    // Map Ref
+    const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<any>(null);
 
     useEffect(() => {
         setAllClients(appStore.getClients());
-        // Clean up map instance on unmount
         return () => {
             if (mapRef.current) {
                 mapRef.current.remove();
@@ -227,7 +223,6 @@ const PainelLeadsPage: React.FC = () => {
         };
     }, []);
 
-    // Handle Search Input
     const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         setSearchTerm(val);
@@ -248,11 +243,9 @@ const PainelLeadsPage: React.FC = () => {
         setSearchTerm(client.nomeEc);
         setShowSuggestions(false);
         
-        // Load Services
         const clientServices = appStore.getLeadServices(client.id);
         setServices(clientServices);
 
-        // Calculate Stats
         const totalValue = clientServices.reduce((acc, s) => acc + s.value, 0);
         const breakdown = {
             SIN: clientServices.filter(s => s.flow === 'SIN').length,
@@ -263,13 +256,11 @@ const PainelLeadsPage: React.FC = () => {
         setStats({
             totalServices: clientServices.length,
             totalValue,
-            audienceReach: Math.floor(Math.random() * 5000) + 500, // Mock Audience
+            audienceReach: Math.floor(Math.random() * 5000) + 500,
             breakdown
         });
 
-        // Mock Nearby Clients logic
         if (client.latitude && client.longitude) {
-            // Find clients within ~0.02 degrees (approx 2km)
             const nearby = allClients.filter(c => 
                 c.id !== client.id && 
                 c.latitude && c.longitude &&
@@ -284,9 +275,12 @@ const PainelLeadsPage: React.FC = () => {
         setSelectedClient(null);
         setSearchTerm('');
         setStats(null);
+        if (mapRef.current) {
+            mapRef.current.remove();
+            mapRef.current = null;
+        }
     };
 
-    // Close suggestions on click outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
@@ -297,35 +291,41 @@ const PainelLeadsPage: React.FC = () => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Init Map when viewMode changes to MAP and client is selected
+    // Init Map with safety checks
     useEffect(() => {
         if (viewMode === 'MAP' && selectedClient && selectedClient.latitude && selectedClient.longitude) {
-            // Small delay to ensure container exists
-            setTimeout(() => {
+            const timer = setTimeout(() => {
                 initMap();
             }, 100);
+            return () => clearTimeout(timer);
+        }
+        // Cleanup when switching away from MAP mode
+        if (viewMode !== 'MAP' && mapRef.current) {
+            mapRef.current.remove();
+            mapRef.current = null;
         }
     }, [viewMode, selectedClient]);
 
     const initMap = () => {
         const L = (window as any).L;
-        if (!L || !selectedClient?.latitude) return;
+        if (!L || !selectedClient?.latitude || !mapContainerRef.current) return;
 
-        const container = document.getElementById('leads-map');
-        if (!container) return;
-
-        // Reset map if exists
-        if (mapRef.current) {
-            mapRef.current.remove();
+        const container = mapContainerRef.current as any;
+        if (container._leaflet_id) {
+            container._leaflet_id = null; // Force clear identifier
         }
 
-        const map = L.map('leads-map').setView([selectedClient.latitude, selectedClient.longitude], 14);
+        if (mapRef.current) {
+            mapRef.current.remove();
+            mapRef.current = null;
+        }
+
+        const map = L.map(mapContainerRef.current).setView([selectedClient.latitude, selectedClient.longitude], 14);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap',
             maxZoom: 19
         }).addTo(map);
 
-        // 1. Main Client Marker (Star/Special)
         const mainIcon = L.divIcon({
             className: 'main-pin',
             html: `<div class="w-8 h-8 bg-brand-primary rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white relative z-50">
@@ -339,7 +339,6 @@ const PainelLeadsPage: React.FC = () => {
          .addTo(map)
          .bindPopup(`<b>${selectedClient.nomeEc}</b><br/>Cliente Selecionado`).openPopup();
 
-        // 2. Nearby Clients (Competitors/Partners)
         nearbyClients.forEach(c => {
             if (c.latitude && c.longitude) {
                 const isPartner = c.hasPagmotors;
@@ -367,7 +366,6 @@ const PainelLeadsPage: React.FC = () => {
         mapRef.current = map;
     };
 
-    // Chart Data
     const chartData = stats ? [
         { name: 'Sinistro (SIN)', value: stats.breakdown.SIN, color: '#F59E0B' },
         { name: 'Guincho (SIR)', value: stats.breakdown.SIR, color: '#3B82F6' },
@@ -386,7 +384,6 @@ const PainelLeadsPage: React.FC = () => {
                 </div>
             </header>
 
-            {/* Search Bar */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-gray-100 relative z-50">
                 <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Buscar Oficina / EC</label>
                 <div className="relative" ref={searchRef}>
@@ -422,8 +419,6 @@ const PainelLeadsPage: React.FC = () => {
 
             {selectedClient && stats ? (
                 <div className="animate-fade-in space-y-6">
-                    
-                    {/* Header Info */}
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-brand-gray-900 text-white p-6 rounded-2xl shadow-lg">
                         <div>
                             <div className="flex items-center gap-3">
@@ -452,10 +447,8 @@ const PainelLeadsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Content View */}
                     {viewMode === 'STATS' ? (
                         <>
-                            {/* KPI Cards */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm flex items-center gap-4">
                                     <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
@@ -487,12 +480,10 @@ const PainelLeadsPage: React.FC = () => {
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                {/* Chart with fixed height to prevent Recharts error */}
                                 <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm lg:col-span-1 flex flex-col h-[400px]">
                                     <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
                                         <TrendingUp className="w-5 h-5 text-brand-primary" /> Distribuição por Fluxo
                                     </h3>
-                                    {/* FIX: Set Explicit Height for ResponsiveContainer Parent */}
                                     <div className="h-[250px] w-full min-w-0">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 30 }}>
@@ -507,23 +498,8 @@ const PainelLeadsPage: React.FC = () => {
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>
-                                    <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-                                        <div className="p-2 bg-amber-50 text-amber-700 rounded-lg">
-                                            <span className="block font-bold">SIN</span>
-                                            <span className="text-[10px]">Sinistro</span>
-                                        </div>
-                                        <div className="p-2 bg-blue-50 text-blue-700 rounded-lg">
-                                            <span className="block font-bold">SIR</span>
-                                            <span className="text-[10px]">Guincho</span>
-                                        </div>
-                                        <div className="p-2 bg-pink-50 text-pink-700 rounded-lg">
-                                            <span className="block font-bold">CAM</span>
-                                            <span className="text-[10px]">Webmotors</span>
-                                        </div>
-                                    </div>
                                 </div>
 
-                                {/* Detailed Table */}
                                 <div className="bg-white rounded-2xl border border-brand-gray-100 shadow-sm lg:col-span-2 overflow-hidden flex flex-col">
                                     <div className="p-4 border-b border-brand-gray-100 bg-brand-gray-50 flex justify-between items-center">
                                         <h3 className="font-bold text-brand-gray-900">Histórico de Serviços</h3>
@@ -589,15 +565,12 @@ const PainelLeadsPage: React.FC = () => {
                             </div>
                         </>
                     ) : (
-                        // MAP VIEW
                         <div className="bg-white rounded-2xl shadow-lg border border-brand-gray-200 overflow-hidden h-[500px] relative flex flex-col md:flex-row">
-                            <div id="leads-map" className="flex-1 h-full bg-brand-gray-100 z-0"></div>
+                            <div ref={mapContainerRef} className="flex-1 h-full bg-brand-gray-100 z-0"></div>
                             
-                            {/* Map Sidebar / Legend */}
                             <div className="w-full md:w-64 bg-white border-l border-brand-gray-200 p-4 overflow-y-auto z-10">
                                 <h4 className="font-bold text-sm mb-4 text-brand-gray-900">Oficinas na Região</h4>
                                 <div className="space-y-3">
-                                    {/* Selected Client */}
                                     <div className="p-3 bg-brand-primary/5 border border-brand-primary/20 rounded-lg">
                                         <div className="flex items-start gap-2">
                                             <div className="w-3 h-3 bg-brand-primary rounded-full mt-1 shrink-0"></div>
@@ -608,7 +581,6 @@ const PainelLeadsPage: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    {/* Nearby List */}
                                     {nearbyClients.length === 0 ? (
                                         <p className="text-xs text-brand-gray-400 italic">Nenhuma outra oficina detectada num raio de 2km.</p>
                                     ) : (
@@ -630,12 +602,6 @@ const PainelLeadsPage: React.FC = () => {
                                             </div>
                                         ))
                                     )}
-                                </div>
-                                <div className="mt-6 pt-4 border-t border-brand-gray-100">
-                                    <p className="text-[10px] text-brand-gray-500 leading-tight">
-                                        <AlertCircle className="w-3 h-3 inline mr-1" />
-                                        Parceiros com <strong>Pagmotors</strong> têm prioridade no direcionamento de leads SIN/SIR.
-                                    </p>
                                 </div>
                             </div>
                         </div>

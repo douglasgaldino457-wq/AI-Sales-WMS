@@ -1,5 +1,5 @@
 
-import { Client, Visit, SalesData, SystemUser, ClientBaseRow, UserRole } from './types';
+import { SalesData, SystemUser, ClientBaseRow, UserRole } from './types';
 
 // Mock Data for Dashboard
 export const MOCK_SALES_DATA: SalesData[] = [
@@ -36,7 +36,6 @@ export const MOCK_USERS: SystemUser[] = [
   { id: '15', name: 'Roberto Logística', role: UserRole.LOGISTICA, email: 'logistica@car10.com.br', whatsapp: '11 98888-8888', active: true },
   { id: '16', name: 'Admin Master', role: UserRole.ADMIN, email: 'admin@car10.com.br', whatsapp: '11 97777-7777', active: true },
   { id: '17', name: 'Fernando Financeiro', role: UserRole.FINANCEIRO, email: 'fin@car10.com.br', whatsapp: '11 96666-6666', active: true },
-  { id: '18', name: 'Quitéria Qualidade', role: UserRole.QUALIDADE, email: 'cx@car10.com.br', whatsapp: '11 95555-5555', active: true },
 ];
 
 // REALISTIC ADDRESS DATABASE FOR AUTOCOMPLETE & MOCKS
@@ -179,18 +178,3 @@ const generateMockClients = (): ClientBaseRow[] => {
 };
 
 export const MOCK_CLIENT_BASE: ClientBaseRow[] = generateMockClients();
-
-export const MOCK_CLIENTS: Client[] = MOCK_CLIENT_BASE.map(c => ({
-    id: c.id,
-    name: c.nomeEc,
-    address: c.endereco,
-    status: c.status === 'Active' ? 'Active' : 'Lead',
-    lastVisit: '2023-10-15'
-}));
-
-// MOCK VISITS derived from base
-export const MOCK_VISITS: Visit[] = [
-  { id: '1', clientName: 'Auto Center Porto Real', date: '2023-10-27 09:00', status: 'Scheduled', address: 'Av. Paulista, 1000' },
-  { id: '2', clientName: 'Mecânica do Alemão', date: '2023-10-27 14:00', status: 'Completed', address: 'Rua Augusta, 1500' },
-  { id: '3', clientName: 'Pneus & Cia Mooca', date: '2023-10-28 10:30', status: 'Scheduled', address: 'Rua da Mooca, 123' },
-];

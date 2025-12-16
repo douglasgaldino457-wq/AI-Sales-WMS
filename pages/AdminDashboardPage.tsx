@@ -1,14 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-    Clock, CheckCircle2, AlertTriangle, FileText, BarChart2, PieChart, Users, 
-    ArrowRight, Activity, Truck, ShieldCheck, UserPlus, Package, ChevronRight,
-    AlertCircle, Search, ExternalLink, RefreshCw
+    Clock, CheckCircle2, AlertTriangle, FileText, Activity, Truck, ShieldCheck, UserPlus, Package, ChevronRight,
+    AlertCircle, Search, ExternalLink, RefreshCw, Users, ArrowRight
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { useAppStore } from '../services/useAppStore';
 import { Page } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart as RechartsPie, Pie } from 'recharts';
 
 const AdminDashboardPage: React.FC = () => {
     const { navigate } = useAppStore();

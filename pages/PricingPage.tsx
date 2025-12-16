@@ -5,13 +5,14 @@ import {
     CheckCircle2, User, Phone, Mail, DollarSign, Calculator, 
     Smartphone, CreditCard, Download, Printer, Share2, Zap, Calendar, AlertCircle,
     Table, List, PieChart, LayoutList, Send, AlertTriangle, ArrowRight, X, Loader2, Star, ShieldCheck, Rocket, Lock,
-    Award, ThumbsUp, FileText, UploadCloud, Image as ImageIcon, Search, Briefcase, FileInput, Trash2, Sparkles, Image, Percent, Info
+    Award, ThumbsUp, FileText, UploadCloud, Image as ImageIcon, Search, Briefcase, FileInput, Trash2, Sparkles, Image, Percent, Info, FilePlus
 } from 'lucide-react';
 import { PagmotorsLogo } from '../components/Logo';
 import { CurrencyInput } from '../components/CurrencyInput';
 import { appStore } from '../services/store';
 import { extractRatesFromEvidence } from '../services/geminiService';
 import { ManualDemand, RateRangesConfig, TpvRange } from '../types';
+import CadastroPage from './CadastroPage'; // Importação do componente unificado
 
 interface PricingPageProps {
   role: UserRole | null;
@@ -97,8 +98,8 @@ const BrandIcons = () => (
 
 // --- PRICING PAGE COMPONENT (TABELA RANGE) ---
 const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
-    // Tab State
-    const [activeTab, setActiveTab] = useState<'RANGE' | 'QUOTE'>('RANGE');
+    // Tab State: NOW WITH CADASTRO
+    const [activeTab, setActiveTab] = useState<'CADASTRO' | 'RANGE' | 'QUOTE'>('CADASTRO');
 
     // State for Proposal Generator
     const [rangeClientName, setRangeClientName] = useState('');
@@ -329,14 +330,21 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
         <div className="space-y-6">
             <header className="flex flex-col md:flex-row justify-between items-end gap-4 no-print">
                 <div>
-                    <h1 className="text-2xl font-bold text-brand-gray-900">Simulador de Pricing</h1>
-                    <p className="text-brand-gray-600 text-sm">Geração de propostas e simulações comerciais.</p>
+                    <h1 className="text-2xl font-bold text-brand-gray-900">Cadastro & Pricing</h1>
+                    <p className="text-brand-gray-600 text-sm">Credenciamento e negociação de taxas.</p>
                 </div>
                 <div className="flex bg-brand-gray-200 p-1 rounded-xl overflow-x-auto">
+                    <button onClick={() => setActiveTab('CADASTRO')} className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'CADASTRO' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}><FilePlus className="w-4 h-4 mr-2" /> Cadastro</button>
                     <button onClick={() => setActiveTab('RANGE')} className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'RANGE' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}><Calculator className="w-4 h-4 mr-2" /> Taxa Range</button>
                     <button onClick={() => setActiveTab('QUOTE')} className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'QUOTE' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-900'}`}><Briefcase className="w-4 h-4 mr-2" /> Cotação de Taxas</button>
                 </div>
             </header>
+
+            {activeTab === 'CADASTRO' && (
+                <div className="animate-fade-in">
+                    <CadastroPage role={role} embed={true} />
+                </div>
+            )}
 
             {activeTab === 'QUOTE' && (
                 <div className="animate-fade-in bg-white rounded-2xl shadow-sm border border-brand-gray-100 overflow-hidden">

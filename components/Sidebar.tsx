@@ -73,8 +73,7 @@ const Sidebar: React.FC = () => {
           { icon: LayoutDashboard, label: 'Dashboard', page: Page.DASHBOARD },
           { icon: Calendar, label: 'Agendamentos', page: Page.AGENDAMENTOS },
           { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
-          { icon: BadgePercent, label: 'Simulador Pricing', page: Page.PRICING },
-          { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
+          { icon: BadgePercent, label: 'Cadastro & Pricing', page: Page.CADASTRO_PRICING },
           { icon: ListTodo, label: 'Minhas Solicitações', page: Page.PEDIDOS_RASTREIO },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
         ];
@@ -85,8 +84,7 @@ const Sidebar: React.FC = () => {
           { icon: Calendar, label: 'Minha Agenda', page: Page.AGENDAMENTOS },
           { icon: Map, label: 'Rota', page: Page.ROTAS },
           { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
-          { icon: BadgePercent, label: 'Simulador Pricing', page: Page.PRICING },
-          { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
+          { icon: BadgePercent, label: 'Cadastro & Pricing', page: Page.CADASTRO_PRICING },
           { icon: ListTodo, label: 'Minhas Solicitações', page: Page.PEDIDOS_RASTREIO },
           { icon: Receipt, label: 'Despesas & Reembolso', page: Page.DESPESAS },
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
@@ -98,8 +96,7 @@ const Sidebar: React.FC = () => {
           { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
           { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
           { icon: MapPinned, label: 'Mapa de Gestão', page: Page.MAPA_GESTAO },
-          { icon: BadgePercent, label: 'Simulador Pricing', page: Page.PRICING },
-          { icon: FilePlus, label: 'Cadastro', page: Page.CADASTRO },
+          { icon: BadgePercent, label: 'Cadastro & Pricing', page: Page.CADASTRO_PRICING },
           { icon: ListTodo, label: 'Minhas Solicitações', page: Page.PEDIDOS_RASTREIO },
           { icon: Receipt, label: 'Despesas & Reembolso', page: Page.DESPESAS },
           { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
@@ -138,10 +135,7 @@ const Sidebar: React.FC = () => {
         break;
       case UserRole.QUALIDADE:
         items = [
-          { icon: Star, label: 'Monitoria de Qualidade', page: Page.DASHBOARD_GERAL },
-          { icon: ClipboardCheck, label: 'Auditoria de Visitas', page: Page.AGENDAMENTOS },
-          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
-          { icon: LifeBuoy, label: 'Tickets de Suporte', page: Page.LOGISTICA_SUPORTE },
+          { icon: LifeBuoy, label: 'Gestão de Suporte', page: Page.LOGISTICA_SUPORTE },
           { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
         ];
         break;
@@ -204,9 +198,8 @@ const Sidebar: React.FC = () => {
         ];
       case UserRole.QUALIDADE:
         return [
-          { icon: ClipboardCheck, label: 'Auditoria', page: Page.AGENDAMENTOS },
-          { icon: Star, label: 'Monitoria', page: Page.DASHBOARD_GERAL, isCentral: true },
-          { icon: LifeBuoy, label: 'Suporte', page: Page.LOGISTICA_SUPORTE },
+          { icon: LifeBuoy, label: 'Suporte', page: Page.LOGISTICA_SUPORTE, isCentral: true },
+          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
         ];
       default:
         return [];
@@ -313,7 +306,7 @@ const Sidebar: React.FC = () => {
                 <LogOut size={14} className="group-hover:-translate-x-1 transition-transform" />
                 Sair do Sistema
             </button>
-            <p className="text-[10px] text-gray-600 font-mono text-center">Build v1.8.0 • 2025</p>
+            <p className="text-[10px] text-gray-600 font-mono text-center">Build v1.9.0 • 2025</p>
         </div>
     </div>
   );
