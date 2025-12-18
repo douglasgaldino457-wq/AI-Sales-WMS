@@ -110,7 +110,7 @@ const PortfolioOverview: React.FC = () => {
                     <h3 className="font-bold text-brand-gray-900 mb-6 flex items-center gap-2">
                         <BarChart2 className="w-5 h-5 text-brand-primary" /> Tendência de Leads x Receita
                     </h3>
-                    <div className="h-[250px] w-full min-w-0">
+                    <div className="h-[250px] w-full min-w-0 min-h-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={MOCK_PORTFOLIO_DATA.monthlyTrend}>
                                 <defs>
@@ -144,7 +144,7 @@ const PortfolioOverview: React.FC = () => {
                     <h3 className="font-bold text-brand-gray-900 mb-2 flex items-center gap-2">
                         <PieIcon className="w-5 h-5 text-brand-primary" /> Mix de Fluxos (Serviços)
                     </h3>
-                    <div className="h-[250px] w-full min-w-0 relative">
+                    <div className="h-[250px] w-full min-w-0 min-h-0 relative">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
@@ -166,7 +166,7 @@ const PortfolioOverview: React.FC = () => {
                         </ResponsiveContainer>
                         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center -mt-4">
                             <span className="text-3xl font-bold text-brand-gray-900">100%</span>
-                            <span className="block text-[10px] text-brand-gray-400 uppercase">Distribuição</span>
+                            <span className="block text-[10px] text-gray-400 uppercase">Distribuição</span>
                         </div>
                     </div>
                 </div>
@@ -503,7 +503,7 @@ const PainelLeadsPage: React.FC = () => {
                                     <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
                                         <TrendingUp className="w-5 h-5 text-brand-primary" /> Distribuição por Fluxo
                                     </h3>
-                                    <div className="h-[250px] w-full min-w-0">
+                                    <div className="h-[250px] w-full min-w-0 min-h-0">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 30 }}>
                                                 <XAxis type="number" hide />

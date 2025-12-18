@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { getDashboardInsights } from '../services/geminiService';
 import { appStore } from '../services/store';
-import { useAppStore } from '../services/useAppStore'; // Hook
+import { useAppStore } from '../services/useAppStore'; 
 import { 
     Sparkles, TrendingUp, CalendarCheck, CheckCircle2, Clock, 
     Briefcase, UserPlus, FileText, MapPin, Layout, Search, Filter, ArrowUpDown,
@@ -432,7 +432,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                       <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
                           <PieIcon size={18} className="text-brand-primary"/> Breakdown de Custos
                       </h3>
-                      <div className="flex-1 w-full min-w-0 relative">
+                      <div className="flex-1 w-full min-w-0 min-h-0 relative">
                           <ResponsiveContainer width="100%" height="100%">
                               <PieChart>
                                   <Pie
@@ -466,7 +466,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                       <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
                           <TrendingUp size={18} className="text-green-600"/> Evolução de Custos (Semestre)
                       </h3>
-                      <div className="flex-1 w-full min-w-0">
+                      <div className="flex-1 w-full min-w-0 min-h-0">
                           <ResponsiveContainer width="100%" height="100%">
                               <AreaChart data={trendData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                   <defs>
@@ -866,7 +866,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             </div>
 
             <div className="tech-card rounded-2xl p-6 flex flex-col justify-center items-center text-center">
-                 <div style={{ width: 192, height: 192, position: 'relative', minWidth: 0 }}>
+                 <div style={{ width: 192, height: 192, minHeight: 192, position: 'relative', minWidth: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                             <Pie

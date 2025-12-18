@@ -208,7 +208,7 @@ const PricingDashboardPage: React.FC = () => {
                         </div>
                     </div>
                     
-                    <div className="h-[300px] w-full relative min-w-0">
+                    <div className="h-[300px] w-full min-h-0 relative min-w-0">
                         <div className="absolute top-0 right-0 bg-white/80 px-2 py-1 text-[10px] font-bold text-brand-gray-400 border border-brand-gray-100 rounded z-10 pointer-events-none">
                             Visualização: {chartProduct === 'Full' ? 'Parcela a Parcela' : 'Buckets Agrupados'}
                         </div>

@@ -249,7 +249,7 @@ const EstrategiaPage: React.FC = () => {
 
                         {/* 2. AI PROJECTION */}
                         <div className="lg:col-span-2 bg-gradient-to-br from-brand-gray-900 to-brand-gray-800 text-white rounded-2xl shadow-lg p-6 relative overflow-hidden flex flex-col">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-brand-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-brand-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
                             
                             <div className="flex justify-between items-start mb-4 relative z-10">
                                 <h3 className="font-bold text-lg flex items-center gap-2">
@@ -279,7 +279,7 @@ const EstrategiaPage: React.FC = () => {
                                 </div>
                                 
                                 {/* Mini Projection Chart */}
-                                <div className="w-48 h-32 hidden md:block">
+                                <div className="w-48 h-32 hidden md:block min-h-0">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart data={data}>
                                             <XAxis dataKey="name" hide />

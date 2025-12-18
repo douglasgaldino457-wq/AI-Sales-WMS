@@ -91,7 +91,7 @@ const LogisticaDashboardPage: React.FC = () => {
                     <div className="p-5 border-b border-brand-gray-50 flex items-center justify-between">
                         <h3 className="font-bold text-brand-gray-900 flex items-center gap-2"><BarChart3 size={18} className="text-orange-500" /> Análise de Manutenção (Mensal)</h3>
                     </div>
-                    <div className="flex-1 p-6 w-full min-w-0">
+                    <div className="flex-1 p-6 w-full min-w-0 min-h-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={maintenanceReasonsData} layout="vertical" margin={{ left: 40, right: 30 }}>
                                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f0f0f0" />
@@ -114,8 +114,8 @@ const LogisticaDashboardPage: React.FC = () => {
                     <div className="p-5 border-b border-brand-gray-50 flex items-center justify-between">
                         <h3 className="font-bold text-brand-gray-900 flex items-center gap-2"><Smartphone size={18} className="text-brand-primary" /> Eficiência de Terminais</h3>
                     </div>
-                    <div className="flex-1 p-6 flex items-center justify-center relative">
-                        <div className="h-64 w-64 relative">
+                    <div className="flex-1 p-6 flex items-center justify-center relative min-h-0">
+                        <div className="h-64 w-64 relative min-h-0">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie data={efficiencyData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
