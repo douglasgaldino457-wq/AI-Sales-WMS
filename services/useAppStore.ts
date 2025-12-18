@@ -68,6 +68,9 @@ export const useAppStore = create<AppState>()(
           case UserRole.LOGISTICA:
             startPage = Page.LOGISTICA_DASHBOARD;
             break;
+          case UserRole.ESTRATEGIA:
+            startPage = Page.ESTRATEGIA_HOME;
+            break;
           default:
             startPage = Page.DASHBOARD_GERAL;
         }

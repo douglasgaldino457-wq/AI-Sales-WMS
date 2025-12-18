@@ -36,6 +36,7 @@ export const MOCK_USERS: SystemUser[] = [
   { id: '15', name: 'Roberto Logística', role: UserRole.LOGISTICA, email: 'logistica@car10.com.br', whatsapp: '11 98888-8888', active: true },
   { id: '16', name: 'Admin Master', role: UserRole.ADMIN, email: 'admin@car10.com.br', whatsapp: '11 97777-7777', active: true },
   { id: '17', name: 'Fernando Financeiro', role: UserRole.FINANCEIRO, email: 'fin@car10.com.br', whatsapp: '11 96666-6666', active: true },
+  { id: '18', name: 'Paula Estratégia', role: UserRole.ESTRATEGIA, email: 'strategy@car10.com.br', whatsapp: '11 95555-5555', active: true },
 ];
 
 // REALISTIC ADDRESS DATABASE FOR AUTOCOMPLETE & MOCKS

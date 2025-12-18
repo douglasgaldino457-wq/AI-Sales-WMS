@@ -151,8 +151,9 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
             let responseText = '';
 
             if (imageFile) {
+                // Fix: Updated model to 'gemini-3-flash-preview' for multimodal task
                 const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
+                    model: 'gemini-3-flash-preview',
                     contents: {
                         parts: [
                             { inlineData: { mimeType: imageFile.type, data: cleanBase64 } },
@@ -162,8 +163,9 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                 }));
                 responseText = response.text || "Não consegui analisar a imagem.";
             } else {
+                // Fix: Updated model to 'gemini-3-flash-preview' for chat task
                 const chat = ai.chats.create({
-                    model: 'gemini-2.5-flash',
+                    model: 'gemini-3-flash-preview',
                     config: { systemInstruction: prompt },
                     history: messages.slice(1).map(m => ({ // Skip initial greeting
                         role: m.sender === 'user' ? 'user' : 'model',
@@ -281,7 +283,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                         />
                     </div>
                     <button 
-                        onClick={() => handleSendMessage(inputText)}
+                        onClick={handleSendMessage(inputText)}
                         disabled={!inputText.trim() && !isSending}
                         className="p-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
                     >

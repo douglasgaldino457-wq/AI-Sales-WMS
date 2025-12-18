@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-    ClipboardCheck, Clock, CheckCircle2, AlertTriangle, Search, FileText, ArrowRight,
-    Briefcase, Calendar, ChevronDown, Plus, X, Save, Share2, MessageCircle, FileInput,
-    Download, ChevronUp, User, Laptop2, Terminal, Table, Percent, Building2, Printer, Eye
+    ClipboardCheck, CheckCircle2, Search, FileText,
+    Briefcase, Calendar, ChevronDown, Plus, X, Save,
+    Download, ChevronUp, User, Terminal, BadgePercent, LayoutList,
+    Image as ImageIcon, MessageCircle, Eye
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { ManualDemand, RegistrationRequest, ClientBaseRow } from '../types';
-import { Page } from '../types';
 import { PagmotorsLogo } from '../components/Logo';
 
 // --- NEW COMPONENT: PROPOSAL PREVIEW MODAL (Similar to PricingPage Range) ---

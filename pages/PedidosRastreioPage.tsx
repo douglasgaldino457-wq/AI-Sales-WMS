@@ -1,14 +1,15 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     Package, Truck, Search, MapPin, Clock, CheckCircle2, 
     ClipboardList, AlertTriangle, ExternalLink, Calendar,
-    ListTodo, Briefcase, Plus, Terminal, RefreshCw, CreditCard, BadgePercent, UserCog, MoreHorizontal, X, FileText, Building2, Key, ShieldCheck, ChevronRight, Hourglass, Box, Zap, Download, MessageCircle, AlertCircle, Save, UploadCloud, Eye
+    ListTodo, Briefcase, Plus, Terminal, RefreshCw, CreditCard, BadgePercent, UserCog, MoreHorizontal, X, FileText, Building2, Key, ShieldCheck, ChevronRight, Hourglass, Box, Zap, Download, MessageCircle, AlertCircle, Save, UploadCloud, Eye, Smartphone,
+    Send, Info, Paperclip, FileCheck, FileInput, Network, Sparkles, Loader2, CalendarRange
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { LogisticsTask, ManualDemand, DemandActionType, ClientBaseRow, UserRole, PosDevice, MaterialRequestData, RegistrationRequest, BankAccount } from '../types';
 import { useAppStore } from '../services/useAppStore'; 
-import { Page } from '../types';
+import { analyzeDocument } from '../services/geminiService';
 
 interface PedidosRastreioPageProps {
     targetDemandId?: string;
@@ -28,70 +29,96 @@ const BANKS = [
 
 const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandId }) => {
     const { userRole, currentUser, navigate } = useAppStore();
-    const [activeTab, setActiveTab] = useState<'SOLICITACOES' | 'MEUS_ATIVOS'>('SOLICITACOES'); 
+    const [activeTab, setActiveTab] = useState<'HISTORICO' | 'MEUS_ATIVOS'>('HISTORICO'); 
     
-    // Data State
     const [tasks, setTasks] = useState<LogisticsTask[]>([]);
     const [demands, setDemands] = useState<ManualDemand[]>([]);
     const [registrations, setRegistrations] = useState<RegistrationRequest[]>([]);
     const [myAssets, setMyAssets] = useState<PosDevice[]>([]);
     
-    // Filters
     const [searchTerm, setSearchTerm] = useState('');
     
-    // Modals
+    // --- FILTROS DE DATA ---
+    const today = new Date().toISOString().split('T')[0];
+    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    const [startDate, setStartDate] = useState(firstDayOfMonth);
+    const [endDate, setEndDate] = useState(today);
+
     const [isActionModalOpen, setIsActionModalOpen] = useState(false);
     const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
     
-    // New Request State
     const [selectedActionType, setSelectedActionType] = useState<DemandActionType | null>(null);
-    const [newRequestData, setNewRequestData] = useState({ clientName: '', description: '', id: '', address: '' });
+    const [newRequestData, setNewRequestData] = useState({ clientName: '', description: '', clientId: '', address: '' });
     
-    // Specific Forms State
     const [selectedOldPos, setSelectedOldPos] = useState('');
-    const [selectedNewPos, setSelectedNewPos] = useState('');
     const [selectedReason, setSelectedReason] = useState('');
-    const [bankData, setBankData] = useState<BankAccount>({
-        bankCode: '', agency: '', accountNumber: '', holderName: '', holderType: 'PJ', accountType: 'Corrente', isThirdParty: false, proofFile: null
-    });
     
-    // Dropdown Data
-    const [myStockList, setMyStockList] = useState<PosDevice[]>([]);
-    const [clientPosList, setClientPosList] = useState<PosDevice[]>([]);
-    const [swapReasons, setSwapReasons] = useState<string[]>([]);
-    const [withdrawalReasons, setWithdrawalReasons] = useState<string[]>([]);
-
-    // Material Form
     const [materialForm, setMaterialForm] = useState<MaterialRequestData>({ posQuantity: 5, coils: false, chargers: false, gifts: false });
-    
-    // Issue Form
     const [issueForm, setIssueForm] = useState({ serial: '', type: 'Defeito', desc: '' });
 
-    // Client Autocomplete
+    // --- ESTADOS DE ALTERAÇÃO BANCÁRIA ---
+    const [bankForm, setBankForm] = useState<BankAccount>({
+        bankCode: '', agency: '', accountNumber: '', holderName: '', holderType: 'PJ', accountType: 'Corrente', isThirdParty: false, proofFile: null
+    });
+    const [thirdPartyDocs, setThirdPartyDocs] = useState<{ termFile: File | null, idFile: File | null }>({ termFile: null, idFile: null });
+    const [isAnalyzingBank, setIsAnalyzingBank] = useState(false);
+    const bankProofRef = useRef<HTMLInputElement>(null);
+    const thirdTermRef = useRef<HTMLInputElement>(null);
+    const thirdIdRef = useRef<HTMLInputElement>(null);
+
     const [allClients, setAllClients] = useState<ClientBaseRow[]>([]);
     const [suggestions, setSuggestions] = useState<ClientBaseRow[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [clientActivePos, setClientActivePos] = useState<PosDevice[]>([]);
+    
     const searchWrapperRef = useRef<HTMLDivElement>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const isInsideSales = userRole === UserRole.INSIDE_SALES;
 
-    const isField = userRole === UserRole.FIELD_SALES;
-    const isInside = userRole === UserRole.INSIDE_SALES;
+    const selectClient = (client: ClientBaseRow) => {
+        setNewRequestData({
+            clientName: client.nomeEc,
+            clientId: client.id,
+            address: client.endereco,
+            description: ''
+        });
+        setShowSuggestions(false);
+        
+        const posInEC = appStore.getPosInventory().filter(p => 
+            p.currentHolder === client.nomeEc || p.currentHolder === client.id || p.status === 'Active' && client.id === p.currentHolder
+        );
+        setClientActivePos(posInEC);
+        if (posInEC.length > 0) {
+            setSelectedOldPos(posInEC[0].serialNumber);
+        } else {
+            setSelectedOldPos('');
+        }
+    };
+
+    const handleOpenActionModal = (forceType?: DemandActionType) => {
+        setIsActionModalOpen(true);
+        setSelectedActionType(forceType || null);
+        setNewRequestData({ clientName: '', description: '', clientId: '', address: '' });
+        setClientActivePos([]);
+        setSelectedOldPos('');
+        setSelectedReason('');
+        setBankForm({
+            bankCode: '', agency: '', accountNumber: '', holderName: '', holderType: 'PJ', accountType: 'Corrente', isThirdParty: false, proofFile: null
+        });
+        setThirdPartyDocs({ termFile: null, idFile: null });
+    };
 
     useEffect(() => {
         refreshData();
-        setAllClients(appStore.getClients());
-        setSwapReasons(appStore.getSwapReasons());
-        setWithdrawalReasons(appStore.getWithdrawalReasons());
+        const clients = appStore.getClients();
+        setAllClients(clients);
         
-        const storedContext = sessionStorage.getItem('temp_service_context');
-        if (storedContext) {
-            try {
-                const data = JSON.parse(storedContext);
-                setIsActionModalOpen(true);
-                setNewRequestData(prev => ({ ...prev, clientName: data.clientName }));
-                sessionStorage.removeItem('temp_service_context');
-            } catch(e) {
-                console.error("Error parsing context", e);
+        if (targetDemandId) {
+            const targetClient = clients.find(c => c.id === targetDemandId);
+            if (targetClient) {
+                handleOpenActionModal();
+                selectClient(targetClient);
+            } else {
+                setSearchTerm(targetDemandId);
             }
         }
 
@@ -102,166 +129,61 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    }, [targetDemandId]);
 
     const refreshData = () => {
         const myName = currentUser?.name || 'User';
-        
         setTasks(appStore.getLogisticsTasks().filter(t => t.requesterName === myName));
-        setDemands(appStore.getDemands().filter(d => d.requester === myName).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        setRegistrations(appStore.getRegistrationRequests().filter(r => r.requesterName === myName).sort((a,b) => new Date(b.dateSubmitted).getTime() - new Date(a.dateSubmitted).getTime()));
-        
-        const assets = appStore.getPosInventory().filter(p => p.currentHolder === myName && p.status === 'WithField');
+        setDemands(appStore.getDemands().filter(d => d.requester === myName));
+        setRegistrations(appStore.getRegistrationRequests().filter(r => r.requesterName === myName));
+        const assets = appStore.getPosInventory().filter(p => p.currentHolder === myName);
         setMyAssets(assets);
-        setMyStockList(assets); // Available for install
     };
 
-    // --- RENDER HELPERS ---
+    const filteredHistory = useMemo(() => {
+        const combined = [...tasks, ...demands, ...registrations].map(item => ({
+            ...item,
+            displayDate: (item as any).date || (item as any).dateSubmitted
+        }));
 
-    const getStatusStep = (status: string, adminStatus?: string, otp?: string) => {
-        if (status === 'Aprovado Pricing') return { label: 'Aprovado (Pricing)', color: 'text-purple-600', step: 2 };
-        if (status === 'APPROVED') return { label: 'Aprovado Admin', color: 'text-blue-600', step: 2 };
-        if (adminStatus === 'Aguardando Logística') return { label: 'Em Logística (GSurf)', color: 'text-orange-500', step: 2 }; // NEW STEP
-        if (adminStatus === 'Pendente ADM') return { label: 'Aguardando Backoffice', color: 'text-blue-600', step: 3 }; // Adjusted step
-        if (otp) return { label: 'Pronto (OTP Gerado)', color: 'text-green-600', step: 4 };
-        if (status === 'Concluído' || status === 'Finalizado ADM') return { label: 'Finalizado', color: 'text-green-700', step: 4 };
-        if (status === 'Rejeitado') return { label: 'Devolvido/Rejeitado', color: 'text-red-600', step: 0 };
-        return { label: 'Pendente Análise', color: 'text-gray-500', step: 1 };
-    };
-
-    const PipelineStatus = ({ step }: { step: number }) => (
-        <div className="flex items-center gap-1 mt-2">
-            {[1, 2, 3, 4].map(i => (
-                <div key={i} className={`h-1.5 w-6 rounded-full ${step >= i ? (step === 4 ? 'bg-green-500' : 'bg-brand-primary') : 'bg-gray-200'}`}></div>
-            ))}
-        </div>
-    );
-
-    // --- ACTIONS HANDLERS ---
-
-    const handleOpenActionModal = () => {
-        setIsActionModalOpen(true);
-        setSelectedActionType(null);
-        setNewRequestData({ clientName: '', description: '', id: '', address: '' });
-        setMaterialForm({ posQuantity: 5, coils: false, chargers: false, gifts: false }); 
-        setSelectedOldPos('');
-        setSelectedNewPos('');
-        setSelectedReason('');
-        setBankData({ bankCode: '', agency: '', accountNumber: '', holderName: '', holderType: 'PJ', accountType: 'Corrente', isThirdParty: false, proofFile: null });
-    };
-
-    const handleCreateDemand = () => {
-        // Special Handler for Material Request
-        if (selectedActionType === 'Solicitação de Material') {
-            handleRequestMaterial();
-            return;
-        }
-
-        if (!selectedActionType || !newRequestData.clientName) {
-            alert("Preencha o cliente.");
-            return;
-        }
-
-        let details = newRequestData.description;
-        
-        // --- ROUTING LOGIC: LOGISTICS FIRST VS BACKOFFICE DIRECT ---
-        let initialStatus: any = 'Pendente';
-        let initialAdminStatus: any = 'Pendente ADM'; // Default to Backoffice
-        let createLogisticsTask = false;
-        let logisticsType: any = null;
-
-        if (selectedActionType === 'Troca de POS') {
-            if (!selectedOldPos || !selectedNewPos || !selectedReason) {
-                alert("Preencha: POS a Retirar, POS a Instalar e Motivo.");
-                return;
-            }
-            details = `TROCA: Retirar POS ${selectedOldPos}. Instalar POS ${selectedNewPos}. Motivo: ${selectedReason}. ${details}`;
+        return combined.filter(item => {
+            const matchesSearch = item.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                (item as any).id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (item as any).type?.toLowerCase().includes(searchTerm.toLowerCase());
             
-            // Route to Logistics First
-            initialStatus = 'Em Análise';
-            initialAdminStatus = 'Aguardando Logística';
-            createLogisticsTask = true;
-            logisticsType = 'POS_EXCHANGE';
+            const itemDate = item.displayDate?.split('T')[0];
+            const matchesDate = (!startDate || itemDate >= startDate) && (!endDate || itemDate <= endDate);
 
-        } else if (selectedActionType === 'Desativação de POS') {
-            if (!selectedOldPos || !selectedReason) {
-                alert("Preencha: POS a Retirar e Motivo.");
-                return;
-            }
-            details = `DESATIVAÇÃO: Retirar POS ${selectedOldPos}. Motivo: ${selectedReason}. ${details}`;
-            
-            // Route to Logistics First
-            initialStatus = 'Em Análise';
-            initialAdminStatus = 'Aguardando Logística';
-            createLogisticsTask = true;
-            logisticsType = 'POS_RETRIEVAL';
+            return matchesSearch && matchesDate;
+        }).sort((a, b) => new Date(b.displayDate).getTime() - new Date(a.displayDate).getTime());
+    }, [tasks, demands, registrations, searchTerm, startDate, endDate]);
 
-        } else if (selectedActionType === 'Alteração Bancária') {
-            if (!bankData.bankCode || !bankData.accountNumber || !bankData.proofFile) {
-                alert("Dados bancários e comprovante são obrigatórios.");
-                return;
-            }
-            details = `ALTERAÇÃO BANCÁRIA: Banco ${bankData.bankCode}, Ag ${bankData.agency}, CC ${bankData.accountNumber}, Titular ${bankData.holderName}.`;
-            // Route Direct to Backoffice (Default)
+    const getStatusInfo = (item: any) => {
+        const status = (item.status || '').toUpperCase();
+        const adminStatus = (item.adminStatus || '').toUpperCase();
+
+        if (status === 'CONCLUÍDO' || status === 'COMPLETED' || adminStatus === 'FINALIZADO ADM') {
+            return { label: 'Concluído', color: 'text-green-600', bg: 'bg-green-100', step: 4 };
         }
 
-        const demandId = `REQ-${Math.floor(Math.random() * 10000)}`;
-        const demand: ManualDemand = {
-            id: demandId,
-            type: selectedActionType,
-            clientName: newRequestData.clientName,
-            date: new Date().toISOString(),
-            status: initialStatus,
-            requester: currentUser?.name || 'User',
-            description: details,
-            adminStatus: initialAdminStatus
-        };
-
-        appStore.addDemand(demand);
-
-        // CREATE LOGISTICS TASK IF NEEDED
-        if (createLogisticsTask) {
-            const task: LogisticsTask = {
-                id: `LOG-${Math.floor(Math.random() * 10000)}`,
-                type: logisticsType,
-                status: 'PENDING_SHIPMENT',
-                clientName: newRequestData.clientName,
-                internalId: demandId, // Link to Demand
-                requesterName: currentUser?.name || 'User',
-                requesterRole: userRole || 'Consultor',
-                date: new Date().toISOString(),
-                details: details,
-                address: newRequestData.address || 'Endereço do Cliente', // Fallback
-                posData: selectedOldPos ? { serialNumber: selectedOldPos, rcNumber: '', model: '' } : undefined
-            };
-            appStore.addLogisticsTask(task);
+        if (status === 'PENDING_SHIPMENT' || status === 'SHIPPED' || status === 'READY_FOR_GSURF' || adminStatus === 'AGUARDANDO LOGÍSTICA') {
+            return { label: 'Em Logística', color: 'text-orange-600', bg: 'bg-orange-100', step: 3 };
         }
 
-        refreshData();
-        setIsActionModalOpen(false);
-        alert("Solicitação criada! Acompanhe o status no painel.");
+        if (status === 'APROVADO PRICING' || status === 'APPROVED' || adminStatus === 'EM PROCESSAMENTO') {
+            return { label: 'Aprovado', color: 'text-blue-600', bg: 'bg-blue-100', step: 2 };
+        }
+
+        return { label: 'Pendente', color: 'text-gray-500', bg: 'bg-gray-100', step: 1 };
     };
 
-    const handleRequestMaterial = () => {
-        appStore.requestMaterials(currentUser?.name || 'User', materialForm);
-        refreshData();
-        setIsActionModalOpen(false);
-        alert("Pedido de material enviado para Logística!");
-    };
-
-    const handleReportIssue = () => {
-        if (!issueForm.serial || !issueForm.desc) return;
-        appStore.reportPosIssue(issueForm.serial, issueForm.type, issueForm.desc, currentUser?.name || 'User');
-        refreshData();
-        setIsIssueModalOpen(false);
-        alert("Problema reportado! A Logística receberá o alerta.");
-    };
-
-    const handleClientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value;
+    const handleClientSearch = (val: string) => {
         setNewRequestData({ ...newRequestData, clientName: val });
         if (val.length > 1) {
-            const matches = allClients.filter(c => c.nomeEc.toLowerCase().includes(val.toLowerCase())).slice(0, 5);
+            const matches = allClients.filter(c => 
+                c.nomeEc.toLowerCase().includes(val.toLowerCase()) || 
+                c.id.toLowerCase().includes(val.toLowerCase())
+            ).slice(0, 5);
             setSuggestions(matches);
             setShowSuggestions(true);
         } else {
@@ -269,417 +191,454 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
         }
     };
 
-    const selectClient = (client: ClientBaseRow) => {
-        setNewRequestData({ 
-            ...newRequestData, 
-            clientName: client.nomeEc, 
-            id: client.id, 
-            address: client.endereco 
-        });
-        setBankData({...bankData, holderName: client.nomeEc}); // Default holder
-        setShowSuggestions(false);
-        
-        // Mock loading Client POS Inventory (In a real app, fetch from Store linked to Client ID)
-        // For demo, we just simulate random POSs attached to client or find in global inventory if marked active
-        const clientPos = appStore.getPosInventory().filter(p => p.status === 'Active'); 
-        // Fallback mock if none found
-        if (clientPos.length === 0) {
-             setClientPosList([
-                 { serialNumber: 'SN-MOCK-1', rcNumber: 'RC-001', model: 'P2 Smart', status: 'Active', currentHolder: client.nomeEc, lastUpdated: new Date().toISOString() }
-             ]);
-        } else {
-            setClientPosList(clientPos.slice(0,2)); // Pick some active ones
-        }
-    };
-
-    const handleBankFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleBankProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setBankData({...bankData, proofFile: e.target.files[0]});
+            const file = e.target.files[0];
+            setBankForm(prev => ({ ...prev, proofFile: file }));
+            setIsAnalyzingBank(true);
+            
+            try {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = async () => {
+                    const base64 = (reader.result as string).split(',')[1];
+                    const result = await analyzeDocument(base64, 'BANK_PROOF');
+                    
+                    if (result) {
+                        setBankForm(prev => ({
+                            ...prev,
+                            bankCode: result.bank || prev.bankCode,
+                            agency: result.agency || prev.agency,
+                            accountNumber: result.accountNumber || prev.accountNumber,
+                            holderName: result.holderName || prev.holderName
+                        }));
+                    }
+                    setIsAnalyzingBank(false);
+                };
+            } catch (err) {
+                console.error("Erro na leitura bancária", err);
+                setIsAnalyzingBank(false);
+            }
         }
     };
 
-    // --- RENDER CONTENT ---
+    const handleCreateDemand = () => {
+        if (!newRequestData.clientName) {
+            alert("Selecione um cliente.");
+            return;
+        }
+
+        if (selectedActionType === 'Alteração Bancária') {
+            if (!bankForm.bankCode || !bankForm.accountNumber || !bankForm.proofFile) {
+                alert("Dados bancários incompletos ou comprovante ausente.");
+                return;
+            }
+            if (bankForm.isThirdParty && (!thirdPartyDocs.termFile || !thirdPartyDocs.idFile)) {
+                alert("Para conta de terceiros, o termo assinado e o documento do titular são obrigatórios.");
+                return;
+            }
+        }
+
+        if ((selectedActionType === 'Troca de POS' || selectedActionType === 'Desativação de POS') && !selectedOldPos) {
+            alert("Este cliente não possui POS vinculada para realizar esta ação.");
+            return;
+        }
+
+        if (selectedActionType === 'Solicitação de Material') {
+            appStore.requestMaterials(currentUser?.name || 'Consultor', materialForm);
+        } else if (selectedActionType === 'Troca de POS' || selectedActionType === 'Desativação de POS') {
+             const isSwap = selectedActionType === 'Troca de POS';
+             const task: LogisticsTask = {
+                id: `LOG-${Date.now()}`,
+                type: isSwap ? 'POS_EXCHANGE' : 'POS_RETRIEVAL',
+                status: 'PENDING_SHIPMENT',
+                clientName: newRequestData.clientName,
+                address: newRequestData.address,
+                requesterName: currentUser?.name || 'Consultor',
+                requesterRole: userRole || 'Inside Sales',
+                date: new Date().toISOString(),
+                details: `${selectedActionType}: ${selectedReason}. POS Origem: ${selectedOldPos}. Obs: ${newRequestData.description}`,
+                posData: { serialNumber: selectedOldPos, rcNumber: '', model: '' }
+             };
+             appStore.addLogisticsTask(task);
+        } else {
+            let desc = newRequestData.description;
+            if (selectedActionType === 'Alteração Bancária') {
+                desc = `Alteração Bancária: Banco ${bankForm.bankCode}, Ag ${bankForm.agency}, CC ${bankForm.accountNumber}. Titular: ${bankForm.holderName}. Terceiro: ${bankForm.isThirdParty ? 'SIM' : 'NÃO'}. \nObs: ${desc}`;
+            }
+
+            const demand: ManualDemand = {
+                id: `DEM-${Date.now()}`,
+                clientName: newRequestData.clientName,
+                type: selectedActionType || 'Geral',
+                date: new Date().toISOString(),
+                status: 'Pendente',
+                requester: currentUser?.name || 'Consultor',
+                description: desc
+            };
+            appStore.addDemand(demand);
+        }
+        setIsActionModalOpen(false);
+        refreshData();
+        alert("Solicitação enviada com sucesso!");
+    };
+
+    const handleReportIssue = () => {
+        if (!issueForm.serial) return;
+        appStore.reportPosIssue(issueForm.serial, issueForm.type, issueForm.desc, currentUser?.name || 'Consultor');
+        setIsIssueModalOpen(false);
+        refreshData();
+        alert("Problema reportado para triagem.");
+    };
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto pb-20">
+        <div className="space-y-6 max-w-6xl mx-auto pb-20">
             <header className="flex flex-col md:flex-row justify-between items-end gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-brand-gray-900 flex items-center gap-2">
                         <ListTodo className="w-8 h-8 text-brand-primary" />
                         Central de Solicitações
                     </h1>
-                    <p className="text-brand-gray-600 mt-1">Acompanhamento de demandas e gestão de ativos.</p>
+                    <p className="text-brand-gray-600 mt-1">Acompanhamento e gestão de demandas comerciais.</p>
                 </div>
                 
-                <div className="flex bg-brand-gray-200 p-1 rounded-xl">
-                    <button onClick={() => setActiveTab('SOLICITACOES')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'SOLICITACOES' ? 'bg-white text-brand-primary shadow-sm' : 'text-gray-600'}`}>Solicitações</button>
-                    {isField && <button onClick={() => setActiveTab('MEUS_ATIVOS')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'MEUS_ATIVOS' ? 'bg-white text-brand-primary shadow-sm' : 'text-gray-600'}`}>Meus Ativos</button>}
+                <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
+                    <button 
+                        onClick={() => handleOpenActionModal()}
+                        className="bg-brand-primary text-white px-8 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:bg-brand-dark transition-all flex items-center justify-center gap-2 transform active:scale-95"
+                    >
+                        <Plus size={18} /> Nova Solicitação
+                    </button>
+
+                    <div className="flex bg-brand-gray-200 p-1 rounded-xl shadow-inner">
+                        <button onClick={() => setActiveTab('HISTORICO')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'HISTORICO' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600'}`}>Histórico</button>
+                        {!isInsideSales && (
+                            <button onClick={() => setActiveTab('MEUS_ATIVOS')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'MEUS_ATIVOS' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600'}`}>Meus Ativos</button>
+                        )}
+                    </div>
                 </div>
             </header>
 
-            {/* TAB: SOLICITAÇÕES (MAIN HUB) */}
-            {activeTab === 'SOLICITACOES' && (
-                <div className="space-y-6">
-                    {/* Action Bar */}
-                    <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-brand-gray-200 shadow-sm">
-                        <div className="relative w-full md:w-96">
-                            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            {activeTab === 'HISTORICO' ? (
+                <div className="space-y-4 animate-fade-in">
+                    {/* BARRA DE FILTROS LIMPA */}
+                    <div className="bg-white p-4 rounded-2xl border border-brand-gray-100 shadow-sm flex flex-col lg:flex-row gap-4 items-center">
+                        <div className="relative flex-1 w-full">
+                            <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input 
-                                type="text" placeholder="Buscar solicitação..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border border-brand-gray-300 rounded-lg text-sm outline-none focus:border-brand-primary"
+                                type="text" 
+                                placeholder="Pesquisar no histórico..." 
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full pl-11 pr-4 py-2.5 bg-brand-gray-50/50 border border-brand-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-primary/10 transition-all"
                             />
                         </div>
-                        <button onClick={handleOpenActionModal} className="bg-brand-gray-900 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-black transition-colors shadow-lg">
-                            <Plus className="w-4 h-4" /> Nova Solicitação
-                        </button>
-                    </div>
-
-                    {/* Unified List */}
-                    <div className="grid grid-cols-1 gap-4">
-                        {/* 1. Registrations (Cadastros) */}
-                        {registrations.map(reg => {
-                            const stepInfo = getStatusStep(reg.status);
-                            return (
-                                <div key={reg.id} className="bg-white p-5 rounded-xl border border-brand-gray-200 shadow-sm flex flex-col md:flex-row gap-4 items-start md:items-center">
-                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-lg"><UserCog className="w-6 h-6"/></div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-bold text-brand-gray-900">{reg.clientName}</span>
-                                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Cadastro</span>
-                                        </div>
-                                        <div className="flex items-center gap-4 text-xs text-brand-gray-500">
-                                            <span>ID: {reg.id}</span>
-                                            <span>{new Date(reg.dateSubmitted).toLocaleDateString()}</span>
-                                        </div>
-                                        <PipelineStatus step={stepInfo.step} />
-                                        <p className={`text-xs font-bold mt-1 ${stepInfo.color}`}>{stepInfo.label}</p>
-                                    </div>
+                        
+                        <div className="flex items-center gap-3 bg-brand-gray-50 p-1.5 rounded-xl border border-brand-gray-200 w-full lg:w-auto">
+                            <div className="flex items-center gap-2 px-3">
+                                <CalendarRange size={16} className="text-brand-gray-400" />
+                                <div className="flex items-center gap-1.5">
+                                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-transparent border-none text-xs font-bold text-brand-gray-700 outline-none cursor-pointer" />
+                                    <span className="text-gray-300">até</span>
+                                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent border-none text-xs font-bold text-brand-gray-700 outline-none cursor-pointer" />
                                 </div>
-                            );
-                        })}
-
-                        {/* 2. Logistics Tasks (Including Material Requests) */}
-                        {tasks.map(task => {
-                            // Filter out tasks that are linked to demands we already show below to avoid duplication?
-                            // For simplicity, we show 'Material Requests' and standalone tasks here.
-                            // Linked tasks (Exchanges) are visualized within the Demand card logic below.
-                            if (task.internalId && task.internalId.startsWith('REQ-')) return null; 
-
-                            const isMaterial = task.type === 'MATERIAL_REQUEST';
-                            const stepInfo = getStatusStep(task.status === 'PENDING_SHIPMENT' ? 'Pendente' : 'Concluído', undefined, task.otp);
-                            
-                            return (
-                                <div key={task.id} className="bg-white p-5 rounded-xl border border-brand-gray-200 shadow-sm flex flex-col md:flex-row gap-4 items-start md:items-center">
-                                    <div className={`p-3 rounded-lg ${isMaterial ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-600'}`}>
-                                        {isMaterial ? <Package className="w-6 h-6"/> : <Truck className="w-6 h-6"/>}
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-bold text-brand-gray-900">{isMaterial ? 'Solicitação de Material' : task.clientName}</span>
-                                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Logística</span>
-                                        </div>
-                                        <div className="flex items-center gap-4 text-xs text-brand-gray-500">
-                                            <span>ID: {task.id}</span>
-                                            <span>{new Date(task.date).toLocaleDateString()}</span>
-                                        </div>
-                                        <p className="text-xs text-brand-gray-600 mt-1 line-clamp-1">{task.details}</p>
-                                        <div className="mt-1">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${task.status === 'PENDING_SHIPMENT' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                                                {task.status === 'PENDING_SHIPMENT' ? 'Aguardando Envio' : 'Enviado / Concluído'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-
-                        {/* 3. Demands (Pricing, Trocas, etc) */}
-                        {demands.map(dem => {
-                            const isPricing = dem.type.includes('Taxa') || dem.type.includes('Negociação');
-                            const isApproved = dem.status === 'Aprovado Pricing';
-                            const stepInfo = getStatusStep(dem.status, dem.adminStatus, dem.otp);
-                            
-                            return (
-                                <div key={dem.id} className="bg-white p-5 rounded-xl border border-brand-gray-200 shadow-sm flex flex-col md:flex-row gap-4 items-start md:items-center relative overflow-hidden">
-                                    {dem.otp && <div className="absolute right-0 top-0 bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg">OTP DISPONÍVEL</div>}
-                                    
-                                    <div className={`p-3 rounded-lg ${isPricing ? 'bg-purple-50 text-purple-600' : 'bg-orange-50 text-orange-600'}`}>
-                                        {isPricing ? <BadgePercent className="w-6 h-6"/> : <RefreshCw className="w-6 h-6"/>}
-                                    </div>
-                                    
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-bold text-brand-gray-900">{dem.clientName}</span>
-                                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">{dem.type}</span>
-                                        </div>
-                                        <div className="flex items-center gap-4 text-xs text-brand-gray-500">
-                                            <span>ID: {dem.id}</span>
-                                            <span>{new Date(dem.date).toLocaleDateString()}</span>
-                                        </div>
-                                        
-                                        {!isPricing && (
-                                            <>
-                                                <PipelineStatus step={stepInfo.step} />
-                                                <div className="flex justify-between items-center mt-1">
-                                                    <p className={`text-xs font-bold ${stepInfo.color}`}>{stepInfo.label}</p>
-                                                    {dem.otp && (
-                                                        <span className="font-mono font-bold text-lg text-brand-gray-900 bg-gray-100 px-2 rounded border border-gray-300 select-all">
-                                                            OTP: {dem.otp}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </>
-                                        )}
-
-                                        {/* Pricing Actions */}
-                                        {isPricing && isApproved && (
-                                            <div className="mt-3 flex gap-2">
-                                                <button className="text-[10px] font-bold bg-green-100 text-green-700 px-3 py-1.5 rounded flex items-center gap-1 hover:bg-green-200 transition-colors">
-                                                    <Download size={12}/> Baixar Proposta
-                                                </button>
-                                                <button className="text-[10px] font-bold bg-[#25D366] text-white px-3 py-1.5 rounded flex items-center gap-1 hover:bg-[#128C7E] transition-colors">
-                                                    <MessageCircle size={12}/> Enviar WhatsApp
-                                                </button>
-                                                <button 
-                                                    className="text-[10px] font-bold bg-brand-primary text-white px-3 py-1.5 rounded flex items-center gap-1 hover:bg-brand-dark transition-colors ml-auto"
-                                                    title="Enviar para Backoffice efetivar"
-                                                    onClick={() => alert("Solicitação de alteração cadastral enviada ao Backoffice!")}
-                                                >
-                                                    <ShieldCheck size={12}/> Efetivar Alteração (Backoffice)
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* TAB: MEUS ATIVOS (POS) */}
-            {activeTab === 'MEUS_ATIVOS' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
-                    {myAssets.length === 0 ? (
-                        <div className="col-span-full p-16 text-center text-gray-400 bg-white rounded-xl border border-gray-200">
-                            <Box className="w-12 h-12 mb-3 opacity-20 mx-auto"/>
-                            <p>Você não possui equipamentos vinculados.</p>
-                        </div>
-                    ) : (
-                        myAssets.map(asset => (
-                            <div key={asset.serialNumber} className="bg-white p-5 rounded-xl border border-brand-gray-200 shadow-sm relative group">
-                                <div className="absolute top-4 right-4">
-                                    <div className={`w-3 h-3 rounded-full ${asset.status === 'Defective' ? 'bg-red-500' : 'bg-green-500'}`}></div>
-                                </div>
-                                <div className="mb-4">
-                                    <h4 className="font-bold text-brand-gray-900">{asset.model}</h4>
-                                    <p className="font-mono text-xs text-brand-gray-500">S/N: {asset.serialNumber}</p>
-                                    <p className="font-mono text-xs text-brand-gray-500">RC: {asset.rcNumber}</p>
-                                </div>
-                                <button 
-                                    onClick={() => { setIssueForm({...issueForm, serial: asset.serialNumber}); setIsIssueModalOpen(true); }}
-                                    className="w-full bg-red-50 text-red-600 hover:bg-red-100 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-red-100"
-                                >
-                                    <AlertTriangle size={14}/> Reportar Problema
-                                </button>
                             </div>
-                        ))
-                    )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                        {filteredHistory.length === 0 ? (
+                            <div className="p-24 text-center text-gray-400 bg-white rounded-3xl border border-dashed border-gray-200">
+                                <Hourglass className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                                <p className="font-medium text-sm">Nenhum registro encontrado no período selecionado.</p>
+                                <button onClick={() => { setStartDate(''); setEndDate(today); setSearchTerm(''); }} className="mt-4 text-brand-primary text-xs font-bold hover:underline uppercase tracking-widest">Limpar Filtros</button>
+                            </div>
+                        ) : (
+                            filteredHistory.map((item: any) => {
+                                const status = getStatusInfo(item);
+                                const itemType = item.type || 'Credenciamento';
+                                return (
+                                    <div key={item.id} className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-4 items-center justify-between group">
+                                        <div className="flex items-center gap-5 flex-1">
+                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${status.bg} ${status.color}`}>
+                                                {itemType.includes('POS') ? <Truck size={28} /> : itemType.includes('Material') ? <Box size={28}/> : itemType.includes('Bancária') ? <CreditCard size={28}/> : <FileText size={28}/>}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <h3 className="font-bold text-brand-gray-900 text-base">{item.clientName || 'Solicitação Geral'}</h3>
+                                                    <span className="text-[10px] font-mono bg-brand-gray-50 px-1.5 py-0.5 rounded text-brand-gray-400">#{item.id}</span>
+                                                </div>
+                                                <p className="text-xs text-brand-gray-500 font-medium">{itemType}</p>
+                                                
+                                                <div className="flex items-center gap-1.5 mt-3">
+                                                    {[1,2,3,4].map(s => (
+                                                        <div key={s} className={`h-1.5 w-8 rounded-full transition-all duration-500 ${status.step >= s ? status.bg.replace('100', '500') : 'bg-brand-gray-100'}`}></div>
+                                                    ))}
+                                                    <span className={`ml-2 text-[10px] font-bold uppercase tracking-wider ${status.color}`}>{status.label}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-2 shrink-0">
+                                            <div className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase border ${status.bg} ${status.color} border-current/20`}>
+                                                {status.label}
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter flex items-center gap-1">
+                                                <Calendar size={10}/> {new Date(item.displayDate).toLocaleDateString()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+            ) : (
+                <div className="animate-fade-in space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {myAssets.length === 0 ? (
+                            <div className="md:col-span-3 p-12 text-center text-gray-400 bg-white rounded-3xl border border-brand-gray-100">
+                                <Smartphone className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                                <p>Nenhum equipamento vinculado.</p>
+                            </div>
+                        ) : (
+                            myAssets.map(pos => (
+                                <div key={pos.serialNumber} className="bg-white p-6 rounded-3xl border border-brand-gray-100 shadow-sm relative overflow-hidden group hover:border-brand-primary/20 transition-all">
+                                    <div className={`absolute top-0 left-0 w-full h-1.5 ${pos.status === 'Active' ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                                    <div className="flex justify-between items-start mb-6">
+                                        <div>
+                                            <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">{pos.model}</p>
+                                            <h3 className="text-xl font-bold text-brand-gray-900 font-mono tracking-tight">{pos.serialNumber}</h3>
+                                        </div>
+                                        <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase border ${pos.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                            {pos.status === 'Active' ? 'Instalado' : 'Estoque'}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-2 mb-6 bg-brand-gray-50 p-3 rounded-2xl border border-brand-gray-100">
+                                        <div className="flex items-center justify-between text-[11px] text-brand-gray-600">
+                                            <span className="font-bold text-brand-gray-400 uppercase">Patrimônio RC</span>
+                                            <span className="font-mono font-bold">{pos.rcNumber}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-[11px] text-brand-gray-600">
+                                            <span className="font-bold text-brand-gray-400 uppercase">Vínculo</span>
+                                            <span className="font-bold">{new Date(pos.lastUpdated).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => { setIssueForm({...issueForm, serial: pos.serialNumber}); setIsIssueModalOpen(true); }}
+                                        className="w-full bg-white text-brand-gray-600 py-3 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-600 transition-all border border-brand-gray-200 flex items-center justify-center gap-2"
+                                    >
+                                        <AlertTriangle size={14} /> Reportar Defeito
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
             )}
 
-            {/* MODAL: NOVA SOLICITAÇÃO (Dynamic Types) */}
             {isActionModalOpen && (
                 <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-                        <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white shrink-0">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden">
+                        <div className="bg-brand-gray-900 px-6 py-5 flex justify-between items-center text-white">
                             <h3 className="font-bold text-lg">Nova Solicitação</h3>
-                            <button onClick={() => setIsActionModalOpen(false)} className="text-brand-gray-400 hover:text-white"><X size={20}/></button>
+                            <button onClick={() => setIsActionModalOpen(false)} className="text-brand-gray-400 hover:text-white p-2 hover:bg-white/5 rounded-full"><X size={20}/></button>
                         </div>
-                        <div className="p-6 space-y-4 overflow-y-auto">
+                        <div className="p-6">
                             {!selectedActionType ? (
-                                <div className="grid grid-cols-1 gap-2">
-                                    <p className="text-xs font-bold text-gray-400 uppercase mb-2">Selecione o Tipo:</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     {[
-                                        'Troca de POS', 'Desativação de POS', 'Alteração Bancária', 
-                                        'Alteração Cadastral', 
-                                        // Include Material Request for Field Sales
-                                        ...(isField ? ['Solicitação de Material'] : []),
-                                        // Inside Sales Specifics
-                                        ...(isInside ? ['Envio de POS (Novo Cliente)', 'Retirada de POS (Logística)'] : [])
-                                    ].map((type) => (
+                                        { label: 'Troca de POS', icon: RefreshCw, type: 'Troca de POS', color: 'text-orange-600' },
+                                        { label: 'Desativação de POS', icon: X, type: 'Desativação de POS', color: 'text-red-600' },
+                                        { label: 'Alteração Bancária', icon: CreditCard, type: 'Alteração Bancária', color: 'text-blue-600' },
+                                        { label: 'Gestão de Rede', icon: Network, type: 'Gestão de Rede', color: 'text-gray-400', disabled: true },
+                                        { label: 'Solicitação de Material', icon: Box, type: 'Solicitação de Material', color: 'text-purple-600' }
+                                    ].filter(btn => !(isInsideSales && btn.type === 'Solicitação de Material')).map(btn => (
                                         <button 
-                                            key={type}
-                                            onClick={() => setSelectedActionType(type as DemandActionType)}
-                                            className="p-3 border border-brand-gray-200 rounded-lg hover:border-brand-primary hover:bg-brand-primary/5 transition-all text-left text-sm font-bold text-brand-gray-700 flex justify-between items-center group"
+                                            key={btn.label} 
+                                            disabled={btn.disabled}
+                                            onClick={() => setSelectedActionType(btn.type as any)}
+                                            className={`flex items-center gap-4 p-4 border rounded-2xl transition-all text-left group ${btn.disabled ? 'bg-brand-gray-50 border-gray-200 opacity-50 grayscale cursor-not-allowed' : 'bg-brand-gray-50 border-brand-gray-200 hover:bg-white hover:border-brand-primary hover:shadow-md'}`}
                                         >
-                                            <div className="flex items-center gap-2">
-                                                {type === 'Solicitação de Material' ? <Package className="w-4 h-4 text-green-600" /> : null}
-                                                {type}
+                                            <div className={`p-3 bg-white rounded-xl border border-gray-100 group-hover:scale-110 transition-transform ${btn.color}`}><btn.icon size={22} /></div>
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-brand-gray-900 text-sm">{btn.label}</span>
+                                                {btn.disabled && <span className="text-[9px] font-bold text-brand-gray-400 uppercase">Em desenvolvimento</span>}
                                             </div>
-                                            <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-primary" />
                                         </button>
                                     ))}
                                 </div>
                             ) : (
-                                <div className="space-y-4 animate-fade-in">
-                                    <div className="flex items-center gap-2 text-sm text-brand-gray-500 mb-2 cursor-pointer" onClick={() => setSelectedActionType(null)}>
-                                        <ChevronRight className="rotate-180" size={14} /> Voltar
-                                    </div>
+                                <div className="space-y-5 animate-fade-in">
+                                    <button onClick={() => setSelectedActionType(null)} className="text-xs font-bold text-brand-primary flex items-center gap-1 hover:underline mb-2"><ChevronRight size={14} className="rotate-180"/> Voltar para Opções</button>
                                     
-                                    {selectedActionType === 'Solicitação de Material' ? (
-                                        // --- MATERIAL FORM ---
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-4">
-                                            <div className="p-3 bg-green-50 border border-green-100 rounded-lg mb-2 text-xs text-green-800">
-                                                Solicitação de kit de ativação para estoque do consultor.
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Quantidade de Máquinas (Min 5)</label>
-                                                <input 
-                                                    type="number" min={5} value={materialForm.posQuantity} 
-                                                    onChange={e => setMaterialForm({...materialForm, posQuantity: parseInt(e.target.value)})}
-                                                    className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:border-green-500"
-                                                />
-                                            </div>
-                                            <div className="space-y-3 bg-brand-gray-50 p-4 rounded-lg border border-brand-gray-200">
-                                                <p className="text-xs font-bold text-gray-500 uppercase">Itens Adicionais</p>
-                                                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                                                    <input type="checkbox" className="rounded text-green-600 focus:ring-green-500" checked={materialForm.coils} onChange={e => setMaterialForm({...materialForm, coils: e.target.checked})} /> 
-                                                    Caixa de Bobinas
-                                                </label>
-                                                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                                                    <input type="checkbox" className="rounded text-green-600 focus:ring-green-500" checked={materialForm.chargers} onChange={e => setMaterialForm({...materialForm, chargers: e.target.checked})} /> 
-                                                    Carregadores Extras
-                                                </label>
-                                                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                                                    <input type="checkbox" className="rounded text-green-600 focus:ring-green-500" checked={materialForm.gifts} onChange={e => setMaterialForm({...materialForm, gifts: e.target.checked})} /> 
-                                                    Kit Brindes (Adesivos, Canetas)
-                                                </label>
-                                            </div>
-                                            <button onClick={handleCreateDemand} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors shadow-lg mt-2">
-                                                Enviar Pedido de Material
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        // --- GENERIC DEMAND FORM WITH SPECIFIC FIELDS ---
-                                        <>
-                                            <div ref={searchWrapperRef} className="relative">
-                                                <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Nome do Cliente *</label>
-                                                <input 
-                                                    className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
-                                                    value={newRequestData.clientName}
-                                                    onChange={handleClientNameChange}
-                                                    placeholder="Buscar Cliente..."
-                                                />
+                                            {/* PESQUISA DE CLIENTE */}
+                                            <div className="relative" ref={searchWrapperRef}>
+                                                <label className="block text-[10px] font-extrabold text-gray-400 uppercase mb-1 tracking-widest">Estabelecimento / EC Selecionado *</label>
+                                                <div className="relative">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                    <input 
+                                                        className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all" 
+                                                        placeholder="Nome ou ID do cliente..." 
+                                                        value={newRequestData.clientName} 
+                                                        onChange={e => handleClientSearch(e.target.value)}
+                                                    />
+                                                </div>
                                                 {showSuggestions && suggestions.length > 0 && (
-                                                    <div className="absolute z-50 w-full bg-white border border-brand-gray-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
-                                                        {suggestions.map(client => (
-                                                            <div 
-                                                                key={client.id}
-                                                                className="px-4 py-2 hover:bg-brand-gray-50 cursor-pointer border-b border-brand-gray-50 last:border-0 flex justify-between items-center"
-                                                                onClick={() => selectClient(client)}
-                                                            >
-                                                                <div><p className="text-sm font-bold text-brand-gray-800">{client.nomeEc}</p></div>
-                                                            </div>
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-[110] max-h-48 overflow-y-auto">
+                                                        {suggestions.map(c => (
+                                                            <button key={c.id} onClick={() => selectClient(c)} className="w-full text-left p-3 hover:bg-brand-gray-50 border-b last:border-0">
+                                                                <p className="text-xs font-bold text-brand-gray-900">{c.nomeEc}</p>
+                                                                <p className="text-[10px] text-brand-gray-500">ID: {c.id} • {c.endereco}</p>
+                                                            </button>
                                                         ))}
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {/* --- TROCA DE POS FIELDS --- */}
-                                            {selectedActionType === 'Troca de POS' && (
-                                                <div className="space-y-3 bg-brand-gray-50 p-4 rounded-xl border border-brand-gray-100">
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">POS a Retirar *</label>
-                                                        <select className="w-full border rounded p-2 text-sm" value={selectedOldPos} onChange={e => setSelectedOldPos(e.target.value)}>
-                                                            <option value="">Selecione...</option>
-                                                            {clientPosList.map(pos => (
-                                                                <option key={pos.serialNumber} value={pos.serialNumber}>{pos.model} - {pos.serialNumber}</option>
-                                                            ))}
-                                                        </select>
+                                            {/* ALTERAÇÃO BANCÁRIA */}
+                                            {selectedActionType === 'Alteração Bancária' ? (
+                                                <div className="space-y-4 animate-fade-in">
+                                                    <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                                                        <h4 className="text-[10px] font-black text-blue-600 uppercase mb-3 flex items-center gap-1"><Sparkles size={12}/> Digitalização de Comprovante</h4>
+                                                        <div 
+                                                            className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-white ${bankForm.proofFile ? 'border-green-300 bg-green-50' : 'border-blue-200 bg-blue-50/50'}`}
+                                                            onClick={() => bankProofRef.current?.click()}
+                                                        >
+                                                            {isAnalyzingBank ? (
+                                                                <div className="flex flex-col items-center"><Loader2 size={24} className="animate-spin text-brand-primary mb-2"/><p className="text-[10px] font-bold text-brand-primary animate-pulse uppercase">IA Lendo Comprovante...</p></div>
+                                                            ) : bankForm.proofFile ? (
+                                                                <div className="flex flex-col items-center"><CheckCircle2 size={24} className="text-green-500 mb-1"/><p className="text-[10px] font-bold text-green-700">{bankForm.proofFile.name}</p></div>
+                                                            ) : (
+                                                                <><UploadCloud size={24} className="text-blue-400 mb-2"/><p className="text-[10px] font-bold text-blue-600 text-center uppercase leading-tight">Anexar Print da Conta / Comprovante</p></>
+                                                            )}
+                                                            <input type="file" className="hidden" ref={bankProofRef} onChange={handleBankProofUpload} accept="image/*,application/pdf" />
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-blue-600 uppercase mb-1">POS do seu Estoque *</label>
-                                                        <select className="w-full border border-blue-200 rounded p-2 text-sm bg-blue-50" value={selectedNewPos} onChange={e => setSelectedNewPos(e.target.value)}>
-                                                            <option value="">Selecione para Vincular...</option>
-                                                            {myStockList.map(pos => (
-                                                                <option key={pos.serialNumber} value={pos.serialNumber}>{pos.model} - {pos.serialNumber}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Motivo da Troca *</label>
-                                                        <select className="w-full border rounded p-2 text-sm" value={selectedReason} onChange={e => setSelectedReason(e.target.value)}>
-                                                            <option value="">Selecione...</option>
-                                                            {swapReasons.map(r => <option key={r} value={r}>{r}</option>)}
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            )}
 
-                                            {/* --- DESATIVAÇÃO FIELDS --- */}
-                                            {selectedActionType === 'Desativação de POS' && (
-                                                <div className="space-y-3 bg-red-50 p-4 rounded-xl border border-red-100">
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-red-700 uppercase mb-1">POS a Retirar *</label>
-                                                        <select className="w-full border rounded p-2 text-sm" value={selectedOldPos} onChange={e => setSelectedOldPos(e.target.value)}>
-                                                            <option value="">Selecione...</option>
-                                                            {clientPosList.map(pos => (
-                                                                <option key={pos.serialNumber} value={pos.serialNumber}>{pos.model} - {pos.serialNumber}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-red-700 uppercase mb-1">Motivo da Devolução *</label>
-                                                        <select className="w-full border rounded p-2 text-sm" value={selectedReason} onChange={e => setSelectedReason(e.target.value)}>
-                                                            <option value="">Selecione...</option>
-                                                            {withdrawalReasons.map(r => <option key={r} value={r}>{r}</option>)}
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* --- ALTERAÇÃO BANCÁRIA FIELDS --- */}
-                                            {selectedActionType === 'Alteração Bancária' && (
-                                                <div className="bg-brand-gray-50 p-4 rounded-xl border border-dashed border-brand-gray-300 space-y-3">
-                                                    <h4 className="text-xs font-bold text-brand-gray-500 uppercase mb-2">Novos Dados Bancários</h4>
-                                                    <div className="grid grid-cols-2 gap-2">
+                                                    <div className="grid grid-cols-2 gap-3">
                                                         <div className="col-span-2">
-                                                            <select className="w-full border rounded p-2 text-sm" value={bankData.bankCode} onChange={e => setBankData({...bankData, bankCode: e.target.value})}>
-                                                                <option value="">Banco...</option>
+                                                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Banco</label>
+                                                            <select className="w-full border rounded-xl p-2.5 text-xs bg-white" value={bankForm.bankCode} onChange={e => setBankForm({...bankForm, bankCode: e.target.value})}>
+                                                                <option value="">Selecione...</option>
                                                                 {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
                                                             </select>
                                                         </div>
-                                                        <input className="w-full border rounded p-2 text-sm" placeholder="Agência" value={bankData.agency} onChange={e => setBankData({...bankData, agency: e.target.value})} />
-                                                        <input className="w-full border rounded p-2 text-sm" placeholder="Conta" value={bankData.accountNumber} onChange={e => setBankData({...bankData, accountNumber: e.target.value})} />
-                                                        <input className="w-full border rounded p-2 text-sm col-span-2" placeholder="Titular" value={bankData.holderName} onChange={e => setBankData({...bankData, holderName: e.target.value})} />
-                                                        <select className="w-full border rounded p-2 text-sm" value={bankData.accountType} onChange={e => setBankData({...bankData, accountType: e.target.value as any})}>
-                                                            <option value="Corrente">Corrente</option>
-                                                            <option value="Poupança">Poupança</option>
+                                                        <div><label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Agência</label><input className="w-full border rounded-xl p-2.5 text-sm" value={bankForm.agency} onChange={e => setBankForm({...bankForm, agency: e.target.value})} /></div>
+                                                        <div><label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Conta</label><input className="w-full border rounded-xl p-2.5 text-sm" value={bankForm.accountNumber} onChange={e => setBankForm({...bankForm, accountNumber: e.target.value})} /></div>
+                                                        <div className="col-span-2"><label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Nome do Titular</label><input className="w-full border rounded-xl p-2.5 text-sm font-bold" value={bankForm.holderName} onChange={e => setBankForm({...bankForm, holderName: e.target.value})} /></div>
+                                                    </div>
+                                                </div>
+                                            ) : (selectedActionType === 'Troca de POS' || selectedActionType === 'Desativação de POS') && (
+                                                <>
+                                                    <div>
+                                                        <label className="block text-[10px] font-extrabold text-gray-400 uppercase mb-1 tracking-widest">Escolher POS Atual (Retirar) *</label>
+                                                        {clientActivePos.length > 0 ? (
+                                                            <select className="w-full border border-gray-300 rounded-xl p-2.5 text-sm font-mono" value={selectedOldPos} onChange={e => setSelectedOldPos(e.target.value)}>
+                                                                <option value="">Selecione a POS...</option>
+                                                                {clientActivePos.map(p => (
+                                                                    <option key={p.serialNumber} value={p.serialNumber}>{p.serialNumber} ({p.model})</option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <div className="p-3 bg-red-50 text-red-600 rounded-xl border border-red-100 flex items-center gap-2 text-[10px] font-bold">
+                                                                <AlertCircle size={14}/> EC sem máquinas ativas identificadas
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-[10px] font-extrabold text-gray-400 uppercase mb-1 tracking-widest">Motivo *</label>
+                                                        <select className="w-full border border-gray-300 rounded-xl p-2.5 text-xs bg-white font-bold" value={selectedReason} onChange={e => setSelectedReason(e.target.value)}>
+                                                            <option value="">Selecione...</option>
+                                                            {selectedActionType === 'Troca de POS' ? (
+                                                                appStore.getSwapReasons().map(r => <option key={r} value={r}>{r}</option>)
+                                                            ) : (
+                                                                appStore.getWithdrawalReasons().map(r => <option key={r} value={r}>{r}</option>)
+                                                            )}
                                                         </select>
                                                     </div>
-                                                    <label className="cursor-pointer bg-white border border-brand-gray-300 text-brand-gray-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-brand-gray-100 flex items-center justify-center gap-2">
-                                                        <UploadCloud size={14} /> Anexar Comprovante
-                                                        <input type="file" className="hidden" accept="image/*,.pdf" onChange={handleBankFileChange} />
-                                                    </label>
-                                                    {bankData.proofFile && <span className="text-xs text-green-600 flex items-center gap-1 justify-center"><CheckCircle2 size={12}/> {bankData.proofFile.name}</span>}
-                                                </div>
+                                                </>
                                             )}
 
                                             <div>
-                                                <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-1">Descrição / Observações</label>
-                                                <textarea 
-                                                    className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none h-24 resize-none"
-                                                    value={newRequestData.description}
-                                                    onChange={e => setNewRequestData({...newRequestData, description: e.target.value})}
-                                                    placeholder="Detalhes adicionais..."
-                                                />
+                                                <label className="block text-[10px] font-extrabold text-gray-400 uppercase mb-1 tracking-widest">Observações Adicionais</label>
+                                                <textarea className="w-full border border-gray-300 rounded-xl p-2.5 text-xs h-20 resize-none outline-none focus:ring-2 focus:ring-brand-primary/20" placeholder="Informações extras para a logística..." value={newRequestData.description} onChange={e => setNewRequestData({...newRequestData, description: e.target.value})} />
                                             </div>
-                                            <button onClick={handleCreateDemand} className="w-full bg-brand-primary text-white py-3 rounded-xl font-bold hover:bg-brand-dark transition-colors shadow-lg">
-                                                Criar Solicitação
-                                            </button>
-                                        </>
-                                    )}
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            {/* TERCEIROS - CONTA BANCÁRIA */}
+                                            {selectedActionType === 'Alteração Bancária' && (
+                                                <div className="bg-purple-50 p-5 rounded-2xl border border-purple-200">
+                                                    <label className="flex items-center gap-3 cursor-pointer mb-4">
+                                                        <input type="checkbox" className="w-5 h-5 rounded text-purple-600 border-purple-300" checked={bankForm.isThirdParty} onChange={e => setBankForm({...bankForm, isThirdParty: e.target.checked})} />
+                                                        <span className="text-xs font-bold text-purple-900">Esta conta pertence a um Terceiro?</span>
+                                                    </label>
+
+                                                    {bankForm.isThirdParty && (
+                                                        <div className="space-y-3 animate-fade-in">
+                                                            <div 
+                                                                className={`p-3 rounded-xl border border-dashed text-[10px] font-bold flex items-center justify-between transition-colors cursor-pointer ${thirdPartyDocs.termFile ? 'bg-white border-green-300 text-green-700' : 'bg-white border-purple-300 text-purple-700 hover:bg-purple-100'}`}
+                                                                onClick={() => thirdTermRef.current?.click()}
+                                                            >
+                                                                <span className="flex items-center gap-2">{thirdPartyDocs.termFile ? <CheckCircle2 size={12}/> : <Paperclip size={12}/>} Termo de Terceiro Assinado</span>
+                                                                <input type="file" className="hidden" ref={thirdTermRef} onChange={e => setThirdPartyDocs({...thirdPartyDocs, termFile: e.target.files?.[0] || null})} />
+                                                            </div>
+                                                            <div 
+                                                                className={`p-3 rounded-xl border border-dashed text-[10px] font-bold flex items-center justify-between transition-colors cursor-pointer ${thirdPartyDocs.idFile ? 'bg-white border-green-300 text-green-700' : 'bg-white border-purple-300 text-purple-700 hover:bg-purple-100'}`}
+                                                                onClick={() => thirdIdRef.current?.click()}
+                                                            >
+                                                                <span className="flex items-center gap-2">{thirdPartyDocs.idFile ? <CheckCircle2 size={12}/> : <FileCheck size={12}/>} Doc (RG/CNH) do Titular</span>
+                                                                <input type="file" className="hidden" ref={thirdIdRef} onChange={e => setThirdPartyDocs({...thirdPartyDocs, idFile: e.target.files?.[0] || null})} />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* PLACEHOLDERS LOGÍSTICA */}
+                                            {(selectedActionType === 'Troca de POS' || selectedActionType === 'Desativação de POS') && (
+                                                <div className="bg-brand-gray-50 p-5 rounded-2xl border border-brand-gray-200 h-fit">
+                                                    <h4 className="text-[10px] font-black text-brand-gray-400 uppercase mb-4 tracking-tighter flex items-center gap-1">
+                                                        <Truck size={12}/> Fluxo de Atendimento (Logística)
+                                                    </h4>
+                                                    
+                                                    <div className="space-y-4">
+                                                        {selectedActionType === 'Troca de POS' && (
+                                                            <div className="opacity-50">
+                                                                <label className="block text-[9px] font-bold text-brand-gray-400 uppercase mb-1">Nova POS Enviada</label>
+                                                                <div className="bg-white border border-dashed border-gray-300 p-2 rounded-lg text-[10px] text-gray-400 flex items-center justify-between">
+                                                                    Aguardando Logística... <Info size={10}/>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="opacity-50">
+                                                            <label className="block text-[9px] font-bold text-brand-gray-400 uppercase mb-1">Via de Envio (Correios/Loggi/etc)</label>
+                                                            <div className="bg-white border border-dashed border-gray-300 p-2 rounded-lg text-[10px] text-gray-400">
+                                                                ---
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="opacity-50">
+                                                            <label className="block text-[9px] font-bold text-brand-gray-400 uppercase mb-1">
+                                                                {selectedActionType === 'Troca de POS' ? 'Código de Rastreio' : 'Cód. Logística Reversa'}
+                                                            </label>
+                                                            <div className="bg-white border border-dashed border-gray-300 p-2 rounded-lg text-[10px] text-gray-400 font-mono">
+                                                                A PREENCHER PELA TI/LOG
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <button onClick={handleCreateDemand} className="w-full bg-brand-primary text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-brand-dark transition-all flex items-center justify-center gap-2 active:scale-95">
+                                        <Send size={18} /> Confirmar Solicitação
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -687,30 +646,34 @@ const PedidosRastreioPage: React.FC<PedidosRastreioPageProps> = ({ targetDemandI
                 </div>
             )}
 
-            {/* MODAL: REPORT ISSUE */}
             {isIssueModalOpen && (
                 <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                        <div className="bg-red-600 px-6 py-4 text-white"><h3 className="font-bold">Reportar Problema POS</h3></div>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-sm overflow-hidden">
+                        <div className="bg-red-600 px-6 py-4 flex justify-between items-center text-white">
+                            <h3 className="font-bold">Reportar Problema</h3>
+                            <button onClick={() => setIsIssueModalOpen(false)} className="text-red-200 hover:text-white"><X size={20}/></button>
+                        </div>
                         <div className="p-6 space-y-4">
-                            <p className="text-sm font-bold text-gray-700">Serial: {issueForm.serial}</p>
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tipo de Problema</label>
-                                <select className="w-full border rounded p-2" value={issueForm.type} onChange={e => setIssueForm({...issueForm, type: e.target.value})}>
-                                    <option value="Defeito">Defeito Técnico</option>
-                                    <option value="Sem Carregador">Falta Carregador</option>
-                                    <option value="Conectividade">Chip/Sinal</option>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">S/N do Equipamento</label>
+                                <input className="w-full border border-brand-gray-300 rounded-lg p-2.5 text-sm bg-gray-50 font-mono" readOnly value={issueForm.serial} />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Tipo de Problema</label>
+                                <select className="w-full border border-brand-gray-300 rounded-lg p-2.5 text-sm bg-white" value={issueForm.type} onChange={e => setIssueForm({...issueForm, type: e.target.value})}>
+                                    <option value="Defeito">Defeito de Hardware</option>
+                                    <option value="Conectividade">Problema de Sinal / Wifi</option>
+                                    <option value="Bateria">Bateria Viciada</option>
                                     <option value="Outros">Outros</option>
                                 </select>
                             </div>
-                            <textarea 
-                                className="w-full border rounded p-2 h-20 text-sm" 
-                                placeholder="Detalhes..." 
-                                value={issueForm.desc} 
-                                onChange={e => setIssueForm({...issueForm, desc: e.target.value})}
-                            />
-                            <button onClick={handleReportIssue} className="w-full bg-red-600 text-white py-2 rounded font-bold hover:bg-red-700">Reportar para Logística</button>
-                            <button onClick={() => setIsIssueModalOpen(false)} className="w-full text-gray-500 py-2 text-sm hover:underline">Cancelar</button>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Descrição detalhada</label>
+                                <textarea className="w-full border border-brand-gray-300 rounded-lg p-2.5 text-sm h-24 resize-none" placeholder="Explique o que ocorre..." value={issueForm.desc} onChange={e => setIssueForm({...issueForm, desc: e.target.value})} />
+                            </div>
+                            <button onClick={handleReportIssue} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-red-700 transition-colors">
+                                Enviar para Triagem
+                            </button>
                         </div>
                     </div>
                 </div>

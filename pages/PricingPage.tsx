@@ -152,7 +152,12 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
 
     const [mixValues, setMixValues] = useState<Record<string, string>>({});
     const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+    
+    // AI Progress State
     const [aiProcessing, setAiProcessing] = useState(false);
+    const [aiProgress, setAiProgress] = useState(0);
+    const [aiStatusText, setAiStatusText] = useState('Iniciando análise...');
+
     const [analysisSuccess, setAnalysisSuccess] = useState(false);
     const [extractedRates, setExtractedRates] = useState<any>(null);
     const fileInputRefQuote = useRef<HTMLInputElement>(null);
@@ -286,7 +291,23 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
 
     const handleAnalyzeEvidence = async () => {
         if (evidenceFiles.length === 0) { alert("Anexe pelo menos uma imagem."); return; }
-        setAiProcessing(true); setAnalysisSuccess(false);
+        
+        setAiProcessing(true); 
+        setAnalysisSuccess(false);
+        setAiProgress(0);
+        setAiStatusText('Enviando imagens para análise segura...');
+
+        // Simulate Progress Stages
+        const interval = setInterval(() => {
+            setAiProgress(prev => {
+                const next = prev + Math.random() * 15;
+                if (next > 30 && next < 60) setAiStatusText('Processando OCR e Visão Computacional...');
+                if (next >= 60 && next < 90) setAiStatusText('Interpretando taxas e condições...');
+                if (next >= 90) setAiStatusText('Finalizando extração...');
+                return next > 95 ? 95 : next;
+            });
+        }, 300);
+
         try {
             const base64Promises = evidenceFiles.map(file => new Promise<string>((resolve, reject) => {
                 const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error);
@@ -294,9 +315,28 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
             const base64Files = await Promise.all(base64Promises);
             const cleanBase64 = base64Files.map(s => s.split(',')[1]);
             const simValue = quoteForm.evidenceMode === 'SIMULATION' ? Number(quoteForm.simulationValue) : undefined;
+            
+            // Artificial delay to show progress bar fully if API is too fast
+            await new Promise(r => setTimeout(r, 2000));
+            
             const result = await extractRatesFromEvidence(cleanBase64, quoteForm.plan, simValue);
-            if (result) { setExtractedRates(result); setAnalysisSuccess(true); } else { alert("Não foi possível extrair as taxas."); }
-        } catch (error) { console.error(error); alert("Erro ao processar evidências."); } finally { setAiProcessing(false); }
+            
+            clearInterval(interval);
+            setAiProgress(100);
+            
+            if (result) { 
+                setExtractedRates(result); 
+                setAnalysisSuccess(true); 
+            } else { 
+                alert("Não foi possível extrair as taxas."); 
+            }
+        } catch (error) { 
+            console.error(error); 
+            alert("Erro ao processar evidências."); 
+        } finally { 
+            clearInterval(interval);
+            setTimeout(() => setAiProcessing(false), 500); // Small delay to show 100%
+        }
     };
 
     const handleSubmitQuote = () => {
@@ -418,7 +458,7 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                                     <input type="file" multiple className="hidden" ref={fileInputRefQuote} onChange={handleFileUpload} accept="image/*,.pdf" />
                                 </div>
                                 {evidenceFiles.length > 0 && (
-                                    <div className="space-y-3">
+                                    <div className="space-y-3 relative">
                                         <div className="space-y-2">
                                             {evidenceFiles.map((file, idx) => (
                                                 <div key={idx} className="flex justify-between items-center bg-white border border-brand-gray-200 p-2 rounded-lg text-xs">
@@ -427,11 +467,28 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                                                 </div>
                                             ))}
                                         </div>
-                                        <button onClick={handleAnalyzeEvidence} disabled={aiProcessing} className="w-full bg-brand-gray-900 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors">
-                                            {aiProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                            {aiProcessing ? 'IA Analisando...' : 'Extrair Taxas'}
+                                        
+                                        {/* PROGRESS BAR OVERLAY */}
+                                        {aiProcessing && (
+                                            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-20 flex flex-col items-center justify-center rounded-xl p-4 border border-brand-gray-200 shadow-sm animate-fade-in">
+                                                <Sparkles className="w-8 h-8 text-brand-primary mb-2 animate-pulse" />
+                                                <p className="text-xs font-bold text-brand-gray-800 mb-2">{aiStatusText}</p>
+                                                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                                    <div 
+                                                        className="h-full bg-gradient-to-r from-brand-primary to-purple-600 rounded-full transition-all duration-300 ease-out"
+                                                        style={{ width: `${aiProgress}%` }}
+                                                    ></div>
+                                                </div>
+                                                <p className="text-[10px] text-gray-400 mt-1 font-mono">{Math.round(aiProgress)}%</p>
+                                            </div>
+                                        )}
+
+                                        <button onClick={handleAnalyzeEvidence} disabled={aiProcessing} className="w-full bg-brand-gray-900 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors shadow-lg">
+                                            <Sparkles className="w-3 h-3" />
+                                            Extrair Taxas com IA
                                         </button>
-                                        {analysisSuccess && <div className="flex items-center justify-center gap-2 text-green-600 text-xs font-bold bg-green-50 p-2 rounded border border-green-100 animate-fade-in"><CheckCircle2 className="w-4 h-4" /> Com sucesso</div>}
+                                        
+                                        {analysisSuccess && <div className="flex items-center justify-center gap-2 text-green-600 text-xs font-bold bg-green-50 p-2 rounded border border-green-100 animate-fade-in"><CheckCircle2 className="w-4 h-4" /> Leitura Concluída</div>}
                                     </div>
                                 )}
                             </div>
@@ -526,6 +583,7 @@ const PricingPage: React.FC<PricingPageProps> = ({ role }) => {
                 </div>
             )}
 
+            {/* ... (Ranges Tab remains unchanged) ... */}
             {activeTab === 'RANGE' && (
                 <div className="animate-fade-in relative">
                     <div className="flex flex-col md:flex-row justify-end items-end gap-4 mb-6 no-print">

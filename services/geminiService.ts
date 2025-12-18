@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { Visit, ClientBaseRow, Vehicle } from "../types";
+// Fixed: Use Appointment instead of Visit and import Vehicle
+import { Appointment, ClientBaseRow, Vehicle } from "../types";
 
 // Helper to get AI instance safely
 const getAI = () => {
@@ -68,7 +69,7 @@ export const getDashboardInsights = async (role: string, dataSummary: string): P
 
   try {
     const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: `
         Atue como um estrategista de vendas sênior da 'Pagmotors' (Webmotors Serviços Automotivos).
         
@@ -96,8 +97,49 @@ export const getDashboardInsights = async (role: string, dataSummary: string): P
   }
 };
 
+// NEW: Strategy Analysis for Projection
+export const getStrategyAnalysis = async (current: number, target: number, daysPassed: number, totalDays: number): Promise<string> => {
+    if (isQuotaExceeded()) return "Análise de projeção indisponível.";
+    const ai = getAI();
+    if (!ai) return "IA indisponível.";
+
+    const pacing = (current / daysPassed);
+    const projected = pacing * totalDays;
+    const gap = target - current;
+    
+    try {
+        const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `
+                Você é um Diretor de Estratégia Comercial. Analise o comportamento das atividades e faça uma projeção do mês.
+                
+                DADOS ATUAIS:
+                - Vendas Realizadas: ${current}
+                - Meta do Mês: ${target}
+                - Dias Corridos: ${daysPassed}/${totalDays}
+                
+                ANÁLISE MATEMÁTICA:
+                - Ritmo Atual (Pacing): ${pacing.toFixed(1)} vendas/dia
+                - Projeção Linear: ${projected.toFixed(0)} vendas
+                - Gap para Meta: ${gap} vendas
+                
+                TAREFA:
+                Forneça uma análise de comportamento e sugestão estratégica curta (máx 3 linhas).
+                Se a projeção for abaixo da meta, sugira uma ação de correção de rota.
+                Se estiver acima, sugira como maximizar ou replicar o sucesso.
+                
+                FORMATO: Texto direto, tom executivo.
+            `
+        }));
+        return response.text || "Sem análise disponível.";
+    } catch (error) {
+        return "Erro ao gerar análise estratégica.";
+    }
+};
+
 // Updated: Returns ordered array of IDs instead of string text
-export const optimizeRoute = async (visits: Visit[], startLocation?: string): Promise<string[]> => {
+// Fixed: Use Appointment instead of Visit
+export const optimizeRoute = async (visits: Appointment[], startLocation?: string): Promise<string[]> => {
   if (isQuotaExceeded()) return visits.map(v => v.id); // Fallback to original order
   
   const ai = getAI();
@@ -107,7 +149,7 @@ export const optimizeRoute = async (visits: Visit[], startLocation?: string): Pr
   
   try {
     const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: `
         You are an expert logistics route optimizer.
         
@@ -155,7 +197,7 @@ export const getGeographicInsights = async (clients: ClientBaseRow[]): Promise<s
 
   try {
     const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: `
         Você é um especialista em Inteligência Geográfica.
         Analise a lista de clientes abaixo (Amostra):
@@ -180,7 +222,7 @@ export const analyzeDocument = async (base64Data: string, docType: 'IDENTITY' | 
   
   try {
     const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
@@ -227,7 +269,7 @@ export const extractRatesFromEvidence = async (
         parts.push({ text: prompt });
 
         const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: { parts },
             config: { responseMimeType: "application/json" }
         }));
@@ -264,7 +306,7 @@ export const identifyVehicleByPlate = async (plate: string): Promise<Vehicle | n
 
     try {
         const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: prompt,
             config: { responseMimeType: "application/json" }
         }));
@@ -308,7 +350,7 @@ export const analyzeReceipt = async (base64Image: string) => {
 
     try {
         const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
@@ -324,6 +366,55 @@ export const analyzeReceipt = async (base64Image: string) => {
         return null;
     } catch (error) {
         console.error("Receipt Analysis Error:", error);
+        return null; 
+    }
+};
+
+// --- NEW: Invoice Analysis (Conciliation) ---
+export const analyzeInvoice = async (base64Image: string) => {
+    if (isQuotaExceeded()) return null;
+    const ai = getAI();
+    if (!ai) return null;
+
+    const prompt = `
+        Analise esta fatura de cartão de crédito corporativo.
+        
+        Objetivo: Conciliação de despesas.
+        
+        Extraia a lista de transações em JSON no seguinte formato:
+        {
+            "items": [
+                {
+                    "date": "YYYY-MM-DD",
+                    "description": "Nome do Estabelecimento",
+                    "amount": 123.45
+                }
+            ],
+            "totalAmount": 1234.56,
+            "period": "MM/YYYY"
+        }
+        
+        Ignore linhas de pagamentos anteriores ou saldo. Foque nas despesas do período.
+    `;
+
+    try {
+        const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+                    { text: prompt }
+                ]
+            },
+            config: { responseMimeType: "application/json" }
+        }));
+
+        if (response.text) {
+            return JSON.parse(response.text);
+        }
+        return null;
+    } catch (error) {
+        console.error("Invoice Analysis Error:", error);
         return null; 
     }
 };

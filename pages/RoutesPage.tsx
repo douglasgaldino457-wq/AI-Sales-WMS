@@ -48,10 +48,10 @@ const RoutesPage: React.FC = () => {
       const L = (window as any).L;
       if (!L) return;
 
-      // Safe check for existing instance on DOM element
+      // Safe check for existing instance on DOM element to prevent reuse error
       const container = mapRef.current as any;
       if (container._leaflet_id) {
-          container._leaflet_id = null; // Force clear identifier to prevent "Map container is already initialized" error
+          container._leaflet_id = null; // Force clear identifier
       }
 
       if (mapInstance.current) {
@@ -68,13 +68,14 @@ const RoutesPage: React.FC = () => {
       
       mapInstance.current = map;
 
+      // Robust Cleanup
       return () => {
           if (mapInstance.current) {
               mapInstance.current.remove();
               mapInstance.current = null;
           }
       };
-  }, []); // Run once on mount
+  }, []); // Run once on mount (or re-run if Strict Mode)
 
   // Update Map Layers/View when data changes
   useEffect(() => {

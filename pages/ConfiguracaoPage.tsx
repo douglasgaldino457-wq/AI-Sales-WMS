@@ -1,20 +1,20 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { appStore } from '../services/store';
-import { SystemUser, UserRole } from '../types';
+import { UserRole, IntegrationConfig } from '../types';
 import { 
-    Settings, Plus, Trash2, CheckCircle2, X, Users, LayoutList, 
-    UserPlus, Search, Filter, Phone, Mail, ArrowUpDown, Power, Edit2, UserCheck, UserX, Briefcase, Map, Target, AlertCircle 
+    Plus, Trash2, CheckCircle2, X, Users, LayoutList, 
+    Phone, Briefcase, Map, Target, AlertCircle,
+    Database, Link, RefreshCw, Server, FileSpreadsheet, UploadCloud, Activity, Save
 } from 'lucide-react';
+import { useAppStore } from '../services/useAppStore';
 
 // --- TYPES ---
-type ConfigTab = 'INSIDE' | 'FIELD' | 'USERS';
-type SortField = 'name' | 'role' | 'active';
-type SortDirection = 'asc' | 'desc';
-type StatusFilter = 'all' | 'active' | 'inactive';
+type ConfigTab = 'INSIDE' | 'FIELD' | 'INTEGRATIONS';
 
 const ConfiguracaoPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<ConfigTab>('FIELD'); // Default to Field
+  const { userRole } = useAppStore();
+  const [activeTab, setActiveTab] = useState<ConfigTab>(userRole === UserRole.ESTRATEGIA ? 'INTEGRATIONS' : 'FIELD');
   const [notification, setNotification] = useState<string | null>(null);
 
   // --- CONFIG LISTS STATE ---
@@ -23,27 +23,18 @@ const ConfiguracaoPage: React.FC = () => {
   const [withdrawalReasons, setWithdrawalReasons] = useState<string[]>([]);
   const [swapReasons, setSwapReasons] = useState<string[]>([]);
 
-  // --- USERS STATE ---
-  const [users, setUsers] = useState<SystemUser[]>([]);
-  const [managers, setManagers] = useState<SystemUser[]>([]);
-  
-  // Filtering & Sorting State (Users)
-  const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'Todos' | UserRole>('Todos');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [sortField, setSortField] = useState<SortField>('name');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-
-  // Modal & Form State (Users)
-  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
-  const [userFormData, setUserFormData] = useState<Partial<SystemUser>>({
-    name: '',
-    role: UserRole.FIELD_SALES,
-    email: '',
-    whatsapp: '',
-    managerName: ''
+  // --- INTEGRATION STATE ---
+  const [integration, setIntegration] = useState<IntegrationConfig>({
+      sicBaseUrl: '',
+      active: false,
+      syncInterval: 60
   });
+
+  // --- DATA & BI STATE (Migrated) ---
+  const [powerBiUrl, setPowerBiUrl] = useState('');
+  const [showPowerBi, setShowPowerBi] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   useEffect(() => {
     refreshData();
@@ -55,9 +46,9 @@ const ConfiguracaoPage: React.FC = () => {
     setWithdrawalReasons(appStore.getWithdrawalReasons());
     setSwapReasons(appStore.getSwapReasons());
     
-    const allUsers = appStore.getUsers();
-    setUsers([...allUsers]);
-    setManagers(allUsers.filter(u => u.role === UserRole.GESTOR));
+    // Load integration settings
+    const integConfig = appStore.getIntegrationConfig();
+    if(integConfig) setIntegration(integConfig);
   };
 
   const showNotification = (msg: string) => {
@@ -65,107 +56,70 @@ const ConfiguracaoPage: React.FC = () => {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  // --- HELPER: PHONE FORMATTER ---
-  const formatPhone = (v: string) => {
-    const r = v.replace(/\D/g, "");
-    return r.replace(/^(\d{2})(\d{5})(\d{4}).*/, "($1) $2-$3")
-      .replace(/^(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3")
-      .replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+  const handleSaveIntegration = () => {
+      appStore.setIntegrationConfig(integration);
+      showNotification('Configuração de integração salva!');
   };
 
-  // --- USERS HANDLERS ---
-  const handleSortUsers = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          setUploadedFileName(file.name);
+          
+          try {
+              const data = await file.arrayBuffer();
+              // @ts-ignore
+              const workbook = window.XLSX.read(data);
+              const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+              // @ts-ignore
+              const jsonData = window.XLSX.utils.sheet_to_json(worksheet);
+              
+              // Map to ClientBaseRow - Robust mapping based on common Excel columns
+              const mappedClients: any[] = jsonData.map((row: any, index: number) => ({
+                  id: row['ID'] || row['id'] || `IMP-${Date.now()}-${index}`,
+                  nomeEc: row['Nome'] || row['Cliente'] || row['Nome Fantasia'] || 'Sem Nome',
+                  tipoSic: row['Tipo'] || row['Segmento'] || 'Oficina',
+                  endereco: row['Endereço'] || row['Endereco'] || 'Endereço não informado',
+                  responsavel: row['Responsável'] || row['Responsavel'] || row['Contato'] || 'Gerente',
+                  contato: row['Telefone'] || row['Celular'] || row['Whatsapp'] || '',
+                  regiaoAgrupada: row['Região'] || row['Regiao'] || row['Zona'] || 'Geral',
+                  fieldSales: row['Consultor'] || row['Field'] || 'A definir',
+                  insideSales: row['Inside'] || 'A definir',
+                  status: 'Active',
+                  cnpj: row['CNPJ'] || row['Documento'] || '',
+                  // Try to parse lat/lng if available
+                  latitude: row['Latitude'] ? parseFloat(row['Latitude']) : undefined,
+                  longitude: row['Longitude'] ? parseFloat(row['Longitude']) : undefined,
+              }));
 
-  const handleToggleUserStatus = (id: string) => {
-    appStore.toggleUserStatus(id);
-    refreshData();
-    showNotification('Status do usuário alterado.');
-  };
+              if (mappedClients.length > 0) {
+                  // Merge with existing or Replace? For now, we update store
+                  const currentClients = appStore.getClients();
+                  // Simple logic: append new ones or update if ID matches?
+                  // For demo/simplicity, we just append non-duplicates or refresh list.
+                  // Let's replace the MOCK data with uploaded + heroes if it's a "fresh" load context,
+                  // but safer to append new ones.
+                  
+                  const newClients = [...currentClients, ...mappedClients];
+                  appStore.setClients(newClients);
+                  
+                  showNotification(`${mappedClients.length} clientes importados com sucesso!`);
+              } else {
+                  showNotification("O arquivo parece vazio ou fora do formato.");
+              }
 
-  const handleOpenUserModal = (user?: SystemUser) => {
-    if (user) {
-      setEditingUser(user);
-      setUserFormData({ ...user });
-    } else {
-      setEditingUser(null);
-      setUserFormData({
-        name: '',
-        role: UserRole.FIELD_SALES,
-        email: '',
-        whatsapp: '',
-        active: true,
-        managerName: ''
-      });
-    }
-    setIsUserModalOpen(true);
-  };
-
-  const handleSaveUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Final Validation Check
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (userFormData.email && !emailRegex.test(userFormData.email)) {
-        alert("Por favor, corrija o formato do e-mail antes de salvar.");
-        return;
-    }
-
-    if (editingUser) {
-      appStore.updateUser({ ...editingUser, ...userFormData } as SystemUser);
-      showNotification('Usuário atualizado com sucesso!');
-    } else {
-      const newUser: SystemUser = {
-        id: Math.random().toString(36).substr(2, 9),
-        active: true,
-        ...(userFormData as any)
-      };
-      appStore.addUser(newUser);
-      showNotification('Usuário criado com sucesso!');
-    }
-    refreshData();
-    setIsUserModalOpen(false);
-  };
-
-  // Filter & Sort Logic (Users)
-  const processedUsers = users
-    .filter(u => {
-      const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesRole = roleFilter === 'Todos' || u.role === roleFilter;
-      const matchesStatus = 
-        statusFilter === 'all' ? true :
-        statusFilter === 'active' ? u.active :
-        !u.active;
-
-      return matchesSearch && matchesRole && matchesStatus;
-    })
-    .sort((a, b) => {
-      const fieldA = a[sortField];
-      const fieldB = b[sortField];
-      
-      let comparison = 0;
-      if (typeof fieldA === 'string' && typeof fieldB === 'string') {
-        comparison = fieldA.localeCompare(fieldB);
-      } else if (typeof fieldA === 'boolean' && typeof fieldB === 'boolean') {
-         comparison = (fieldA === fieldB) ? 0 : fieldA ? -1 : 1;
+          } catch (error) {
+              console.error(error);
+              showNotification("Erro ao processar arquivo Excel. Verifique o formato.");
+          }
       }
+  };
 
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-
-  const activeUserCount = users.filter(u => u.active).length;
-  const inactiveUserCount = users.filter(u => !u.active).length;
-
-  // Helper for Email Validation
-  const isEmailValid = (email: string | undefined) => {
-      if (!email) return true; // Empty is handled by required prop
-      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const handleSavePowerBi = () => {
+      if(powerBiUrl) {
+          setShowPowerBi(true);
+          showNotification("URL do Power BI atualizada!");
+      }
   };
 
   // --- REUSABLE COMPONENT: CONFIG LIST ---
@@ -247,6 +201,8 @@ const ConfiguracaoPage: React.FC = () => {
       );
   };
 
+  const showOperationalTabs = userRole !== UserRole.ESTRATEGIA;
+
   return (
     <div className="space-y-6 relative">
       {/* Success Toast */}
@@ -264,36 +220,40 @@ const ConfiguracaoPage: React.FC = () => {
 
       <header>
         <h1 className="text-2xl font-bold text-brand-gray-900">Configuração</h1>
-        <p className="text-brand-gray-700">Parâmetros operacionais e gerenciamento de acessos</p>
+        <p className="text-brand-gray-700">Parâmetros operacionais e integrações</p>
       </header>
 
       {/* Main Tabs */}
-      <div className="flex space-x-1 bg-brand-gray-200 p-1 rounded-xl w-fit">
+      <div className="flex space-x-1 bg-brand-gray-200 p-1 rounded-xl w-fit overflow-x-auto max-w-full">
+          {showOperationalTabs && (
+              <>
+                <button 
+                    onClick={() => setActiveTab('FIELD')}
+                    className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'FIELD' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
+                >
+                    <Map className="w-4 h-4 mr-2" />
+                    Field Sales
+                </button>
+                <button 
+                    onClick={() => setActiveTab('INSIDE')}
+                    className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'INSIDE' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
+                >
+                    <Phone className="w-4 h-4 mr-2" />
+                    Inside Sales
+                </button>
+              </>
+          )}
           <button 
-              onClick={() => setActiveTab('FIELD')}
-              className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'FIELD' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
+              onClick={() => setActiveTab('INTEGRATIONS')}
+              className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'INTEGRATIONS' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
           >
-              <Map className="w-4 h-4 mr-2" />
-              Field Sales
-          </button>
-          <button 
-              onClick={() => setActiveTab('INSIDE')}
-              className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'INSIDE' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
-          >
-              <Phone className="w-4 h-4 mr-2" />
-              Inside Sales
-          </button>
-          <button 
-              onClick={() => setActiveTab('USERS')}
-              className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'USERS' ? 'bg-white text-brand-primary shadow-sm' : 'text-brand-gray-600 hover:text-brand-gray-800'}`}
-          >
-              <Users className="w-4 h-4 mr-2" />
-              Usuários
+              <Database className="w-4 h-4 mr-2" />
+              Integrações
           </button>
       </div>
 
       {/* --- CONTENT: FIELD SALES CONFIG --- */}
-      {activeTab === 'FIELD' && (
+      {activeTab === 'FIELD' && showOperationalTabs && (
           <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-6">
               <ConfigListSection 
                   title="Motivos de Retirada"
@@ -317,7 +277,7 @@ const ConfiguracaoPage: React.FC = () => {
       )}
 
       {/* --- CONTENT: INSIDE SALES CONFIG --- */}
-      {activeTab === 'INSIDE' && (
+      {activeTab === 'INSIDE' && showOperationalTabs && (
           <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-6">
               <ConfigListSection 
                   title="Motivos de Visita"
@@ -340,288 +300,168 @@ const ConfiguracaoPage: React.FC = () => {
           </div>
       )}
 
-      {/* --- CONTENT: USERS MANAGEMENT (Existing logic) --- */}
-      {activeTab === 'USERS' && (
-         <div className="animate-fade-in space-y-6">
-            
-            {/* Stats & Actions */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div className="flex gap-4">
-                    <button 
-                        onClick={() => setStatusFilter(statusFilter === 'active' ? 'all' : 'active')}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all shadow-sm min-w-[140px]
-                            ${statusFilter === 'active' 
-                                ? 'bg-green-50 border-green-200 ring-1 ring-green-500' 
-                                : 'bg-white border-brand-gray-100 hover:border-brand-gray-300'
-                            }`}
-                    >
-                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                            <UserCheck size={20} />
-                        </div>
-                        <div className="text-left">
-                            <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Ativos</p>
-                            <p className="text-xl font-bold text-brand-gray-900">{activeUserCount}</p>
-                        </div>
-                    </button>
+      {/* --- CONTENT: INTEGRATIONS CONFIG --- */}
+      {activeTab === 'INTEGRATIONS' && (
+          <div className="animate-fade-in space-y-8 max-w-4xl mx-auto">
+              
+              {/* SECTION 1: SIC LEGACY INTEGRATION */}
+              <div className="bg-white rounded-2xl shadow-sm border border-brand-gray-100 overflow-hidden">
+                  <div className="p-6 border-b border-brand-gray-100 bg-brand-gray-50 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                              <Server className="w-6 h-6" />
+                          </div>
+                          <div>
+                              <h3 className="font-bold text-lg text-brand-gray-900">Integração SIC (Legado)</h3>
+                              <p className="text-xs text-brand-gray-500">Conexão via Middleware / API Gateway</p>
+                          </div>
+                      </div>
+                      
+                      {/* Active Toggle */}
+                      <label className="flex items-center cursor-pointer">
+                          <div className="relative">
+                              <input type="checkbox" className="sr-only" checked={integration.active} onChange={e => setIntegration({...integration, active: e.target.checked})} />
+                              <div className={`block w-10 h-6 rounded-full transition-colors ${integration.active ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                              <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${integration.active ? 'transform translate-x-4' : ''}`}></div>
+                          </div>
+                          <div className="ml-3 text-sm font-medium text-gray-700">{integration.active ? 'Ativo' : 'Inativo'}</div>
+                      </label>
+                  </div>
 
-                    <button 
-                        onClick={() => setStatusFilter(statusFilter === 'inactive' ? 'all' : 'inactive')}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all shadow-sm min-w-[140px]
-                            ${statusFilter === 'inactive' 
-                                ? 'bg-red-50 border-red-200 ring-1 ring-red-500' 
-                                : 'bg-white border-brand-gray-100 hover:border-brand-gray-300'
-                            }`}
-                    >
-                        <div className="w-10 h-10 rounded-full bg-brand-gray-100 flex items-center justify-center text-brand-gray-500">
-                            <UserX size={20} />
-                        </div>
-                        <div className="text-left">
-                            <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Inativos</p>
-                            <p className="text-xl font-bold text-brand-gray-900">{inactiveUserCount}</p>
-                        </div>
-                    </button>
-                </div>
-                
-                <button 
-                    onClick={() => handleOpenUserModal()}
-                    className="bg-brand-primary hover:bg-brand-dark text-white px-4 py-3 rounded-lg shadow transition-colors flex items-center text-sm font-bold"
-                >
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Novo Usuário
-                </button>
-            </div>
+                  <div className="p-6 space-y-6">
+                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-start gap-3 text-sm text-blue-800">
+                          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                          <p>
+                              A integração permite sincronizar TPV, Cadastros e Leads do sistema <strong>SIC</strong> em tempo real.
+                              Certifique-se de que o middleware de conexão está rodando e acessível.
+                          </p>
+                      </div>
 
-            {/* Filters Bar */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-brand-gray-100 flex flex-col md:flex-row gap-4 items-center">
-                <div className="relative flex-1 w-full">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-brand-gray-400" />
-                <input 
-                    type="text" 
-                    placeholder="Buscar pelo nome do consultor..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-brand-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-brand-primary transition-all"
-                />
-                </div>
-                <div className="flex items-center gap-2 w-full md:w-auto">
-                <Filter className="w-4 h-4 text-brand-gray-500" />
-                <span className="text-sm font-medium text-brand-gray-700 whitespace-nowrap">Filtrar por Time:</span>
-                <select 
-                    value={roleFilter}
-                    onChange={(e) => setRoleFilter(e.target.value as any)}
-                    className="border border-brand-gray-300 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                >
-                    <option value="Todos">Todos</option>
-                    {Object.values(UserRole).map(role => (
-                    <option key={role} value={role}>{role}</option>
-                    ))}
-                </select>
-                </div>
-            </div>
+                      <div className="space-y-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">API Base URL (Middleware)</label>
+                              <div className="relative">
+                                  <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                  <input 
+                                      type="text" 
+                                      className="w-full pl-10 pr-4 py-2.5 border border-brand-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                      placeholder="https://api-bridge.car10.net/v1"
+                                      value={integration.sicBaseUrl}
+                                      onChange={e => setIntegration({...integration, sicBaseUrl: e.target.value})}
+                                  />
+                              </div>
+                              <p className="text-[10px] text-gray-400 mt-1 ml-1">URL pública ou interna do serviço de integração com o SIC.</p>
+                          </div>
 
-            {/* Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-brand-gray-100 overflow-hidden">
-                <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-brand-gray-50 text-brand-gray-700 font-bold border-b border-brand-gray-200">
-                    <tr>
-                        <th className="px-6 py-4 cursor-pointer hover:bg-brand-gray-100 transition-colors group" onClick={() => handleSortUsers('name')}>
-                        <div className="flex items-center gap-2">
-                            Consultor
-                            <ArrowUpDown className="w-3 h-3 text-brand-gray-400 group-hover:text-brand-primary" />
-                        </div>
-                        </th>
-                        <th className="px-6 py-4 cursor-pointer hover:bg-brand-gray-100 transition-colors group" onClick={() => handleSortUsers('role')}>
-                        <div className="flex items-center gap-2">
-                            Time
-                            <ArrowUpDown className="w-3 h-3 text-brand-gray-400 group-hover:text-brand-primary" />
-                        </div>
-                        </th>
-                        <th className="px-6 py-4">Contato</th>
-                        <th className="px-6 py-4">Gestor Responsável</th>
-                        <th className="px-6 py-4 text-center cursor-pointer hover:bg-brand-gray-100" onClick={() => handleSortUsers('active')}>Status</th>
-                        <th className="px-6 py-4 text-right">Ações</th>
-                    </tr>
-                    </thead>
-                    <tbody className="divide-y divide-brand-gray-100">
-                    {processedUsers.map((user) => (
-                        <tr key={user.id} className={`hover:bg-brand-gray-50 transition-colors ${!user.active ? 'opacity-50 bg-brand-gray-50' : ''}`}>
-                        <td className="px-6 py-4 font-bold text-brand-gray-900">
-                            {user.name}
-                        </td>
-                        <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border
-                            ${user.role === UserRole.GESTOR ? 'bg-purple-100 text-purple-800 border-purple-200' : ''}
-                            ${user.role === UserRole.FIELD_SALES ? 'bg-blue-100 text-blue-800 border-blue-200' : ''}
-                            ${user.role === UserRole.INSIDE_SALES ? 'bg-orange-100 text-orange-800 border-orange-200' : ''}
-                            `}>
-                            {user.role}
-                            </span>
-                        </td>
-                        <td className="px-6 py-4">
-                            <div className="space-y-1">
-                                <div className="flex items-center text-brand-gray-700">
-                                <Mail className="w-3 h-3 mr-2 text-brand-gray-400" />
-                                {user.email}
-                                </div>
-                                <div className="flex items-center text-brand-gray-700">
-                                <Phone className="w-3 h-3 mr-2 text-brand-gray-400" />
-                                {user.whatsapp}
-                                </div>
-                            </div>
-                        </td>
-                        <td className="px-6 py-4 text-brand-gray-700">
-                            {user.managerName || <span className="text-brand-gray-400 text-xs italic">Não atribuído</span>}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                            {user.active ? (
-                                <span className="inline-block w-2.5 h-2.5 bg-green-500 rounded-full shadow-sm" title="Ativo"></span>
-                            ) : (
-                                <span className="inline-block w-2.5 h-2.5 bg-brand-gray-400 rounded-full shadow-sm" title="Inativo"></span>
-                            )}
-                        </td>
-                        <td className="px-6 py-4">
-                            <div className="flex items-center justify-end gap-2">
-                                <button 
-                                onClick={() => handleOpenUserModal(user)}
-                                className="p-2 text-brand-gray-500 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors"
-                                title="Editar"
-                                >
-                                    <Edit2 className="w-4 h-4" />
-                                </button>
-                                <button 
-                                onClick={() => handleToggleUserStatus(user.id)}
-                                className={`p-2 rounded-lg transition-colors ${user.active ? 'text-brand-gray-500 hover:text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
-                                title={user.active ? 'Inativar' : 'Ativar'}
-                                >
-                                    <Power className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
-                
-                {processedUsers.length === 0 && (
-                    <div className="p-10 text-center text-brand-gray-500">
-                        Nenhum usuário encontrado com os filtros selecionados.
-                    </div>
-                )}
-                </div>
-            </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Chave de Autenticação (Opcional)</label>
+                              <div className="relative">
+                                  <Database className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                  <input 
+                                      type="password" 
+                                      className="w-full pl-10 pr-4 py-2.5 border border-brand-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                      placeholder="Bearer Token ou API Key..."
+                                      value={integration.sicApiKey || ''}
+                                      onChange={e => setIntegration({...integration, sicApiKey: e.target.value})}
+                                  />
+                              </div>
+                          </div>
 
-            {/* User Modal */}
-            {isUserModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-                        <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center">
-                            <h3 className="text-white font-bold text-lg">
-                                {editingUser ? 'Editar Usuário' : 'Novo Usuário'}
-                            </h3>
-                            <button onClick={() => setIsUserModalOpen(false)} className="text-brand-gray-400 hover:text-white transition-colors">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        
-                        <form onSubmit={handleSaveUser} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-brand-gray-700 mb-1">Nome Completo</label>
-                                <input 
-                                    required
-                                    type="text" 
-                                    value={userFormData.name}
-                                    onChange={e => setUserFormData({...userFormData, name: e.target.value})}
-                                    className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-brand-gray-700 mb-1">Time (Perfil)</label>
-                                <select 
-                                    required
-                                    value={userFormData.role}
-                                    onChange={e => setUserFormData({...userFormData, role: e.target.value as UserRole})}
-                                    className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none bg-white"
-                                >
-                                    {Object.values(UserRole).map(role => (
-                                        <option key={role} value={role}>{role}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            
-                            {/* Gestor Responsável Dropdown */}
-                            <div>
-                                <label className="block text-sm font-bold text-brand-gray-700 mb-1">Gestor Responsável</label>
-                                <div className="relative">
-                                    <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-brand-gray-400" />
-                                    <select 
-                                        value={userFormData.managerName || ''}
-                                        onChange={e => setUserFormData({...userFormData, managerName: e.target.value})}
-                                        className="w-full pl-9 border border-brand-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none bg-white appearance-none"
-                                    >
-                                        <option value="">Selecione um gestor...</option>
-                                        {managers.map(manager => (
-                                            <option key={manager.id} value={manager.name}>{manager.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
+                          <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Intervalo de Sync (Min)</label>
+                                  <div className="relative">
+                                      <RefreshCw className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                      <input 
+                                          type="number" min={5}
+                                          className="w-full pl-10 pr-4 py-2.5 border border-brand-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-brand-primary outline-none"
+                                          value={integration.syncInterval}
+                                          onChange={e => setIntegration({...integration, syncInterval: Number(e.target.value)})}
+                                      />
+                                  </div>
+                              </div>
+                              <div className="flex items-end">
+                                  <button onClick={handleSaveIntegration} className="w-full bg-brand-primary text-white py-2.5 rounded-lg font-bold shadow-md hover:bg-brand-dark transition-all flex items-center justify-center gap-2">
+                                      <CheckCircle2 className="w-4 h-4" /> Salvar Configuração
+                                  </button>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+                  <div className="bg-gray-50 p-4 border-t border-gray-200 text-xs text-center text-gray-500">
+                      Última Sincronização: {integration.lastSync ? new Date(integration.lastSync).toLocaleString() : 'Nunca'}
+                  </div>
+              </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-brand-gray-700 mb-1">E-mail</label>
-                                    <input 
-                                        required
-                                        type="email" 
-                                        value={userFormData.email}
-                                        onChange={e => setUserFormData({...userFormData, email: e.target.value})}
-                                        className={`w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all ${
-                                            !isEmailValid(userFormData.email) && (userFormData.email || '').length > 0
-                                            ? 'border-red-500 focus:border-red-500 text-red-900' 
-                                            : 'border-brand-gray-300 focus:border-brand-primary'
-                                        }`}
-                                    />
-                                    {!isEmailValid(userFormData.email) && (userFormData.email || '').length > 0 && (
-                                        <p className="text-[10px] text-red-500 mt-1 font-medium flex items-center gap-1">
-                                            <AlertCircle className="w-3 h-3"/> Formato de e-mail inválido
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-brand-gray-700 mb-1">WhatsApp</label>
-                                    <input 
-                                        required
-                                        type="tel" 
-                                        value={userFormData.whatsapp}
-                                        onChange={e => setUserFormData({...userFormData, whatsapp: formatPhone(e.target.value)})}
-                                        placeholder="(XX) XXXXX-XXXX"
-                                        className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none"
-                                    />
-                                </div>
-                            </div>
+              {/* SECTION 2: DADOS & BI (Imported from Estrategia) */}
+              <div className="flex items-center gap-2 mb-4 mt-8">
+                  <Database className="w-6 h-6 text-brand-gray-400" />
+                  <h2 className="text-xl font-bold text-brand-gray-800">Dados & BI</h2>
+              </div>
 
-                            <div className="pt-4 flex gap-3 justify-end">
-                                <button 
-                                    type="button" 
-                                    onClick={() => setIsUserModalOpen(false)}
-                                    className="px-4 py-2 border border-brand-gray-300 text-brand-gray-700 rounded-lg hover:bg-brand-gray-50 font-medium"
-                                >
-                                    Cancelar
-                                </button>
-                                <button 
-                                    type="submit" 
-                                    className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark shadow-md font-bold"
-                                >
-                                    Salvar
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-         </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
+                  {/* EXCEL UPLOAD */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-brand-gray-100 p-6">
+                      <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
+                          <FileSpreadsheet className="w-5 h-5 text-green-600" /> Importar Dados Externos
+                      </h3>
+                      <div 
+                          className="border-2 border-dashed border-brand-gray-300 rounded-xl p-8 flex flex-col items-center justify-center bg-brand-gray-50 hover:bg-brand-gray-100 transition-colors cursor-pointer group"
+                          onClick={() => fileInputRef.current?.click()}
+                      >
+                          <UploadCloud className="w-10 h-10 text-brand-gray-400 mb-3 group-hover:scale-110 transition-transform" />
+                          <p className="text-sm font-bold text-brand-gray-700">Upload Base Excel (.xlsx)</p>
+                          <p className="text-xs text-brand-gray-400 mt-1">Arraste ou clique para selecionar</p>
+                          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx,.csv" onChange={handleFileUpload} />
+                      </div>
+                      {uploadedFileName && (
+                          <div className="mt-3 flex items-center justify-between bg-green-50 px-3 py-2 rounded-lg border border-green-100">
+                              <span className="text-xs font-bold text-green-700 flex items-center gap-2">
+                                  <CheckCircle2 size={14} /> {uploadedFileName}
+                              </span>
+                              <span className="text-xs text-green-600">Processado</span>
+                          </div>
+                      )}
+                  </div>
+
+                  {/* POWER BI LINK */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-brand-gray-100 p-6">
+                      <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
+                          <Activity className="w-5 h-5 text-yellow-600" /> Power BI Integrado
+                      </h3>
+                      <div className="flex gap-2 mb-4">
+                          <input 
+                              type="text" 
+                              placeholder="Cole o link de incorporação..." 
+                              value={powerBiUrl}
+                              onChange={(e) => setPowerBiUrl(e.target.value)}
+                              className="flex-1 border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-yellow-500/20 outline-none"
+                          />
+                          <button 
+                              onClick={handleSavePowerBi}
+                              className="bg-brand-gray-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-black transition-colors"
+                          >
+                              <Save size={16} />
+                          </button>
+                      </div>
+                      
+                      <div className="bg-brand-gray-100 rounded-xl h-40 flex items-center justify-center border border-brand-gray-200 overflow-hidden">
+                          {showPowerBi ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-white">
+                                  <p className="text-sm font-bold text-brand-gray-900 mb-2">Relatório Vinculado</p>
+                                  <a href={powerBiUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                                      Abrir Dashboard Externo <Link size={12} />
+                                  </a>
+                              </div>
+                          ) : (
+                              <p className="text-xs text-brand-gray-400">Nenhum relatório vinculado.</p>
+                          )}
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
-
     </div>
   );
 };

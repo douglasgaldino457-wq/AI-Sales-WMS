@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Search, Filter, Phone, Mail, ArrowUpDown, Power, Edit2, X, CheckCircle2, UserCheck, UserX, Briefcase, ChevronRight, Lock } from 'lucide-react';
 import { UserRole, SystemUser } from '../types';
@@ -44,19 +43,10 @@ const UsuariosPage: React.FC = () => {
   const filterVisibleUsers = (allUsers: SystemUser[], myRole: UserRole | null): SystemUser[] => {
       if (!myRole) return [];
       
-      // Admin, Gestor and Qualidade see everyone
-      if (myRole === UserRole.ADMIN || myRole === UserRole.GESTOR || myRole === UserRole.QUALIDADE) return allUsers;
+      // GESTOR and ESTRATEGIA see everyone
+      if (myRole === UserRole.GESTOR || myRole === UserRole.ESTRATEGIA) return allUsers;
 
-      // Financeiro: Sees people who generate expenses/costs (Sales & Managers)
-      if (myRole === UserRole.FINANCEIRO) {
-          return allUsers.filter(u => 
-              u.role === UserRole.FIELD_SALES || 
-              u.role === UserRole.INSIDE_SALES || 
-              u.role === UserRole.GESTOR
-          );
-      }
-
-      // Default fallback (e.g. if a Sales person somehow accessed this page): Only see themselves
+      // Others shouldn't see this page, but as fallback:
       return [];
   };
 
@@ -79,8 +69,8 @@ const UsuariosPage: React.FC = () => {
 
   const handleToggleStatus = (id: string) => {
     // Permission check
-    if (userRole !== UserRole.ADMIN && userRole !== UserRole.GESTOR) {
-        alert("Apenas Gestores e Admins podem alterar status.");
+    if (userRole !== UserRole.ESTRATEGIA && userRole !== UserRole.GESTOR) {
+        alert("Apenas Gestores e Estratégia podem alterar status.");
         return;
     }
     appStore.toggleUserStatus(id);
@@ -89,8 +79,8 @@ const UsuariosPage: React.FC = () => {
 
   const handleOpenModal = (user?: SystemUser) => {
     // Permission check for creating/editing
-    if (userRole !== UserRole.ADMIN && userRole !== UserRole.GESTOR) {
-        alert("Apenas Gestores e Admins podem editar usuários.");
+    if (userRole !== UserRole.ESTRATEGIA && userRole !== UserRole.GESTOR) {
+        alert("Apenas Gestores e Estratégia podem editar usuários.");
         return;
     }
 
@@ -160,7 +150,7 @@ const UsuariosPage: React.FC = () => {
 
   const activeCount = users.filter(u => u.active).length;
   const inactiveCount = users.filter(u => !u.active).length;
-  const canEdit = userRole === UserRole.ADMIN || userRole === UserRole.GESTOR;
+  const canEdit = userRole === UserRole.ESTRATEGIA || userRole === UserRole.GESTOR;
 
   return (
     <div className="space-y-6 relative pb-20">
@@ -297,7 +287,7 @@ const UsuariosPage: React.FC = () => {
                       ${user.role === UserRole.LOGISTICA ? 'bg-amber-100 text-amber-800 border-amber-200' : ''}
                       ${user.role === UserRole.ADMIN ? 'bg-gray-100 text-gray-800 border-gray-200' : ''}
                       ${user.role === UserRole.FINANCEIRO ? 'bg-green-100 text-green-800 border-green-200' : ''}
-                      ${user.role === UserRole.QUALIDADE ? 'bg-cyan-100 text-cyan-800 border-cyan-200' : ''}
+                      ${user.role === UserRole.ESTRATEGIA ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : ''}
                     `}>
                       {user.role}
                     </span>

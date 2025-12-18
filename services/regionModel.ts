@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { runWithRetry } from "./geminiService";
 
@@ -186,7 +187,7 @@ export const predictRegion = async (
         4. OUTRAS CAPITAIS:
            - "Grande [Nome da Capital]" (ex: "Grande Curitiba", "Grande BH") ou divida em Zonas se for uma capital muito grande e o bairro for central.
         5. INTERIOR/LITORAL:
-           - Use "Regional [Nome da Cidade Principal]" ou "Litoral [UF]" (ex: "Litoral SP", "Regional Campinas").
+           - Use "Regional [Nome da Cidade Principal]" or "Litoral [UF]" (ex: "Litoral SP", "Regional Campinas").
 
         OBJETIVO:
         Agrupar em áreas de atuação para consultores de vendas. Evite criar micro-regiões (bairros isolados).
@@ -198,8 +199,9 @@ export const predictRegion = async (
         Exemplo: "Zona Sul SP"
       `;
 
+      // Fix: Updated model to 'gemini-3-flash-preview' for text task
       const response = await runWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
       }));
 

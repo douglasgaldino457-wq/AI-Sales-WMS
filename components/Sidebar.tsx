@@ -43,7 +43,11 @@ import {
   Star,
   PieChart,
   DollarSign,
-  Box
+  Box,
+  CreditCard,
+  BarChart2,
+  Database,
+  Search
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -64,6 +68,11 @@ const Sidebar: React.FC = () => {
   
   if (!userRole) return null;
 
+  // Lógica de Nomenclatura Dinâmica
+  const baseClientesLabel = (userRole === UserRole.FIELD_SALES || userRole === UserRole.INSIDE_SALES) 
+    ? 'Gestão de Carteira' 
+    : 'Base de Clientes';
+
   const getMenuItems = () => {
     let items: {icon: any, label: string, page: Page}[] = [];
 
@@ -75,7 +84,7 @@ const Sidebar: React.FC = () => {
           { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
           { icon: BadgePercent, label: 'Cadastro & Pricing', page: Page.CADASTRO_PRICING },
           { icon: ListTodo, label: 'Minhas Solicitações', page: Page.PEDIDOS_RASTREIO },
-          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+          { icon: Users, label: baseClientesLabel, page: Page.BASE_CLIENTES },
         ];
         break;
       case UserRole.FIELD_SALES:
@@ -87,17 +96,16 @@ const Sidebar: React.FC = () => {
           { icon: BadgePercent, label: 'Cadastro & Pricing', page: Page.CADASTRO_PRICING },
           { icon: ListTodo, label: 'Minhas Solicitações', page: Page.PEDIDOS_RASTREIO },
           { icon: Receipt, label: 'Despesas & Reembolso', page: Page.DESPESAS },
-          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+          { icon: Users, label: baseClientesLabel, page: Page.BASE_CLIENTES },
         ];
         break;
       case UserRole.GESTOR:
         items = [
           { icon: LayoutDashboard, label: 'Dashboard Geral', page: Page.DASHBOARD_GERAL },
-          { icon: Users, label: 'Base de Clientes', page: Page.BASE_CLIENTES },
+          { icon: Users, label: baseClientesLabel, page: Page.BASE_CLIENTES },
           { icon: Activity, label: 'Painel de Leads', page: Page.PAINEL_LEADS },
           { icon: MapPinned, label: 'Mapa de Gestão', page: Page.MAPA_GESTAO },
           { icon: BadgePercent, label: 'Cadastro & Pricing', page: Page.CADASTRO_PRICING },
-          { icon: ListTodo, label: 'Minhas Solicitações', page: Page.PEDIDOS_RASTREIO },
           { icon: Receipt, label: 'Despesas & Reembolso', page: Page.DESPESAS },
           { icon: Settings, label: 'Configuração', page: Page.CONFIGURACAO },
           { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
@@ -122,26 +130,25 @@ const Sidebar: React.FC = () => {
         items = [
           { icon: LayoutDashboard, label: 'Centro de Comando', page: Page.DASHBOARD },
           { icon: ShieldCheck, label: 'Validações & Demandas', page: Page.ADMIN_DEMANDS },
-          { icon: UserCog, label: 'Gestão de Usuários', page: Page.USUARIOS },
         ];
         break;
       case UserRole.FINANCEIRO:
         items = [
           { icon: LayoutDashboard, label: 'Dash Financeiro', page: Page.DASHBOARD_GERAL },
           { icon: Receipt, label: 'Aprovação de Despesas', page: Page.DESPESAS },
-          { icon: DollarSign, label: 'Custos & Pricing', page: Page.CONFIG_TAXAS },
-          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
+          { icon: CreditCard, label: 'Conciliação Cartão', page: Page.CONCILIACAO },
         ];
         break;
-      case UserRole.QUALIDADE:
+      case UserRole.ESTRATEGIA:
         items = [
-          { icon: LifeBuoy, label: 'Gestão de Suporte', page: Page.LOGISTICA_SUPORTE },
+          { icon: BarChart2, label: 'Planejamento Estratégico', page: Page.ESTRATEGIA_HOME },
+          { icon: Database, label: baseClientesLabel, page: Page.BASE_CLIENTES },
           { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
+          { icon: Settings, label: 'Configurações', page: Page.CONFIGURACAO },
         ];
         break;
     }
 
-    // Renamed to Help & Reports
     items.push({ icon: HelpCircle, label: 'Ajuda & Relatórios', page: Page.AJUDA });
     return items;
   };
@@ -158,7 +165,7 @@ const Sidebar: React.FC = () => {
       case UserRole.INSIDE_SALES:
         return [
           { icon: Calendar, label: 'Agenda', page: Page.AGENDAMENTOS },
-          { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
+          { icon: Users, label: 'Carteira', page: Page.BASE_CLIENTES },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, 
           { icon: Activity, label: 'Leads', page: Page.PAINEL_LEADS },
           { icon: ListTodo, label: 'Solicit.', page: Page.PEDIDOS_RASTREIO },
@@ -169,7 +176,7 @@ const Sidebar: React.FC = () => {
           { icon: Users, label: 'Base', page: Page.BASE_CLIENTES },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true }, 
           { icon: Receipt, label: 'Despesas', page: Page.DESPESAS },
-          { icon: ListTodo, label: 'Solicit.', page: Page.PEDIDOS_RASTREIO },
+          { icon: UserCog, label: 'Equipe', page: Page.USUARIOS },
         ];
       case UserRole.PRICING_MANAGER:
         return [
@@ -188,18 +195,18 @@ const Sidebar: React.FC = () => {
         return [
           { icon: ShieldCheck, label: 'Validação', page: Page.ADMIN_DEMANDS },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD, isCentral: true }, 
-          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
         ];
       case UserRole.FINANCEIRO:
         return [
           { icon: Receipt, label: 'Despesas', page: Page.DESPESAS },
           { icon: LayoutDashboard, label: 'Dash', page: Page.DASHBOARD_GERAL, isCentral: true },
-          { icon: DollarSign, label: 'Custos', page: Page.CONFIG_TAXAS },
+          { icon: CreditCard, label: 'Conciliação', page: Page.CONCILIACAO },
         ];
-      case UserRole.QUALIDADE:
+      case UserRole.ESTRATEGIA:
         return [
-          { icon: LifeBuoy, label: 'Suporte', page: Page.LOGISTICA_SUPORTE, isCentral: true },
-          { icon: UserCog, label: 'Usuários', page: Page.USUARIOS },
+          { icon: Database, label: 'Dados', page: Page.BASE_CLIENTES },
+          { icon: BarChart2, label: 'Estratégia', page: Page.ESTRATEGIA_HOME, isCentral: true },
+          { icon: Settings, label: 'Config', page: Page.CONFIGURACAO },
         ];
       default:
         return [];
@@ -301,12 +308,12 @@ const Sidebar: React.FC = () => {
         <div className="p-4 border-t border-white/5 bg-black/20 z-10 flex flex-col gap-3">
             <button 
                 onClick={logout}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-xs font-bold uppercase tracking-wide group"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-50 hover:text-white hover:border-red-50 transition-all text-xs font-bold uppercase tracking-wide group"
             >
                 <LogOut size={14} className="group-hover:-translate-x-1 transition-transform" />
                 Sair do Sistema
             </button>
-            <p className="text-[10px] text-gray-600 font-mono text-center">Build v1.9.0 • 2025</p>
+            <p className="text-[10px] text-gray-600 font-mono text-center">Build v1.9.6 • 2025</p>
         </div>
     </div>
   );

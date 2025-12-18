@@ -1,5 +1,4 @@
 
-  // ... imports unchanged
 import { 
   Appointment, 
   ClientBaseRow, 
@@ -19,17 +18,18 @@ import {
   CostStructure,
   RateRangesConfig,
   TpvRange,
-  LeadServiceItem,
-  FullRangeRates,
-  SimplesRangeRates,
   Expense,
   ExpenseReport,
   FinanceConfig,
-  UserRole
+  UserRole,
+  IntegrationConfig,
+  SalesGoal,
+  FinancialTerms,
+  MaterialRequestData
 } from '../types';
 import { MOCK_CLIENT_BASE, MOCK_USERS } from '../constants';
 
-const INTERNAL_CACHE_KEY = 'v1.9.0';
+const INTERNAL_CACHE_KEY = 'v1.9.8';
 const DB_NAME = 'car10_db';
 const STORE_NAME = 'app_store';
 
@@ -92,11 +92,16 @@ class Store {
   private notifications: AppNotification[] = []; 
   private expenses: Expense[] = [];
   private expenseReports: ExpenseReport[] = [];
-  
+  private salesGoals: SalesGoal[] = [];
   private lastSynced: string | null = null;
   private listeners: (() => void)[] = []; 
   private isLoaded: boolean = false;
   
+  private visitReasons: string[] = ['Apresentação', 'Negociação', 'Treinamento', 'Retirada', 'Instalação', 'Visita de Cortesia'];
+  private leadOrigins: string[] = ['SIR', 'SIN', 'CAM', 'Indicação', 'Prospecção'];
+  private withdrawalReasons: string[] = ['Baixo Faturamento', 'Fechamento do Estabelecimento', 'Troca de Adquirente', 'Insatisfação com Taxas'];
+  private swapReasons: string[] = ['Defeito Técnico', 'Upgrade de Modelo', 'Conectividade', 'Bateria'];
+
   private costConfig: CostStructure = {
       debitCost: 0.50,
       creditSightCost: 1.80,
@@ -106,6 +111,13 @@ class Store {
       anticipationCost: 0.90,
       taxRate: 11.25,
       fixedCostPerTx: 0.15,
+      financialTerms: {
+          debit: 0,
+          credit1x: 1,
+          credit2to6: 4,
+          credit7to12: 9.5,
+          credit13to18: 15.5
+      },
       lastUpdated: new Date().toISOString(),
       updatedBy: 'Sistema'
   };
@@ -118,14 +130,21 @@ class Store {
   private financeConfig: FinanceConfig = {
       kmRate: 0.58,
       expenseCategories: ['Combustível', 'Estacionamento', 'Pedágio', 'Uber/Táxi', 'Hospedagem', 'Alimentação', 'Outros'],
-      policyText: "Política de Reembolso:\n1. Alimentação: Limite de R$ 80,00 por dia.\n2. KM: Valor fixo conforme tabela."
+      policyText: "Política de Reembolso...",
+      policy: {
+          kmRate: 0.58,
+          foodLimitPerDay: 80.00,
+          hotelLimitPerNight: 250.00,
+          corporateCardLimit: 5000.00,
+          updatedAt: new Date().toISOString()
+      }
   };
 
-  private visitReasons: string[] = ['Apresentação', 'Negociação', 'Treinamento', 'Retirada', 'Instalação', 'Visita de Cortesia'];
-  private leadOrigins: string[] = ['Indicação', 'Prospecção', 'Google Ads', 'Instagram', 'Feira/Evento'];
-  private withdrawalReasons: string[] = ['Baixo Faturamento', 'Fechamento do Estabelecimento', 'Troca de Adquirente', 'Insatisfação com Taxas'];
-  private swapReasons: string[] = ['Defeito Técnico', 'Upgrade de Modelo', 'Conectividade', 'Bateria'];
-  private demandTypes: string[] = ['Alteração Cadastral', 'Alteração Bancária', 'Alteração de Taxas', 'Troca de POS', 'Desativação de POS', 'Outros'];
+  private integrationConfig: IntegrationConfig = {
+      sicBaseUrl: 'https://sic3.car10.net/',
+      syncInterval: 60,
+      active: false
+  };
 
   public readonly TPV_RANGES: TpvRange[] = [
     { id: 0, label: 'Balcão (Padrão)' },
@@ -141,7 +160,6 @@ class Store {
     this.initAsync();
   }
 
-  // ... (subscribe, notifyListeners, initAsync, saveToStorage, loadFromStorage, getters... UNCHANGED)
   public subscribe(listener: () => void) {
       this.listeners.push(listener);
       if (this.isLoaded) listener();
@@ -162,7 +180,6 @@ class Store {
 
   private saveToStorage() {
     this.lastSynced = new Date().toISOString();
-    
     const data = {
         _version: INTERNAL_CACHE_KEY,
         appointments: this.appointments,
@@ -183,56 +200,53 @@ class Store {
         costConfig: this.costConfig,
         rateRangesConfig: this.rateRangesConfig,
         financeConfig: this.financeConfig,
+        integrationConfig: this.integrationConfig,
+        salesGoals: this.salesGoals,
+        visitReasons: this.visitReasons,
+        leadOrigins: this.leadOrigins,
+        withdrawalReasons: this.withdrawalReasons,
+        swapReasons: this.swapReasons,
         lastSynced: this.lastSynced
     };
-
-    idb.put(data).catch(err => console.error("Failed to save to IndexedDB", err));
+    idb.put(data).catch(err => console.error("Failed to save", err));
     this.notifyListeners();
   }
 
   private async loadFromStorage() {
-    try {
-        const data = await idb.get();
-        if (data && data._version === INTERNAL_CACHE_KEY) {
-            this.appointments = data.appointments || [];
-            this.clients = data.clients || [];
-            this.users = data.users || [];
-            this.demands = data.demands || [];
-            this.registrationRequests = data.registrationRequests || [];
-            this.logisticsTasks = data.logisticsTasks || [];
-            this.posInventory = data.posInventory || [];
-            this.supportTickets = data.supportTickets || [];
-            this.kbItems = data.kbItems || [];
-            this.clientNotes = data.clientNotes || [];
-            this.myVehicle = data.myVehicle || null;
-            this.tripLogs = data.tripLogs || [];
-            this.notifications = data.notifications || [];
-            this.expenses = data.expenses || [];
-            this.expenseReports = data.expenseReports || []; 
-            if (data.costConfig) this.costConfig = data.costConfig;
-            if (data.financeConfig) this.financeConfig = data.financeConfig;
-            this.lastSynced = data.lastSynced || new Date().toISOString();
-            
-            if (data.rateRangesConfig && Object.keys(data.rateRangesConfig.full).length >= this.TPV_RANGES.length) {
-                this.rateRangesConfig = data.rateRangesConfig;
-            } else {
-                this.initRateRangesMock();
-            }
-        } else {
-            console.log("No compatible IDB data found, initializing mocks.");
-            this.initMockData();
-            this.initRateRangesMock();
-            this.lastSynced = new Date().toISOString();
-            this.saveToStorage(); 
-        }
-    } catch (e) {
-        console.error("Error loading offline data", e);
+    const data = await idb.get();
+    if (data && data._version === INTERNAL_CACHE_KEY) {
+        this.appointments = data.appointments || [];
+        this.clients = data.clients || [];
+        this.users = data.users || [];
+        this.demands = data.demands || [];
+        this.registrationRequests = data.registrationRequests || [];
+        this.logisticsTasks = data.logisticsTasks || [];
+        this.posInventory = data.posInventory || [];
+        this.supportTickets = data.supportTickets || [];
+        this.kbItems = data.kbItems || [];
+        this.clientNotes = data.clientNotes || [];
+        this.myVehicle = data.myVehicle || null;
+        this.tripLogs = data.tripLogs || [];
+        this.notifications = data.notifications || [];
+        this.expenses = data.expenses || [];
+        this.expenseReports = data.expenseReports || []; 
+        this.salesGoals = data.salesGoals || [];
+        if (data.costConfig) this.costConfig = data.costConfig;
+        if (data.financeConfig) this.financeConfig = data.financeConfig;
+        if (data.integrationConfig) this.integrationConfig = data.integrationConfig;
+        if (data.rateRangesConfig) this.rateRangesConfig = data.rateRangesConfig;
+        if (data.visitReasons) this.visitReasons = data.visitReasons;
+        if (data.leadOrigins) this.leadOrigins = data.leadOrigins;
+        if (data.withdrawalReasons) this.withdrawalReasons = data.withdrawalReasons;
+        if (data.swapReasons) this.swapReasons = data.swapReasons;
+        this.lastSynced = data.lastSynced || new Date().toISOString();
+    } else {
         this.initMockData();
         this.initRateRangesMock();
+        this.saveToStorage(); 
     }
   }
 
-  // --- GETTERS ---
   getAppointments() { return this.appointments; }
   getClients() { return this.clients; }
   getUsers() { return this.users; }
@@ -242,11 +256,6 @@ class Store {
   getPosInventory() { return this.posInventory; }
   getSupportTickets() { return this.supportTickets; }
   getKnowledgeBase() { return this.kbItems; }
-  getVisitReasons() { return this.visitReasons; }
-  getLeadOrigins() { return this.leadOrigins; }
-  getWithdrawalReasons() { return this.withdrawalReasons; }
-  getSwapReasons() { return this.swapReasons; }
-  getDemandTypes() { return this.demandTypes; }
   getMyVehicle() { return this.myVehicle; }
   getTripLogs() { return this.tripLogs; }
   getExpenses() { return this.expenses; }
@@ -255,325 +264,253 @@ class Store {
   getRateRangesConfig() { return this.rateRangesConfig; }
   getFinanceConfig() { return this.financeConfig; }
   getLastSynced() { return this.lastSynced; }
+  getIntegrationConfig() { return this.integrationConfig; }
+  getNotifications() { return this.notifications; }
 
-  // ... (Expense Reporting Logic) ...
-  addExpense(expense: Expense) {
-      expense.status = 'OPEN'; 
-      this.expenses.push(expense); 
-      this.saveToStorage(); 
-  }
+  getVisitReasons() { return this.visitReasons; }
+  addVisitReason(val: string) { this.visitReasons.push(val); this.saveToStorage(); }
+  removeVisitReason(val: string) { this.visitReasons = this.visitReasons.filter(v => v !== val); this.saveToStorage(); }
 
-  addTripLog(log: TripLog) {
-      log.status = 'OPEN'; 
-      this.tripLogs.push(log); 
-      this.saveToStorage(); 
-  }
+  getLeadOrigins() { return this.leadOrigins; }
+  addLeadOrigin(val: string) { this.leadOrigins.push(val); this.saveToStorage(); }
+  removeLeadOrigin(val: string) { this.leadOrigins = this.leadOrigins.filter(v => v !== val); this.saveToStorage(); }
 
-  submitExpenseReport(user: string, items: { expenseIds: string[], logIds: string[] }) {
-      const reportId = `REP-${Math.floor(Math.random() * 100000)}`;
-      const now = new Date();
-      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}`;
+  getWithdrawalReasons() { return this.withdrawalReasons; }
+  addWithdrawalReason(val: string) { this.withdrawalReasons.push(val); this.saveToStorage(); }
+  removeWithdrawalReason(val: string) { this.withdrawalReasons = this.withdrawalReasons.filter(v => v !== val); this.saveToStorage(); }
 
-      let total = 0;
-      let totalReimbursable = 0;
+  getSwapReasons() { return this.swapReasons; }
+  addSwapReason(val: string) { this.swapReasons.push(val); this.saveToStorage(); }
+  removeSwapReason(val: string) { this.swapReasons = this.swapReasons.filter(v => v !== val); this.saveToStorage(); }
 
-      items.expenseIds.forEach(id => {
-          const exp = this.expenses.find(e => e.id === id);
-          if (exp) {
-              exp.status = 'WAITING_MANAGER';
-              exp.reportId = reportId;
-              total += exp.amount;
-              if (exp.reimbursable) totalReimbursable += exp.amount;
-          }
-      });
+  getDemandTypes() { return ['Alteração Cadastral', 'Alteração Bancária', 'Alteração de Taxas', 'Troca de POS', 'Desativação de POS', 'Outros']; }
 
-      items.logIds.forEach(id => {
-          const log = this.tripLogs.find(l => l.id === id);
-          if (log) {
-              log.status = 'WAITING_MANAGER';
-              log.reportId = reportId;
-              total += log.valueEarned;
-              totalReimbursable += log.valueEarned;
-          }
-      });
-
-      const report: ExpenseReport = {
-          id: reportId,
-          requesterName: user,
-          period: period,
-          createdDate: now.toISOString(),
-          status: 'SUBMITTED_GESTOR',
-          totalAmount: total,
-          totalReimbursable: totalReimbursable,
-          itemCount: items.expenseIds.length + items.logIds.length,
-          history: [{ date: now.toISOString(), action: 'Enviado para Aprovação', user }]
-      };
-
-      this.expenseReports.push(report);
-      this.saveToStorage();
-  }
-
-  processReportByManager(reportId: string, action: 'APPROVE' | 'REJECT', user: string, rejectionItems?: string[]) {
-      const report = this.expenseReports.find(r => r.id === reportId);
-      if (!report) return;
-
-      const now = new Date().toISOString();
-
-      if (action === 'APPROVE') {
-          report.status = 'APPROVED_GESTOR';
-          this.expenses.forEach(e => { if (e.reportId === reportId) e.status = 'WAITING_FINANCE'; });
-          this.tripLogs.forEach(l => { if (l.reportId === reportId) l.status = 'WAITING_FINANCE'; });
-          report.history.push({ date: now, action: 'Aprovado pelo Gestor', user });
-      } else {
-          report.status = 'REJECTED';
-          this.expenses.forEach(e => { 
-              if (e.reportId === reportId) {
-                  e.status = 'REJECTED';
-                  e.reportId = undefined;
-                  e.rejectionReason = "Rejeitado pelo Gestor no Relatório " + reportId;
-              }
-          });
-          this.tripLogs.forEach(l => { 
-              if (l.reportId === reportId) {
-                  l.status = 'REJECTED'; 
-                  l.reportId = undefined;
-              }
-          });
-          report.history.push({ date: now, action: 'Rejeitado pelo Gestor', user });
-      }
-      this.saveToStorage();
-  }
-
-  finalizeReportByFinance(reportId: string, user: string) {
-      const report = this.expenseReports.find(r => r.id === reportId);
-      if (!report) return;
-
-      const now = new Date().toISOString();
-      const token = btoa(`${reportId}-${Date.now()}-${Math.random()}`).substring(0, 16).toUpperCase();
-
-      report.status = 'APPROVED_FINANCEIRO';
-      report.validationToken = token;
-      
-      this.expenses.forEach(e => { if (e.reportId === reportId) e.status = 'PAID'; });
-      this.tripLogs.forEach(l => { if (l.reportId === reportId) l.status = 'PAID'; });
-
-      report.history.push({ date: now, action: `Aprovado Final (Financeiro). Token: ${token}`, user });
-      
-      this.saveToStorage();
-  }
-
-  // --- LOGGING & HISTORY ---
-  logHistory(entityId: string, dept: string, message: string) {
-      const note: ClientNote = {
-          id: `LOG-${Math.floor(Math.random() * 10000)}`,
-          clientId: entityId, 
-          authorName: dept,
-          date: new Date().toISOString(),
-          content: message
-      };
-      this.clientNotes.push(note);
-      this.saveToStorage();
-  }
-
-  // --- DEMAND / REQUESTS LOGIC ---
-  addDemand(demand: ManualDemand) { 
-      this.demands.push(demand);
-      this.saveToStorage();
-  }
+  addDemand(demand: ManualDemand) { this.demands.push(demand); this.saveToStorage(); }
   updateDemand(demand: ManualDemand) {
       const idx = this.demands.findIndex(d => d.id === demand.id);
+      if (idx !== -1) { this.demands[idx] = demand; this.saveToStorage(); }
+  }
+  concludeDemand(id: string, details: string, user: string) {
+      const idx = this.demands.findIndex(d => d.id === id);
       if (idx !== -1) {
-          this.demands[idx] = demand;
-          this.saveToStorage();
-      }
-  }
-  concludeDemand(id: string, finalResult: string, executorName: string) {
-      const demand = this.demands.find(d => d.id === id);
-      if (!demand) return;
-      demand.status = 'Concluído';
-      demand.result = finalResult;
-      demand.adminStatus = 'Finalizado ADM';
-      this.updateDemand(demand);
-      this.logHistory(demand.id, 'BACKOFFICE', `Processo Finalizado por ${executorName}. ${finalResult}`);
-  }
-
-  // --- NEW: POS ISSUES & MATERIALS ---
-  reportPosIssue(serial: string, type: string, description: string, user: string) {
-      const device = this.posInventory.find(p => p.serialNumber === serial);
-      if (device) {
-          device.status = 'Defective'; // Or Triage
-          device.problemReport = {
-              date: new Date().toISOString(),
-              type: type as any,
-              description,
-              reportedBy: user
-          };
-          device.history?.push({
-              date: new Date().toISOString(),
-              status: 'Defective',
-              holder: user,
-              description: `Reportado: ${type} - ${description}`
-          });
+          this.demands[idx].status = 'Concluído';
+          this.demands[idx].result = details;
+          if (!this.demands[idx].changeLog) this.demands[idx].changeLog = [];
+          this.demands[idx].changeLog?.push({ date: new Date().toISOString(), user, action: 'Conclusão', details });
           this.saveToStorage();
       }
   }
 
-  requestMaterials(requester: string, items: any) {
-      const task: LogisticsTask = {
-          id: `MAT-${Math.floor(Math.random()*10000)}`,
-          type: 'MATERIAL_REQUEST',
-          status: 'PENDING_SHIPMENT',
-          clientName: 'Estoque do Consultor',
-          requesterName: requester,
-          requesterRole: 'Field Sales',
-          date: new Date().toISOString(),
-          details: `Material: ${JSON.stringify(items)}`,
-          address: 'Endereço do Consultor', // Simplification
-          materialData: items
-      };
-      this.addLogisticsTask(task);
+  addRegistrationRequest(req: RegistrationRequest) { this.registrationRequests.push(req); this.saveToStorage(); }
+  updateRegistrationRequest(req: RegistrationRequest) {
+      const idx = this.registrationRequests.findIndex(r => r.id === req.id);
+      if (idx !== -1) { this.registrationRequests[idx] = req; this.saveToStorage(); }
+  }
+  approveRegistration(req: RegistrationRequest) {
+      const idx = this.registrationRequests.findIndex(r => r.id === req.id);
+      if (idx !== -1) {
+          this.registrationRequests[idx] = { ...req, status: 'APPROVED' };
+          this.saveToStorage();
+      }
   }
 
   addLogisticsTask(task: LogisticsTask) { this.logisticsTasks.push(task); this.saveToStorage(); }
   updateLogisticsTask(task: LogisticsTask) {
       const idx = this.logisticsTasks.findIndex(t => t.id === task.id);
-      if (idx !== -1) {
-          this.logisticsTasks[idx] = task;
-          this.saveToStorage();
-      }
+      if (idx !== -1) { this.logisticsTasks[idx] = task; this.saveToStorage(); }
   }
+
   completeGsurfActivation(taskId: string, otp: string, posData: any) { 
       const task = this.logisticsTasks.find(t => t.id === taskId);
       if (task) {
           task.status = 'COMPLETED';
           task.otp = otp;
           task.posData = posData;
-          this.saveToStorage();
           
-          // --- UPDATED LOGIC: LINK TO DEMAND & SEND TO BACKOFFICE ---
-          // Use internalId (which stores Demand ID) to find the linked demand
-          const demand = this.demands.find(d => 
-              (task.internalId && d.id === task.internalId) || 
-              (d.clientName === task.clientName && d.adminStatus === 'Aguardando Logística')
-          );
-
-          if (demand) {
-              demand.otp = otp;
-              demand.result = `Logística Finalizada. OTP: ${otp}. Serial: ${posData.serial}`;
-              // FLIP TO BACKOFFICE QUEUE
-              demand.adminStatus = 'Pendente ADM'; 
-              this.updateDemand(demand);
-              
-              // Optional: Log history
-              this.logHistory(demand.id, 'LOGÍSTICA', `Ativação/Troca concluída no GSurf. OTP: ${otp}`);
+          if (task.type === 'POS_RETRIEVAL') {
+              const client = this.clients.find(c => c.nomeEc === task.clientName);
+              if (client) { client.hasPagmotors = false; }
           }
-      }
-  }
-
-  addSupportTicket(ticket: SupportTicket) { this.supportTickets.push(ticket); this.saveToStorage(); }
-  addMessageToTicket(ticketId: string, message: SupportMessage) {
-      const ticketIndex = this.supportTickets.findIndex(t => t.id === ticketId);
-      if (ticketIndex !== -1) {
-          this.supportTickets[ticketIndex].messages.push(message);
+          if (task.type === 'FIELD_ACTIVATION' || task.type === 'POS_EXCHANGE') {
+              const client = this.clients.find(c => c.nomeEc === task.clientName);
+              if (client) { client.hasPagmotors = true; }
+          }
           this.saveToStorage();
       }
   }
-  addKbItem(item: KnowledgeBaseItem) { this.kbItems.push(item); this.saveToStorage(); }
-  generateId() { return Math.random().toString(36).substr(2, 9).toUpperCase(); }
-  
-  createNotification(data: { type: 'RATE_APPROVED' | 'OTP_ISSUED' | 'INFO', title: string, message: string, targetId?: string }) {
-      const newNotif: AppNotification = {
-          id: `NOTIF-${Date.now()}`,
-          date: new Date().toISOString(),
-          read: false,
-          ...data
-      };
-      const duplicate = this.notifications.find(n => n.targetId === data.targetId && n.type === data.type && !n.read);
-      if (!duplicate) {
-          this.notifications.unshift(newNotif);
-          this.saveToStorage();
-      }
-  }
-  getNotifications() { return this.notifications; }
-  markNotificationAsRead(id: string) {
-      const notif = this.notifications.find(n => n.id === id);
-      if (notif) { notif.read = true; this.saveToStorage(); }
-  }
-  markAllNotificationsAsRead() { this.notifications.forEach(n => n.read = true); this.saveToStorage(); }
-  clearNotifications() { this.notifications = []; this.saveToStorage(); }
 
-  setMyVehicle(vehicle: Vehicle) { this.myVehicle = vehicle; this.saveToStorage(); }
-  updateTripLog(log: TripLog) { const idx = this.tripLogs.findIndex(t => t.id === log.id); if (idx !== -1) { this.tripLogs[idx] = log; this.saveToStorage(); }}
-  updateExpense(expense: Expense) { const idx = this.expenses.findIndex(e => e.id === expense.id); if (idx !== -1) { this.expenses[idx] = expense; this.saveToStorage(); }}
-  setFinanceConfig(config: FinanceConfig) { this.financeConfig = config; this.saveToStorage(); }
-  setCostConfig(config: CostStructure) { this.costConfig = config; this.saveToStorage(); }
-  setRateRangesConfig(config: RateRangesConfig) { this.rateRangesConfig = config; this.saveToStorage(); }
-  addAppointment(appt: Appointment) { this.appointments.push(appt); this.saveToStorage(); }
-  getAppointmentsByFieldSales(name: string) { return this.appointments.filter(a => a.fieldSalesName === name); }
-  getRouteAppointments(fieldSalesName: string) { return this.appointments.filter(a => a.fieldSalesName === fieldSalesName && a.inRoute); }
-  checkInAppointment(id: string) { const appt = this.appointments.find(a => a.id === id); if (appt) { if (!appt.visitReport) appt.visitReport = {}; appt.visitReport.checkInTime = new Date().toISOString(); this.saveToStorage(); }}
-  submitVisitReport(id: string, report: VisitReport) { const appt = this.appointments.find(a => a.id === id); if (appt) { appt.status = 'Completed'; appt.visitReport = { ...appt.visitReport, ...report, checkOutTime: new Date().toISOString() }; this.saveToStorage(); }}
-  toggleRouteStatus(id: string) { const appt = this.appointments.find(a => a.id === id); if (appt) { appt.inRoute = !appt.inRoute; this.saveToStorage(); }}
   setClients(clients: ClientBaseRow[]) { this.clients = clients; this.saveToStorage(); }
   addClientNote(note: ClientNote) { this.clientNotes.push(note); this.saveToStorage(); }
   getClientNotes(clientId: string) { return this.clientNotes.filter(n => n.clientId === clientId); }
   getLeadServices(clientId: string) { return [{ id: '1', flow: 'SIN', serviceType: 'Reparo Colisão', date: '2023-10-01', licensePlate: 'ABC-1234', value: 2500, status: 'Realizado' }]; }
+  
   addUser(user: SystemUser) { this.users.push(user); this.saveToStorage(); }
-  updateUser(user: SystemUser) { const idx = this.users.findIndex(u => u.id === user.id); if (idx !== -1) { this.users[idx] = { ...this.users[idx], ...user }; if (user.vehicle) this.myVehicle = user.vehicle; this.saveToStorage(); }}
-  toggleUserStatus(id: string) { const user = this.users.find(u => u.id === id); if (user) { user.active = !user.active; this.saveToStorage(); }}
-  addVisitReason(val: string) { if (!this.visitReasons.includes(val)) { this.visitReasons.push(val); this.saveToStorage(); } }
-  removeVisitReason(val: string) { this.visitReasons = this.visitReasons.filter(i => i !== val); this.saveToStorage(); }
-  addLeadOrigin(val: string) { if (!this.leadOrigins.includes(val)) { this.leadOrigins.push(val); this.saveToStorage(); } }
-  removeLeadOrigin(val: string) { this.leadOrigins = this.leadOrigins.filter(i => i !== val); this.saveToStorage(); }
-  addWithdrawalReason(val: string) { if (!this.withdrawalReasons.includes(val)) { this.withdrawalReasons.push(val); this.saveToStorage(); } }
-  removeWithdrawalReason(val: string) { this.withdrawalReasons = this.withdrawalReasons.filter(i => i !== val); this.saveToStorage(); }
-  addSwapReason(val: string) { if (!this.swapReasons.includes(val)) { this.swapReasons.push(val); this.saveToStorage(); } }
-  removeSwapReason(val: string) { this.swapReasons = this.swapReasons.filter(i => i !== val); this.saveToStorage(); }
-  addRegistrationRequest(req: RegistrationRequest) { this.registrationRequests.push(req); this.saveToStorage(); }
-  updateRegistrationRequest(req: RegistrationRequest) { const idx = this.registrationRequests.findIndex(r => r.id === req.id); if (idx !== -1) { this.registrationRequests[idx] = req; this.saveToStorage(); }}
-  approveRegistration(req: RegistrationRequest) { this.updateRegistrationRequest({...req, status: 'APPROVED'}); this.saveToStorage(); }
+  updateUser(user: SystemUser) { 
+    const idx = this.users.findIndex(u => u.id === user.id); 
+    if (idx !== -1) { this.users[idx] = user; this.saveToStorage(); }
+  }
+  toggleUserStatus(id: string) { 
+    const user = this.users.find(u => u.id === id); 
+    if (user) { user.active = !user.active; this.saveToStorage(); }
+  }
+
+  addAppointment(appt: Appointment) { this.appointments.push(appt); this.saveToStorage(); }
+  getAppointmentsByFieldSales(name: string) { return this.appointments.filter(a => a.fieldSalesName === name); }
+  checkInAppointment(id: string) { 
+    const appt = this.appointments.find(a => a.id === id); 
+    if (appt) { if (!appt.visitReport) appt.visitReport = {}; appt.visitReport.checkInTime = new Date().toISOString(); this.saveToStorage(); }
+  }
+  submitVisitReport(id: string, report: VisitReport) { 
+    const appt = this.appointments.find(a => a.id === id); 
+    if (appt) { appt.status = 'Completed'; appt.visitReport = { ...appt.visitReport, ...report, checkOutTime: new Date().toISOString() }; this.saveToStorage(); }
+  }
+  toggleRouteStatus(id: string) { 
+    const appt = this.appointments.find(a => a.id === id); 
+    if (appt) { appt.inRoute = !appt.inRoute; this.saveToStorage(); }
+  }
+
+  addExpense(expense: Expense) { this.expenses.push(expense); this.saveToStorage(); }
+  addTripLog(log: TripLog) { this.tripLogs.push(log); this.saveToStorage(); }
+  submitExpenseReport(user: string, items: any) {
+    const report: ExpenseReport = {
+        id: `REP-${Math.floor(Math.random()*1000)}`, requesterName: user, period: '2023-10', createdDate: new Date().toISOString(),
+        status: 'SUBMITTED_GESTOR', totalAmount: 0, totalReimbursable: 0, itemCount: 0, history: []
+    };
+    this.expenseReports.push(report);
+    this.saveToStorage();
+  }
+  processReportByManager(id: string, act: any, user: string) {
+    const r = this.expenseReports.find(x => x.id === id);
+    if(r) { r.status = act === 'APPROVE' ? 'APPROVED_GESTOR' : 'REJECTED'; this.saveToStorage(); }
+  }
+  finalizeReportByFinance(id: string, user: string) {
+    const r = this.expenseReports.find(x => x.id === id);
+    if(r) { r.status = 'APPROVED_FINANCEIRO'; this.saveToStorage(); }
+  }
+
+  addSupportTicket(t: SupportTicket) { this.supportTickets.push(t); this.saveToStorage(); }
+  addMessageToTicket(id: string, m: SupportMessage) {
+    const t = this.supportTickets.find(x => x.id === id);
+    if(t) { t.messages.push(m); this.saveToStorage(); }
+  }
+  addKbItem(i: KnowledgeBaseItem) { this.kbItems.push(i); this.saveToStorage(); }
+
+  requestMaterials(user: string, data: MaterialRequestData) {
+      const task: LogisticsTask = {
+          id: `MAT-${Date.now()}`,
+          type: 'MATERIAL_REQUEST',
+          status: 'PENDING_SHIPMENT',
+          clientName: 'Solicitação de Material',
+          address: 'Estoque do Consultor',
+          requesterName: user,
+          date: new Date().toISOString(),
+          details: `Qtd: ${data.posQuantity}, Bobinas: ${data.coils}, Carregadores: ${data.chargers}, Brindes: ${data.gifts}`
+      };
+      this.logisticsTasks.push(task);
+      this.saveToStorage();
+  }
+
+  reportPosIssue(serial: string, type: string, desc: string, user: string) {
+      const device = this.posInventory.find(p => p.serialNumber === serial);
+      if (device) {
+          device.status = 'Defective';
+          if (!device.history) device.history = [];
+          device.history.push({ date: new Date().toISOString(), holder: user, status: 'Defective', description: `Reportado: ${type} - ${desc}` });
+          this.saveToStorage();
+      }
+  }
+
+  markNotificationAsRead(id: string) {
+      const n = this.notifications.find(x => x.id === id);
+      if (n) { n.read = true; this.saveToStorage(); }
+  }
+  clearNotifications() { this.notifications = []; this.saveToStorage(); }
+  markAllNotificationsAsRead() { this.notifications.forEach(n => n.read = true); this.saveToStorage(); }
+
   addPosDevice(device: PosDevice) { this.posInventory.push(device); this.saveToStorage(); }
   removePosDevice(serial: string) { this.posInventory = this.posInventory.filter(p => p.serialNumber !== serial); this.saveToStorage(); }
-  updateInventoryStatus(serial: string, status: string, holder: string) { /* ... */ }
+
+  setIntegrationConfig(c: IntegrationConfig) { this.integrationConfig = c; this.saveToStorage(); }
+  setFinanceConfig(c: FinanceConfig) { this.financeConfig = c; this.saveToStorage(); }
+  setCostConfig(c: CostStructure) { this.costConfig = c; this.saveToStorage(); }
+  setRateRangesConfig(c: RateRangesConfig) { this.rateRangesConfig = c; this.saveToStorage(); }
+  
+  setSalesGoal(g: SalesGoal) {
+      const idx = this.salesGoals.findIndex(x => x.userId === g.userId && x.month === g.month);
+      if(idx !== -1) this.salesGoals[idx] = g; else this.salesGoals.push(g);
+      this.saveToStorage();
+  }
+  getSalesGoal(uid: string, m: string) { return this.salesGoals.find(x => x.userId === uid && x.month === m); }
+  getTeamGoal(r: any, m: string): SalesGoal { 
+    return { id: 'agg', month: m, userId: 'team', userRole: UserRole.GESTOR, tpv: 0, reactivation: 0, newSales: 0, efficiency: 0, updatedAt: '' };
+  }
+
+  generateId() { return Math.random().toString(36).substr(2, 9).toUpperCase(); }
 
   initRateRangesMock() {
-      // Mock Data for Rate Ranges (Full & Simples)
-      const mockFull: Record<number, FullRangeRates> = {};
-      const mockSimples: Record<number, SimplesRangeRates> = {};
-      
-      this.TPV_RANGES.forEach(range => {
-          mockFull[range.id] = {
-              debit: 0.99,
-              credit1x: 2.89,
-              installments: Array(17).fill(0).map((_, i) => 2.89 + ((i+2)*1.5)), // Mock linear progression
-              lastUpdated: new Date().toISOString(),
-              updatedBy: 'Sistema'
+      const lastUpdated = new Date().toISOString();
+      const updatedBy = 'Sistema';
+
+      // MATRIZ COMPLETA DAS IMAGENS
+      const fullDebit = [2.06, 2.01, 1.95, 1.81, 1.26, 1.16, 1.06];
+      const full1x = [6.74, 5.08, 4.38, 3.73, 3.17, 3.09, 3.01];
+      const full2x = [8.10, 6.39, 5.42, 4.78, 4.62, 4.53, 4.45];
+      const full12x = [20.94, 18.14, 17.74, 17.74, 16.93, 16.85, 16.77];
+      const full18x = [30.07, 26.61, 26.28, 25.47, 24.66, 24.58, 24.50];
+
+      const simpleDebit = [2.00, 2.00, 1.81, 1.61, 1.26, 1.16, 1.06];
+      const simple1x = [2.95, 2.85, 2.65, 2.45, 2.15, 2.05, 1.95];
+      const simple2_6x = [3.65, 3.55, 3.35, 3.15, 2.85, 2.75, 2.65];
+      const simple7_12x = [4.10, 4.00, 3.80, 3.60, 3.30, 3.20, 3.10];
+      const simple13_18x = [4.40, 4.20, 4.10, 3.80, 3.50, 3.40, 3.30];
+
+      this.rateRangesConfig = { full: {}, simples: {} };
+
+      // POPULANDO AS 7 FAIXAS (RANGES 0-6)
+      for (let i = 0; i < 7; i++) {
+          // FULL
+          const installmentsFull = [];
+          const step = (full12x[i] - full2x[i]) / 10;
+          for(let j=0; j<11; j++) installmentsFull.push(parseFloat((full2x[i] + step*j).toFixed(2)));
+          // Add 13-18x extrapolation
+          const stepExtra = (full18x[i] - full12x[i]) / 6;
+          for(let j=1; j<=6; j++) installmentsFull.push(parseFloat((full12x[i] + stepExtra*j).toFixed(2)));
+
+          this.rateRangesConfig.full[i] = { 
+              debit: fullDebit[i], 
+              credit1x: full1x[i], 
+              installments: installmentsFull,
+              lastUpdated, updatedBy 
           };
-          mockSimples[range.id] = {
-              debit: 1.19,
-              credit1x: 3.29,
-              credit2x6x: 8.99,
-              credit7x12x: 12.99,
-              credit13x18x: 18.99,
-              lastUpdated: new Date().toISOString(),
-              updatedBy: 'Sistema'
+
+          // SIMPLES
+          this.rateRangesConfig.simples[i] = {
+              debit: simpleDebit[i],
+              credit1x: simple1x[i],
+              credit2x6x: simple2_6x[i],
+              credit7x12x: simple7_12x[i],
+              credit13x18x: simple13_18x[i],
+              lastUpdated, updatedBy
           };
-      });
-      this.rateRangesConfig = { full: mockFull, simples: mockSimples };
+      }
   }
 
   initMockData() {
-      this.clients = MOCK_CLIENT_BASE;
+      this.clients = MOCK_CLIENT_BASE.map(c => ({
+          ...c,
+          historicalRates: c.id === '1001' ? {
+              debit: 1.29, credit1x: 3.49, credit12x: 14.90, plan: 'Full', date: '2024-01-10'
+          } : undefined,
+          historicalBank: c.id === '1001' ? {
+              bank: '341 - Itaú Unibanco', agency: '1234', account: '56789-0'
+          } : undefined
+      }));
       this.users = MOCK_USERS;
       this.posInventory = [
-          { serialNumber: 'SN123456', rcNumber: 'RC001', model: 'P2 Smart', status: 'InStock', currentHolder: 'Logística Central', lastUpdated: new Date().toISOString() },
-          { serialNumber: 'SN654321', rcNumber: 'RC002', model: 'MP35', status: 'WithField', currentHolder: 'Cleiton Freitas', lastUpdated: new Date().toISOString() },
-          { serialNumber: 'SN789012', rcNumber: 'RC003', model: 'X990', status: 'Active', currentHolder: 'Auto Center Porto Real', lastUpdated: new Date().toISOString() }
+          { serialNumber: 'SN123456', rcNumber: 'RC001', model: 'P2 Smart', status: 'InStock', currentHolder: 'Logística Central', lastUpdated: new Date().toISOString() }
       ];
-      this.supportTickets = [];
       this.kbItems = [
-          { id: '1', errorPattern: 'Erro 05', solution: 'Transação não autorizada pelo banco emissor. Pedir para cliente contatar o banco.', keywords: ['05', 'não autorizada', 'negada'] },
-          { id: '2', errorPattern: 'Sem sinal', solution: 'Reiniciar a máquina. Verificar se o chip está bem encaixado.', keywords: ['sinal', 'conectividade', 'chip'] }
+          { id: '1', errorPattern: 'Erro 05', solution: 'Transação não autorizada.', keywords: ['05'] }
       ];
   }
 }

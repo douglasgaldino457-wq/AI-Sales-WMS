@@ -11,7 +11,6 @@ import AgendamentosPage from './pages/AgendamentosPage';
 import ConfiguracaoPage from './pages/ConfiguracaoPage';
 import MapaGestaoPage from './pages/MapaGestaoPage';
 import PricingPage from './pages/PricingPage';
-// import CadastroPage from './pages/CadastroPage'; // REMOVIDO ROTA ISOLADA
 import HelpPage from './pages/HelpPage'; 
 import PricingDashboardPage from './pages/PricingDashboardPage';
 import MesaNegociacaoPage from './pages/MesaNegociacaoPage';
@@ -27,10 +26,12 @@ import UsuariosPage from './pages/UsuariosPage';
 import PedidosRastreioPage from './pages/PedidosRastreioPage';
 import ProfilePage from './pages/ProfilePage';
 import DespesasPage from './pages/DespesasPage';
+import ConciliacaoPage from './pages/ConciliacaoPage';
+import EstrategiaPage from './pages/EstrategiaPage';
 import { Logo } from './components/Logo';
 import { AIAssistant } from './components/AIAssistant';
 import { NotificationToast } from './components/NotificationToast'; 
-import { User, ArrowRight, Truck, ShieldCheck, Mail, Lock, KeyRound, WifiOff, ChevronRight, DollarSign, Star } from 'lucide-react';
+import { User, ArrowRight, Truck, ShieldCheck, Mail, Lock, KeyRound, WifiOff, ChevronRight, DollarSign, BarChart2 } from 'lucide-react';
 import { MOCK_USERS } from './constants';
 
 // Imagem estática otimizada que corresponde ao prompt "futuristic automotive workshop"
@@ -173,15 +174,15 @@ const App: React.FC = () => {
                     UserRole.PRICING_MANAGER, 
                     UserRole.LOGISTICA, 
                     UserRole.ADMIN,
-                    UserRole.FINANCEIRO,
-                    UserRole.QUALIDADE
+                    UserRole.FINANCEIRO, 
+                    UserRole.ESTRATEGIA 
                 ].map((role) => (
                     <button key={role} onClick={() => handleTestLogin(role)} className="flex items-center p-3 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 hover:border-brand-primary/50 transition-all group text-left">
                         <div className={`mr-3 p-2 rounded bg-black/20 text-white/70 group-hover:text-white group-hover:bg-brand-primary transition-colors`}>
                             {role === UserRole.LOGISTICA ? <Truck size={14} /> : 
                              role === UserRole.ADMIN ? <ShieldCheck size={14} /> : 
                              role === UserRole.FINANCEIRO ? <DollarSign size={14} /> :
-                             role === UserRole.QUALIDADE ? <Star size={14} /> :
+                             role === UserRole.ESTRATEGIA ? <BarChart2 size={14} /> :
                              <User size={14} />}
                         </div>
                         <div className="flex-1 min-w-0"><span className="text-[10px] font-bold text-white/90 block group-hover:text-brand-primary transition-colors truncate">{role}</span></div>
@@ -207,7 +208,7 @@ const App: React.FC = () => {
             <>
                 {currentPage === Page.DASHBOARD && <AdminDashboardPage />}
                 {currentPage === Page.ADMIN_DEMANDS && <AdminDemandsPage />}
-                {currentPage === Page.USUARIOS && <UsuariosPage />}
+                {/* Users Page Removed from Admin access as requested */}
             </>
         )}
 
@@ -221,8 +222,18 @@ const App: React.FC = () => {
             </>
         )}
 
+        {/* === STRATEGY ROUTES === */}
+        {userRole === UserRole.ESTRATEGIA && (
+            <>
+                {currentPage === Page.ESTRATEGIA_HOME && <EstrategiaPage />}
+                {currentPage === Page.BASE_CLIENTES && <BaseClientesPage role={userRole} />}
+                {currentPage === Page.CONFIGURACAO && <ConfiguracaoPage />}
+                {currentPage === Page.USUARIOS && <UsuariosPage />}
+            </>
+        )}
+
         {/* === SHARED / SALES ROUTES === */}
-        {(userRole !== UserRole.LOGISTICA && userRole !== UserRole.ADMIN) && (
+        {(userRole !== UserRole.LOGISTICA && userRole !== UserRole.ADMIN && userRole !== UserRole.ESTRATEGIA) && (
             <>
                 {(currentPage === Page.DASHBOARD || currentPage === Page.DASHBOARD_GERAL) && <Dashboard role={userRole} />}
                 {currentPage === Page.ROTAS && <RoutesPage />}
@@ -231,7 +242,6 @@ const App: React.FC = () => {
                 {currentPage === Page.CONFIGURACAO && <ConfiguracaoPage />}
                 {currentPage === Page.MAPA_GESTAO && <MapaGestaoPage />}
                 {currentPage === Page.CADASTRO_PRICING && <PricingPage role={userRole} />}
-                {/* REMOVIDO Page.CADASTRO ISOLADO */}
                 {currentPage === Page.PRICING_DASHBOARD && <PricingDashboardPage />}
                 {currentPage === Page.MESA_NEGOCIACAO && <MesaNegociacaoPage />}
                 {currentPage === Page.CONFIG_TAXAS && <ConfigTaxasPage />}
@@ -239,10 +249,11 @@ const App: React.FC = () => {
                 {currentPage === Page.PEDIDOS_RASTREIO && <PedidosRastreioPage targetDemandId={targetDemandId} />}
                 {currentPage === Page.DESPESAS && <DespesasPage />}
                 
-                {/* QUALITY & SUPPORT SPECIFIC (Accessible by QUALIDADE role) */}
-                {userRole === UserRole.QUALIDADE && currentPage === Page.LOGISTICA_SUPORTE && <LogisticaSuportePage />}
-                {/* FINANCEIRO & QUALIDADE User Management */}
-                {(userRole === UserRole.FINANCEIRO || userRole === UserRole.QUALIDADE || userRole === UserRole.GESTOR) && currentPage === Page.USUARIOS && <UsuariosPage />}
+                {/* FINANCE ONLY */}
+                {currentPage === Page.CONCILIACAO && <ConciliacaoPage />}
+
+                {/* GESTOR Only User Management (Financeiro removed from list) */}
+                {userRole === UserRole.GESTOR && currentPage === Page.USUARIOS && <UsuariosPage />}
             </>
         )}
         

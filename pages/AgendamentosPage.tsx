@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UserRole, Appointment, LeadOrigin, VisitPeriod, ClientBaseRow, VisitReport, VisitOutcome, WalletAction, WithdrawalReason, SwapReason } from '../types';
+import { UserRole, Appointment, LeadOrigin, VisitPeriod, ClientBaseRow, VisitReport, VisitOutcome, WalletAction, Page, RegistrationRequest, LogisticsTask } from '../types';
 import { appStore } from '../services/store';
 import { MOCK_USERS } from '../constants';
 import { AddressAutocomplete } from '../components/AddressAutocomplete';
@@ -8,8 +8,8 @@ import { CurrencyInput } from '../components/CurrencyInput';
 import { useAppStore } from '../services/useAppStore'; // Hook
 import { 
   Calendar, Clock, MapPin, User, MessageCircle, CheckCircle2, Save, 
-  ArrowRight, Search, ChevronLeft, Pencil, FileText, Briefcase, Map, Layout,
-  Timer, PenSquare, X, AlertTriangle, Route, Plus, Eye, DollarSign, BarChart2, Check, CalendarDays, History, Loader2
+  ChevronLeft, Briefcase, Map, Layout,
+  X, Route, Plus, Eye, CalendarDays, History, Loader2, PenSquare, ArrowRight, RefreshCw, FilePlus, Truck, Package, BadgePercent
 } from 'lucide-react';
 
 interface AgendamentosPageProps {
@@ -445,14 +445,6 @@ const InsideSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => 
                             <h3 className="font-bold text-lg text-brand-gray-900">Minha Carteira ({currentUser})</h3>
                             <p className="text-sm text-brand-gray-500">Clientes atribuídos a você</p>
                         </div>
-                        <div className="relative w-full md:w-auto group">
-                            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-brand-gray-400 group-hover:text-brand-primary transition-colors" />
-                            <input 
-                            type="text" 
-                            placeholder="Buscar por nome, endereço..." 
-                            className="pl-10 pr-4 py-2.5 border border-brand-gray-300 rounded-lg text-sm w-full md:w-80 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all"
-                            />
-                        </div>
                     </div>
 
                     {walletClients.length === 0 ? (
@@ -497,7 +489,6 @@ const InsideSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => 
                                         className="text-brand-primary bg-white border border-brand-primary hover:bg-brand-primary hover:text-white px-5 py-2 rounded-lg text-xs font-bold transition-all flex items-center ml-auto shadow-sm"
                                     >
                                         Agendar Visita
-                                        <ArrowRight className="w-3 h-3 ml-1.5" />
                                     </button>
                                     </td>
                                 </tr>
@@ -516,6 +507,7 @@ const InsideSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => 
 
 /* --- FIELD SALES COMPONENT (Defined Before Use) --- */
 const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
+  const { navigate } = useAppStore(); // Use navigation hook
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [refresh, setRefresh] = useState(0);
   
@@ -547,6 +539,13 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
   const [viewDetailsAppt, setViewDetailsAppt] = useState<Appointment | null>(null);
   const [reportData, setReportData] = useState<VisitReport>({});
   
+  // EXTRA DATA FOR AUTO-ACTIONS (STATE)
+  const [extraActionData, setExtraActionData] = useState<{
+      cnpj?: string;
+      planType?: 'Full' | 'Simples';
+      currentSerial?: string;
+  }>({});
+
   // Loading State for Actions
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
@@ -595,6 +594,13 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
   };
 
   const handleOpenReport = (appt: Appointment) => {
+    // PRE-FILL EXTRA DATA FROM CLIENT DB IF AVAILABLE
+    const client = clientBase.find(c => c.id === appt.clientId);
+    setExtraActionData({
+        cnpj: client?.cnpj || '',
+        planType: 'Full'
+    });
+
     setSelectedAppt(appt);
     setReportData({
         outcome: undefined,
@@ -612,10 +618,62 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
     if (selectedAppt) {
         setLoadingAction('report');
         setTimeout(() => {
+            // 1. SAVE THE REPORT
             appStore.submitVisitReport(selectedAppt.id, reportData);
-            setSelectedAppt(null);
+            
+            // 2. AUTOMATIC ACTIONS (WIZARD)
+            let actionMessage = 'Visita concluída!';
+
+            // A. AUTO-REGISTER CONVERSION
+            if (reportData.outcome === 'Convertido') {
+                // Correct store method used
+                const newReg: RegistrationRequest = {
+                    id: `REG-AUTO-${Date.now()}`,
+                    clientName: selectedAppt.clientName,
+                    documentNumber: extraActionData.cnpj || 'PENDENTE',
+                    planType: extraActionData.planType || 'Full',
+                    requesterName: currentUser,
+                    requesterRole: 'Field Sales',
+                    status: 'PENDING_ANALYSIS',
+                    dateSubmitted: new Date().toISOString(),
+                    address: selectedAppt.address,
+                    responsibleName: selectedAppt.responsible,
+                    email: '', // Pending input
+                    contactPhones: [selectedAppt.whatsapp],
+                    bankAccounts: [], // Pending
+                    docs: {} // Pending
+                };
+                appStore.addRegistrationRequest(newReg);
+                actionMessage = `Visita concluída e Cadastro iniciado para ${selectedAppt.clientName}!`;
+            }
+
+            // B. AUTO-LOGISTICS (SWAP/RETRIEVAL)
+            if (reportData.walletAction === 'Troca de POS' || reportData.walletAction === 'Retirada de POS') {
+                const isSwap = reportData.walletAction === 'Troca de POS';
+                const task: LogisticsTask = {
+                    id: `LOG-AUTO-${Date.now()}`,
+                    type: isSwap ? 'POS_EXCHANGE' : 'POS_RETRIEVAL',
+                    status: 'PENDING_SHIPMENT',
+                    clientName: selectedAppt.clientName,
+                    requesterName: currentUser,
+                    // Correcting property to match interface
+                    requesterRole: 'Field Sales',
+                    date: new Date().toISOString(),
+                    details: `${isSwap ? 'Troca' : 'Retirada'} solicitada via App. Motivo: ${isSwap ? reportData.swapReason : reportData.withdrawalReason}. Serial: ${extraActionData.currentSerial || 'N/D'}`,
+                    address: selectedAppt.address,
+                    posData: { serialNumber: extraActionData.currentSerial || 'N/D', rcNumber: '', model: '' }
+                };
+                appStore.addLogisticsTask(task);
+                actionMessage = `Visita concluída e Solicitação de ${isSwap ? 'Troca' : 'Retirada'} criada!`;
+            }
+
+            alert(actionMessage);
+
+            setSelectedAppt(null); 
             setRefresh(prev => prev + 1);
             setLoadingAction(null);
+            
+            setViewDetailsAppt({ ...selectedAppt, status: 'Completed', visitReport: reportData });
         }, 1000);
     }
   };
@@ -632,6 +690,7 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
               c.nomeEc.toLowerCase().includes(val.toLowerCase())
           ).slice(0, 5); // Top 5 results
           
+          setSuggestions(matches);
           setSuggestions(matches);
           setShowSuggestions(true);
       } else {
@@ -724,6 +783,9 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                 hadRateQuote: false
               });
               
+              // Init empty extra data
+              setExtraActionData({ cnpj: '', planType: 'Full' });
+
               setSelectedAppt(newAppt);
           }
 
@@ -929,7 +991,7 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
       {isNewVisitModalOpen && (
             <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-                    <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center">
+                    <div className="bg-brand-gray-900 px-6 py-4 flex justify-between items-center text-white">
                         <h3 className="text-white font-bold text-lg">Nova Visita / Prospecção</h3>
                         <button onClick={() => setIsNewVisitModalOpen(false)} className="text-brand-gray-400 hover:text-white"><X size={20}/></button>
                     </div>
@@ -962,7 +1024,6 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                                             onKeyDown={handleSearchKeyDown}
                                             className="w-full border border-brand-gray-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
                                         />
-                                        <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-brand-gray-400 w-4 h-4 pointer-events-none" />
                                     </div>
                                     <button 
                                         onClick={handleSearchButtonClick}
@@ -1046,13 +1107,13 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
             </div>
       )}
 
-      {/* MODAL: REPORT FORM */}
+      {/* MODAL: REPORT FORM (SMART) */}
       {selectedAppt && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                <div className="bg-brand-primary px-6 py-4 flex justify-between items-center text-white shrink-0">
                    <h3 className="font-bold text-lg flex items-center gap-2">
-                       <FileText className="w-5 h-5" />
+                       <PenSquare className="w-5 h-5" />
                        Relatório de Visita
                    </h3>
                    <button onClick={() => setSelectedAppt(null)} className="text-white/80 hover:text-white"><X size={20}/></button>
@@ -1074,7 +1135,7 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                                    className="w-full border border-brand-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-brand-primary outline-none"
                                    value={reportData.outcome || ''}
                                    onChange={e => setReportData({...reportData, outcome: e.target.value as VisitOutcome})}
-                               >
+                                >
                                    <option value="">Selecione...</option>
                                    <option value="Convertido">Convertido (Venda Realizada)</option>
                                    <option value="Em negociação">Em negociação</option>
@@ -1083,6 +1144,32 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                                    <option value="Taxas altas">Taxas altas</option>
                                </select>
                            </div>
+
+                           {/* CONDITIONAL: CONVERTIDO FIELDS */}
+                           {reportData.outcome === 'Convertido' && (
+                               <div className="bg-green-50 p-4 rounded-xl border border-green-200 animate-fade-in space-y-3">
+                                   <div className="flex items-center gap-2 text-green-700 text-sm font-bold mb-2">
+                                       <FilePlus size={16} /> Dados para Credenciamento Automático
+                                   </div>
+                                   <div>
+                                       <label className="block text-xs font-bold text-green-800 uppercase mb-1">CNPJ</label>
+                                       <input 
+                                           className="w-full border border-green-300 rounded-lg px-2 py-1.5 text-sm outline-none"
+                                           placeholder="00.000.000/0000-00"
+                                           value={extraActionData.cnpj || ''}
+                                           onChange={e => setExtraActionData({...extraActionData, cnpj: e.target.value})}
+                                       />
+                                   </div>
+                                   <div>
+                                       <label className="block text-xs font-bold text-green-800 uppercase mb-1">Plano Escolhido</label>
+                                       <div className="flex gap-2">
+                                           <button onClick={() => setExtraActionData({...extraActionData, planType: 'Full'})} className={`flex-1 py-1.5 text-xs font-bold rounded border ${extraActionData.planType === 'Full' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-green-700 border-green-300'}`}>FULL</button>
+                                           <button onClick={() => setExtraActionData({...extraActionData, planType: 'Simples'})} className={`flex-1 py-1.5 text-xs font-bold rounded border ${extraActionData.planType === 'Simples' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-700 border-blue-300'}`}>SIMPLES</button>
+                                       </div>
+                                   </div>
+                               </div>
+                           )}
+
                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-bold text-brand-gray-700 mb-2">Potencial (R$)</label>
@@ -1123,7 +1210,24 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                                </select>
                            </div>
                            
-                           {/* Conditional fields based on Action */}
+                           {/* CONDITIONAL: LOGISTICS ACTION FIELDS */}
+                           {(reportData.walletAction === 'Troca de POS' || reportData.walletAction === 'Retirada de POS') && (
+                                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 animate-fade-in space-y-3">
+                                    <div className="flex items-center gap-2 text-orange-700 text-sm font-bold mb-2">
+                                        <Truck size={16} /> Solicitação Automática de Logística
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-orange-800 uppercase mb-1">Serial do Equipamento (Atual)</label>
+                                        <input 
+                                            className="w-full border border-orange-300 rounded-lg px-2 py-1.5 text-sm outline-none uppercase"
+                                            placeholder="Digite o S/N..."
+                                            value={extraActionData.currentSerial || ''}
+                                            onChange={e => setExtraActionData({...extraActionData, currentSerial: e.target.value})}
+                                        />
+                                    </div>
+                                </div>
+                           )}
+
                            {reportData.walletAction === 'Retirada de POS' && (
                                <div>
                                    <label className="block text-sm font-bold text-brand-gray-700 mb-2">Motivo Retirada *</label>
@@ -1171,8 +1275,10 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                        disabled={loadingAction === 'report'}
                        className="px-6 py-2 bg-brand-primary text-white rounded-lg font-bold hover:bg-brand-dark transition-colors shadow-lg flex items-center gap-2 disabled:opacity-50"
                    >
-                       {loadingAction === 'report' ? <Loader2 className="w-4 h-4 animate-spin"/> : null}
-                       Concluir Visita
+                       {loadingAction === 'report' ? <Loader2 className="w-4 h-4 animate-spin"/> : 
+                        (reportData.outcome === 'Convertido' || reportData.walletAction?.includes('POS')) 
+                        ? <><CheckCircle2 className="w-4 h-4"/> Concluir & Gerar Solicitação</> 
+                        : 'Concluir Visita'}
                    </button>
                </div>
            </div>
@@ -1194,17 +1300,6 @@ const FieldSalesView: React.FC<{ currentUser: string }> = ({ currentUser }) => {
                               <div><span className="text-gray-500 block text-xs">Responsável</span>{viewDetailsAppt.responsible}</div>
                               <div><span className="text-gray-500 block text-xs">Telefone</span>{viewDetailsAppt.whatsapp}</div>
                           </div>
-                      </div>
-
-                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                          <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Sobre o Agendamento</h4>
-                          <p className="text-sm text-gray-800 mb-2">
-                              <span className="font-bold">Origem:</span> {viewDetailsAppt.isWallet ? 'Carteira (Gestão)' : 'Novo Negócio'}
-                          </p>
-                          {viewDetailsAppt.leadOrigins.length > 0 && (
-                              <p className="text-sm text-gray-800 mb-2"><span className="font-bold">Fonte:</span> {viewDetailsAppt.leadOrigins.join(', ')}</p>
-                          )}
-                          <p className="text-sm text-gray-600 italic">"{viewDetailsAppt.observation}"</p>
                       </div>
 
                       {viewDetailsAppt.visitReport && (

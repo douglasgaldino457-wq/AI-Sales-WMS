@@ -100,32 +100,25 @@ const MesaNegociacaoPage: React.FC = () => {
     // --- STEP 2: INTELLIGENT RATE SUGGESTION (MATCHING OR MARGIN BASE) ---
     useEffect(() => {
         if (selectedRequest) {
-            // Check if it's already approved to load existing approved rates instead of calculating
-            const useSavedData = (selectedRequest.status === 'Aprovado Pricing' || selectedRequest.status === 'Concluído') && !isEditing;
-            
             const suggestion: Record<string, number> = {};
             const initialMix: Record<string, number> = {};
             const currentPlan = getPlanType(selectedRequest);
             const targetSpread = calcState.targetValue; // This drives the calculation
             
             const costs = appStore.getCostConfig(); 
+            // Fallback for terms if undefined (old data)
+            const terms = costs.financialTerms || { debit: 0, credit1x: 1, credit2to6: 4, credit7to12: 9.5, credit13to18: 15.5 };
+
             const concRates = selectedRequest.pricingData?.competitorRates || { debit: 0, credit1x: 0, credit12x: 0 };
 
-            // --- CORE LOGIC: MARGIN ANALYSIS ---
-            // 1st Level (Spread >= 0.65): Try to match competitor. If Competitor is too low, Floor at Cost + Spread.
-            // 2nd Level (Spread < 0.65): Use strictly Cost + Spread (Aggressive).
-            
+            // Function to calculate rate based on Cost + Spread Target
             const calculateRate = (cost: number, compRate: number) => {
+                // Ensure cost includes fixed cost
                 const floorRate = cost + targetSpread;
                 
                 if (targetSpread >= 0.65) {
-                    // Alçada 1: We want to match competitor if possible (it gives us MORE spread than target)
-                    // If Competitor Rate is HIGHER than our Floor, we match it (Resulting Spread > Target)
-                    // If Competitor Rate is LOWER than our Floor, we stick to Floor (Resulting Spread = Target)
                     return Math.max(compRate, floorRate);
                 } else {
-                    // Alçada 2: User explicitly lowered spread below 0.65.
-                    // We calculate strictly based on the aggressive target spread.
                     return floorRate;
                 }
             };
@@ -138,80 +131,59 @@ const MesaNegociacaoPage: React.FC = () => {
                 else interchange = costs.installment13to18Cost;
                 
                 // Full Plan includes Funding Cost (Anticipation)
-                // Simples Plan only includes Interchange (MDR)
+                // Use Standard Formula (N+1)/2 for installments as per industry standard
                 const avgTerm = (i + 1) / 2;
                 const funding = currentPlan === 'Full' ? (costs.anticipationCost * avgTerm) : 0;
                 
                 return interchange + funding + costs.fixedCostPerTx;
             };
 
-            // Define keys based on plan
-            let keys: string[] = [];
+            // --- 1. DEBIT CALCULATION ---
+            // Update: Use configured debit term for funding cost
+            const fundingDebit = currentPlan === 'Full' ? (costs.anticipationCost * terms.debit) : 0;
+            const debitCost = costs.debitCost + fundingDebit + costs.fixedCostPerTx;
+            
+            suggestion['debit'] = calculateRate(debitCost, concRates.debit);
+            initialMix['debit'] = 40; 
+
+            // --- 2. CREDIT 1X CALCULATION ---
+            // Update: Use configured 1x term for funding cost
+            const funding1x = currentPlan === 'Full' ? (costs.anticipationCost * terms.credit1x) : 0;
+            const credit1xCost = costs.creditSightCost + funding1x + costs.fixedCostPerTx;
+            
+            suggestion['1x'] = calculateRate(credit1xCost, concRates.credit1x);
+            initialMix['1x'] = 30; 
+
+            // --- 3. INSTALLMENTS CALCULATION ---
             if (currentPlan === 'Full') {
-                keys = ['debit', '1x', ...Array.from({length: 11}, (_, i) => `${i+2}x`)];
-            } else {
-                keys = ['debit', '1x', '2x-6x', '7x-12x', '13x-18x'];
-            }
+                // Linear interpolation for competitor 12x to estimate intermediate competitor rates
+                const slope = (concRates.credit12x - concRates.credit1x) / 11;
+                const installmentShare = 30 / 11;
 
-            if (useSavedData && selectedRequest.pricingData?.approvedRates) {
-                // LOAD EXISTING APPROVED RATES (READ ONLY MODE)
-                const approved = selectedRequest.pricingData.approvedRates;
-                keys.forEach(key => {
-                    if (key === 'debit') suggestion[key] = approved.debit;
-                    else if (key === '1x') suggestion[key] = approved.credit1x;
-                    else if (key.includes('12x') || key === '7x-12x') suggestion[key] = approved.credit12x;
-                    else if (currentPlan === 'Full') {
-                         const i = parseInt(key.replace('x',''));
-                         const start = approved.credit1x;
-                         const end = approved.credit12x;
-                         suggestion[key] = start + ((end - start) / 11) * (i - 1);
-                    } else {
-                        if(key === '2x-6x') suggestion[key] = approved.credit1x + 2.5; 
-                        if(key === '13x-18x') suggestion[key] = approved.credit12x + 3.0; 
-                    }
-                });
-
-            } else {
-                // CALCULATE NEW SUGGESTION BASED ON TARGET SPREAD
-                const debitCost = costs.debitCost + costs.fixedCostPerTx;
-                const credit1xCost = costs.creditSightCost + (currentPlan === 'Full' ? costs.anticipationCost : 0) + costs.fixedCostPerTx;
-
-                suggestion['debit'] = calculateRate(debitCost, concRates.debit);
-                initialMix['debit'] = 40; 
-                
-                suggestion['1x'] = calculateRate(credit1xCost, concRates.credit1x);
-                initialMix['1x'] = 30; 
-
-                if (currentPlan === 'Full') {
-                    // Linear interpolation for competitor 12x
-                    const slope = (concRates.credit12x - concRates.credit1x) / 11;
-                    const installmentShare = 30 / 11;
-
-                    for (let i = 2; i <= 12; i++) {
-                        const totalCost = getInstallmentCost(i);
-                        const estimatedConc = concRates.credit1x + (slope * (i - 1));
-                        
-                        suggestion[`${i}x`] = calculateRate(totalCost, estimatedConc);
-                        initialMix[`${i}x`] = parseFloat(installmentShare.toFixed(2));
-                    }
-                } else {
-                    // SIMPLES (MDR only)
-                    // Costs:
-                    const cost2to6 = costs.installment2to6Cost + costs.fixedCostPerTx;
-                    const cost7to12 = costs.installment7to12Cost + costs.fixedCostPerTx;
-                    const cost13to18 = costs.installment13to18Cost + costs.fixedCostPerTx;
-
-                    suggestion['2x-6x'] = calculateRate(cost2to6, concRates.credit1x + 2.5);
-                    initialMix['2x-6x'] = 15;
+                for (let i = 2; i <= 12; i++) {
+                    const totalCost = getInstallmentCost(i);
+                    // Estimate competitor rate for this installment
+                    const estimatedConc = concRates.credit1x + (slope * (i - 1));
                     
-                    suggestion['7x-12x'] = calculateRate(cost7to12, concRates.credit12x);
-                    initialMix['7x-12x'] = 10;
-                    
-                    suggestion['13x-18x'] = calculateRate(cost13to18, concRates.credit12x + 3.0);
-                    initialMix['13x-18x'] = 5;
-                    
-                    setAnticipationRate(3.95);
+                    suggestion[`${i}x`] = calculateRate(totalCost, estimatedConc);
+                    initialMix[`${i}x`] = parseFloat(installmentShare.toFixed(2));
                 }
+            } else {
+                // SIMPLES (Buckets)
+                const cost2to6 = costs.installment2to6Cost + costs.fixedCostPerTx;
+                const cost7to12 = costs.installment7to12Cost + costs.fixedCostPerTx;
+                const cost13to18 = costs.installment13to18Cost + costs.fixedCostPerTx;
+
+                suggestion['2x-6x'] = calculateRate(cost2to6, concRates.credit1x + 2.5); // Mock conc logic
+                initialMix['2x-6x'] = 15;
+                
+                suggestion['7x-12x'] = calculateRate(cost7to12, concRates.credit12x);
+                initialMix['7x-12x'] = 10;
+                
+                suggestion['13x-18x'] = calculateRate(cost13to18, concRates.credit12x + 3.0);
+                initialMix['13x-18x'] = 5;
+                
+                setAnticipationRate(3.95);
             }
 
             // Round to 2 decimals
@@ -219,27 +191,16 @@ const MesaNegociacaoPage: React.FC = () => {
                 suggestion[key] = Math.round(suggestion[key] * 100) / 100;
             });
 
-            // If NOT in manual editing mode (or if just initializing), update rates
-            // If in editing mode, we do NOT overwrite manual changes with auto-calc unless target spread changes drastically (handled by deps)
-            setFinalRates(prev => {
-                // If initializing or target changed significantly, overwrite.
-                // For simplicity in this logic: We overwrite if not editing or if target changed.
-                // The dependency array handles the trigger.
-                return suggestion; 
-            });
+            // UPDATE RATES
+            setFinalRates(suggestion);
             
-            // Ensure Mix is initialized and matches the current plan keys
-            // This fixes issues when switching between Full/Simples requests
-            const currentKeys = Object.keys(suggestion);
-            const mixKeys = Object.keys(mixValues);
-            const isMixMismatch = mixKeys.length === 0 || !currentKeys.every(k => mixKeys.includes(k));
-
-            if (isMixMismatch) {
+            // Ensure Mix is initialized if empty
+            if (Object.keys(mixValues).length === 0) {
                 setMixValues(initialMix);
             }
 
         }
-    }, [calcState.targetValue, selectedRequest, planType, isEditing]); 
+    }, [calcState.targetValue, selectedRequest, planType]); // Trigger when Spread Target changes
 
     const filteredRequests = requests.filter(r => {
         if (filterStatus === 'Todos') return true;
@@ -266,6 +227,7 @@ const MesaNegociacaoPage: React.FC = () => {
 
         const tpv = selectedRequest.pricingData.context?.potentialRevenue || 50000;
         const costs = appStore.getCostConfig();
+        const terms = costs.financialTerms || { debit: 0, credit1x: 1, credit2to6: 4, credit7to12: 9.5, credit13to18: 15.5 };
         
         let pagWeightedAvg = 0;
         let concWeightedAvg = 0; // Real Competitor Weighted Avg
@@ -299,8 +261,8 @@ const MesaNegociacaoPage: React.FC = () => {
 
             let itemCost = 0;
             if (planType === 'Full') {
-                if (key === 'debit') itemCost = costs.debitCost;
-                else if (key === '1x') itemCost = costs.creditSightCost + costs.anticipationCost;
+                if (key === 'debit') itemCost = costs.debitCost + (costs.anticipationCost * terms.debit);
+                else if (key === '1x') itemCost = costs.creditSightCost + (costs.anticipationCost * terms.credit1x);
                 else {
                     const i = parseInt(key.replace('x',''));
                     let interchange = 0;
@@ -316,6 +278,9 @@ const MesaNegociacaoPage: React.FC = () => {
                 else if (key === '7x-12x') itemCost = costs.installment7to12Cost;
                 else if (key === '13x-18x') itemCost = costs.installment13to18Cost;
             }
+            // Add Fixed Cost
+            itemCost += costs.fixedCostPerTx;
+            
             weightedCost += itemCost * weight;
         });
 

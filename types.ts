@@ -7,145 +7,70 @@ export enum UserRole {
   LOGISTICA = 'Logística',
   ADMIN = 'Backoffice',
   FINANCEIRO = 'Financeiro',
-  QUALIDADE = 'Qualidade',
+  ESTRATEGIA = 'Estratégia',
 }
 
 export enum Page {
   DASHBOARD = 'Dashboard',
-  AGENDAMENTOS = 'Agendamentos', // Inside & Field
-  ROTAS = 'Rotas', // Field
-  CONFIGURACAO = 'Configuração', // Gestor
-  USUARIOS = 'Usuários', // Gestor
-  BASE_CLIENTES = 'Base de Clientes', // All
-  DASHBOARD_GERAL = 'Dashboard Geral', // Gestor
-  MAPA_GESTAO = 'Mapa de Gestão', // Gestor
-  CADASTRO_PRICING = 'Cadastro & Pricing', // UNIFICADO (Antigo Pricing + Cadastro)
-  // CADASTRO = 'Cadastro', // REMOVIDO - Unificado acima
-  AJUDA = 'Ajuda & IA', // New Page
-  PRICING_DASHBOARD = 'Dash Pricing', // New
-  MESA_NEGOCIACAO = 'Mesa Negociação', // New
-  CONFIG_TAXAS = 'Config. Taxas', // New
-  PAINEL_LEADS = 'Painel de Leads', // New Page for Services Intelligence
-  LOGISTICA_DASHBOARD = 'Dashboard Logística', // KPIs
-  LOGISTICA_ATIVACOES = 'Ativações', // New Page: Gsurf Flow
-  LOGISTICA_ESTOQUE = 'Estoque Global', // New Page: Inventory Management
-  LOGISTICA_SUPORTE = 'Gestão de Suporte', // New Page: Tickets & KB
-  ADMIN_DEMANDS = 'Cadastros & Demandas', // New Page for Admin
-  PEDIDOS_RASTREIO = 'Pedidos & Rastreio', // New Page for Sales Tracking
-  PERFIL = 'Meu Perfil', // New Page: User Profile & Vehicle
-  DESPESAS = 'Despesas & Reembolso', // Restored
-}
-
-export interface CostStructure {
-    debitCost: number;
-    creditSightCost: number;
-    // Granular Installment Costs
-    installment2to6Cost: number;
-    installment7to12Cost: number;
-    installment13to18Cost: number;
-    anticipationCost: number; // Custo CDI/Funding a.m.
-    taxRate: number; // Impostos (PIS/COFINS/ISS)
-    fixedCostPerTx: number; // Custo fixo por transação
-    // Audit
-    lastUpdated?: string;
-    updatedBy?: string;
-}
-
-// --- NEW: RATE RANGE CONFIGURATION TYPES ---
-export interface TpvRange {
-    id: number;
-    label: string;
-}
-
-export interface FullRangeRates {
-    debit: number;
-    credit1x: number;
-    installments: number[]; // Array 0 = 2x, 1 = 3x ... 16 = 18x
-    lastUpdated?: string; // ISO String
-    updatedBy?: string;
-}
-
-export interface SimplesRangeRates {
-    debit: number;
-    credit1x: number;
-    credit2x6x: number;
-    credit7x12x: number;
-    credit13x18x: number;
-    lastUpdated?: string; // ISO String
-    updatedBy?: string;
-}
-
-export interface RateRangesConfig {
-    full: Record<number, FullRangeRates>;
-    simples: Record<number, SimplesRangeRates>;
-}
-
-export interface AppNotification {
-    id: string;
-    type: 'RATE_APPROVED' | 'OTP_ISSUED' | 'INFO';
-    title: string;
-    message: string;
-    date: string;
-    targetId?: string; // ID of the Demand to open
-    read: boolean;
-}
-
-// Visit Type used by Route Optimizer
-export interface Visit {
-  id: string;
-  clientName: string;
-  date: string;
-  status: 'Scheduled' | 'Completed' | 'Cancelled';
-  address: string;
-}
-
-export interface SalesData {
-  name: string;
-  value: number;
-}
-
-// --- NEW TYPES FOR ROUTES & TRACKING ---
-export interface Vehicle {
-    plate: string;
-    model: string;
-    make: string;
-    year: string;
-    color: string;
-}
-
-export interface SystemUser {
-  id: string; // Added ID
-  name: string;
-  role: UserRole;
-  email: string;
-  whatsapp: string;
-  active: boolean; // Added status
-  managerName?: string; // Added Manager
-  password?: string; // Mock password field
-  vehicle?: Vehicle; // User's vehicle for GPS logs
+  AGENDAMENTOS = 'Agendamentos',
+  ROTAS = 'Rotas',
+  CONFIGURACAO = 'Configuração',
+  USUARIOS = 'Usuários',
+  BASE_CLIENTES = 'Base de Clientes',
+  DASHBOARD_GERAL = 'Dashboard Geral',
+  MAPA_GESTAO = 'Mapa de Gestão',
+  CADASTRO_PRICING = 'Cadastro & Pricing',
+  AJUDA = 'Ajuda & IA',
+  PRICING_DASHBOARD = 'Dash Pricing',
+  MESA_NEGOCIACAO = 'Mesa Negociação',
+  CONFIG_TAXAS = 'Config. Taxas',
+  PAINEL_LEADS = 'Painel de Leads',
+  LOGISTICA_DASHBOARD = 'Dashboard Logística',
+  LOGISTICA_ATIVACOES = 'Ativações',
+  LOGISTICA_ESTOQUE = 'Estoque Global',
+  LOGISTICA_SUPORTE = 'Gestão de Suporte',
+  ADMIN_DEMANDS = 'Cadastros & Demandas',
+  PEDIDOS_RASTREIO = 'Pedidos & Rastreio',
+  PERFIL = 'Meu Perfil',
+  DESPESAS = 'Despesas & Reembolso',
+  CONCILIACAO = 'Conciliação Cartão',
+  ESTRATEGIA_HOME = 'Planejamento Estratégico',
 }
 
 export interface ClientBaseRow {
-  id: string; // "Id"
-  nomeEc: string; // "Nome do EC"
-  tipoSic: string; // "Tipo SIC"
-  endereco: string; // "Endereço"
-  responsavel: string; // "Nome Responsável"
-  contato: string; // "Telefone"
-  regiaoAgrupada: string; // "Região Agrupada"
-  fieldSales: string; // "Consultor Field"
-  insideSales: string; // "Inside Sales"
-  status?: 'Active' | 'Lead'; // New field for Lead Management
+  id: string;
+  nomeEc: string;
+  tipoSic: string;
+  endereco: string;
+  responsavel: string;
+  contato: string;
+  regiaoAgrupada: string;
+  fieldSales: string;
+  insideSales: string;
+  status?: 'Active' | 'Lead';
   leadMetadata?: {
       revenuePotential?: number;
       competitorAcquirer?: string;
-      outcome?: string; // 'Convertido', 'Em negociação', etc.
+      outcome?: string;
       lastInteractionDate?: string;
   };
-  hasPagmotors?: boolean; // Mock field for Painel Leads (Partner)
+  hasPagmotors?: boolean;
   latitude?: number;
   longitude?: number;
-  cnpj?: string; // Added for auto-fill features
+  cnpj?: string;
+  // Campos de Histórico Comercial
+  historicalRates?: {
+    debit: number;
+    credit1x: number;
+    credit12x: number;
+    plan: string;
+    date: string;
+  };
+  historicalBank?: {
+    bank: string;
+    agency: string;
+    account: string;
+  };
 }
 
 export interface Appointment {
@@ -157,16 +82,16 @@ export interface Appointment {
   address: string;
   observation?: string;
   fieldSalesName: string;
-  insideSalesName?: string; // Optional
-  date?: string; // YYYY-MM-DD
+  insideSalesName?: string;
+  date?: string;
   period?: VisitPeriod;
   status: 'Scheduled' | 'Completed' | 'Cancelled';
   leadOrigins: LeadOrigin[];
-  isWallet: boolean; // True if created from BaseClientes (Management), False if New Business
-  visitReason?: string; // If isWallet is true
-  inRoute?: boolean; // If added to Route
-  visitReport?: VisitReport; // Attached report after completion
-  fieldObservation?: string; // Observation from Field Sales
+  isWallet: boolean;
+  visitReason?: string;
+  inRoute?: boolean;
+  visitReport?: VisitReport;
+  fieldObservation?: string;
 }
 
 export type VisitPeriod = 'Manhã' | 'Tarde' | 'Horário Comercial';
@@ -180,7 +105,6 @@ export interface VisitReport {
     withdrawalReason?: WithdrawalReason;
     swapReason?: SwapReason;
     observation?: string;
-    // New Business Data
     revenuePotential?: number;
     competitorAcquirer?: string;
     hadRateQuote?: boolean;
@@ -188,236 +112,111 @@ export interface VisitReport {
 
 export type VisitOutcome = 'Convertido' | 'Em negociação' | 'Sem interesse' | 'Fidelidade com adquirente' | 'Taxas altas';
 export type WalletAction = 'Retirada de POS' | 'Troca de POS' | 'Suporte pós-venda' | 'Engajamento sem uso' | 'Negociação de taxas';
-export type WithdrawalReason = string; // Dynamic from Config
-export type SwapReason = string; // Dynamic from Config
-
-export interface ClientNote {
-    id: string;
-    clientId: string;
-    authorName: string;
-    date: string;
-    content: string;
-}
-
-// --- NEW TYPES FOR PRICING & REGISTRATION ---
-
-export type DemandActionType = 
-    'Desativação de POS' | 
-    'Troca de POS' | 
-    'Alteração Bancária' | 
-    'Alteração Cadastral' | 
-    'Solicitação de Material' | // NEW
-    'Envio de POS (Novo Cliente)' | // NEW INSIDE
-    'Retirada de POS (Logística)'; // NEW INSIDE
-
-export interface HistoryLog {
-    date: string;
-    user: string;
-    action: string;
-    details?: string;
-}
-
-export interface MaterialRequestData {
-    posQuantity: number;
-    coils?: boolean;
-    chargers?: boolean;
-    gifts?: boolean; // Brindes
-}
+export type WithdrawalReason = string;
+export type SwapReason = string;
 
 export interface ManualDemand {
     id: string;
-    type: string; // Legacy string or DemandActionType
-    actionCategory?: DemandActionType; // Structured Type
+    type: string;
+    actionCategory?: string;
     clientName: string;
     date: string;
     status: 'Pendente' | 'Em Análise' | 'Concluído' | 'Rejeitado' | 'Aprovado Pricing';
-    adminStatus?: 'Pendente ADM' | 'Em Processamento' | 'Finalizado ADM' | 'Aguardando Logística'; // Updated Status
-    otp?: string; // New Logistics OTP
-    result?: string; // Outcome message
+    adminStatus?: 'Pendente ADM' | 'Em Processamento' | 'Finalizado ADM' | 'Aguardando Logística';
+    otp?: string;
+    result?: string;
     requester: string;
     description?: string;
-    changeLog?: HistoryLog[]; // History of changes
-    // Pricing Specifics
+    changeLog?: HistoryLog[];
     pricingData?: {
         competitorRates: { debit: number, credit1x: number, credit12x: number };
         proposedRates: { debit: number, credit1x: number, credit12x: number };
-        approvedRates?: { debit: number, credit1x: number, credit12x: number }; // Final approved
+        approvedRates?: { debit: number, credit1x: number, credit12x: number };
         financials?: { spread: number, mcf2: number };
-        evidenceUrl?: string; // Link to image
-        context?: {
-            potentialRevenue: number;
-            minAgreed: number;
-        };
+        evidenceUrl?: string;
+        context?: { potentialRevenue: number, minAgreed: number };
         approvalMetadata?: {
             approvedBy: string;
             approvedAt: string;
         };
     };
-    // Material Specifics
-    materialData?: MaterialRequestData;
 }
 
-export interface BankAccount {
-    tempId?: string; // UI Helper
-    bankCode: string;
-    agency: string;
-    accountNumber: string;
-    holderName: string;
-    holderType: 'PF' | 'PJ';
-    accountType: 'Corrente' | 'Poupança';
-    isThirdParty: boolean;
-    proofFile?: File | null; // For upload logic
-    proofUrl?: string; // For display
-}
-
-export type RegistrationStatus = 'PENDING_ANALYSIS' | 'APPROVED' | 'MISSING_DOCS' | 'REJECTED';
-
-// NEW: POS Request Item for multiple devices
-export interface PosRequestItem {
-    id: string;
-    model: string;
-    type: 'STOCK' | 'REQUEST'; // STOCK = From User Inventory, REQUEST = New Shipment
-    serialNumber?: string; // Mandatory if STOCK
-    rcNumber?: string; // NEW: Patrimonial RC Number
-    otp?: string; // Filled by Logistics
-    linkedAccountIndex?: number; // Index of the bankAccount in the RegistrationRequest list
-}
-
-export interface RegistrationRequest {
-    id: string;
-    // Basic Info
-    clientName: string;
-    documentNumber: string; // CNPJ/CPF
-    razaoSocial?: string;
-    cnae?: string;
-    inscricaoEstadual?: string;
-    
-    // Contact & Location
-    responsibleName: string;
-    email: string;
-    contactEmails?: string[]; // Multiple Emails
-    contactPhones: string[]; // Multiple Phones
-    address: string;
-    openingHours?: {
-        weekdays: { start: string; end: string };
-        saturday?: { start: string; end: string };
-    };
-    
-    // Operational
-    monthlyVehicleVolume?: number;
-
-    // Commercial
-    planType: 'Full' | 'Simples';
-    pricingDemandId?: string; // Linked Pricing Negotiation
-    bankAccounts: BankAccount[]; // Changed to Array
-    
-    // Equipment
-    requestedEquipments?: PosRequestItem[];
-    // Legacy support (optional)
-    posData?: { serialNumber: string; rcNumber?: string; model?: string; };
-
-    // Docs & Meta
-    docs: {
-        contract?: boolean; // Legacy
-        idCard?: boolean;
-        idCardFile?: File;
-        addressProof?: boolean;
-        addressProofFile?: File;
-        facade?: boolean; // New
-        facadeFile?: File; // New
-        interiorFiles?: File[]; // New (Array)
-    };
-    requesterName: string;
-    requesterRole: string;
-    dateSubmitted: string;
-    status: RegistrationStatus;
-    
-    // Admin Fields
-    finalClientId?: string; // The ID created in legacy system (EC)
-    approvalData?: {
-        date: string;
-        approvedBy: string;
-    };
-    notes?: string;
-}
-
-// --- LOGISTICS TYPES ---
 export interface LogisticsTask {
     id: string;
     type: 'FIELD_ACTIVATION' | 'POS_SHIPMENT' | 'POS_RETRIEVAL' | 'POS_EXCHANGE' | 'MATERIAL_REQUEST';
     status: 'PENDING_SHIPMENT' | 'SHIPPED' | 'READY_FOR_GSURF' | 'COMPLETED' | 'RETURNED';
-    
-    // Client Info
     clientName: string;
-    legalName?: string; // Needed for Gsurf
-    internalId?: string; // The "EC" code from Admin
-    documentNumber?: string; // CNPJ
+    internalId?: string;
+    documentNumber?: string;
     address: string;
-    responsibleName?: string;
+    requesterName: string;
+    requesterRole?: string;
+    date: string;
+    details: string;
+    posData?: { serialNumber: string; rcNumber?: string; model?: string; };
+    otp?: string;
     contactPhone?: string;
     email?: string;
-
-    // Request Info
-    requesterName: string;
-    requesterRole: string;
-    date: string;
-    details: string; // What needs to be done
-    
-    // Tracking
-    trackingCode?: string;
-    carrier?: string;
-    
-    // Execution Data
-    posData?: { serialNumber: string; rcNumber?: string; model?: string; }; // Assigned POS
-    allocatedPosList?: PosRequestItem[]; // If multiple
-    otp?: string; // Generated OTP code from Gsurf
-    
-    // Material Data
-    materialData?: MaterialRequestData;
+    allocatedPosList?: PosRequestItem[];
+    legalName?: string;
+    responsibleName?: string;
 }
 
 export interface PosDevice {
     serialNumber: string;
-    rcNumber: string; // Patrimonio
+    rcNumber: string;
     model: string;
     status: 'InStock' | 'WithField' | 'Active' | 'Defective' | 'Triage';
-    currentHolder: string; // Consultant Name or Client Name or 'Logística'
+    currentHolder: string;
     lastUpdated: string;
-    history?: { date: string; status: string; holder: string; description?: string }[];
-    problemReport?: { // NEW
-        date: string;
-        type: 'Defeito' | 'Sem Carregador' | 'Sem Bobina' | 'Conectividade' | 'Outros';
-        description: string;
-        reportedBy: string;
-    };
+    history?: any[];
 }
 
-export interface SupportTicket {
+export interface AppNotification {
     id: string;
-    clientId: string;
-    clientName: string;
-    requesterName: string;
-    requesterRole: string;
-    status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
-    priority: 'LOW' | 'MEDIUM' | 'HIGH';
-    category: string;
-    messages: SupportMessage[];
-    createdAt: string;
+    type: 'RATE_APPROVED' | 'OTP_ISSUED' | 'INFO';
+    title: string;
+    message: string;
+    date: string;
+    targetId?: string;
+    read: boolean;
 }
 
-export interface SupportMessage {
-    id: string;
-    sender: 'user' | 'support' | 'ai';
-    text: string;
-    timestamp: string;
-    imageUrl?: string;
+export interface SystemUser {
+  id: string;
+  name: string;
+  role: UserRole;
+  email: string;
+  whatsapp: string;
+  active: boolean;
+  managerName?: string;
+  password?: string;
+  vehicle?: Vehicle;
 }
 
-export interface KnowledgeBaseItem {
-    id: string;
-    errorPattern: string;
-    solution: string;
-    keywords: string[];
+export interface CostStructure {
+    debitCost: number;
+    creditSightCost: number;
+    installment2to6Cost: number;
+    installment7to12Cost: number;
+    installment13to18Cost: number;
+    anticipationCost: number;
+    taxRate: number;
+    fixedCostPerTx: number;
+    financialTerms?: FinancialTerms;
+    lastUpdated?: string;
+    updatedBy?: string;
+}
+
+export interface RateRangesConfig {
+    full: Record<number, any>;
+    simples: Record<number, any>;
+}
+
+export interface TpvRange {
+    id: number;
+    label: string;
 }
 
 export interface TripLog {
@@ -428,18 +227,199 @@ export interface TripLog {
     distanceKm: number;
     valueEarned: number;
     vehiclePlate: string;
-    status: 'OPEN' | 'COMPLETED' | 'WAITING_MANAGER' | 'WAITING_FINANCE' | 'PAID' | 'REJECTED'; // Updated Status
-    reportId?: string; // Link to report
+    status: string;
+}
+
+export interface Expense {
+    id: string;
+    date: string;
+    category: ExpenseCategory;
+    amount: number;
+    establishment: string;
+    imageUrl?: string;
+    status: string;
+    requesterName: string;
+    paymentMethod: string;
+    reimbursable: boolean;
+    notes?: string;
+    fuelDetails?: any;
+}
+
+export interface ExpenseReport {
+    id: string;
+    requesterName: string;
+    period: string;
+    createdDate: string;
+    status: string;
+    totalAmount: number;
+    totalReimbursable: number;
+    itemCount: number;
+    history: any[];
+    validationToken?: string;
+}
+
+export interface IntegrationConfig {
+    sicBaseUrl: string;
+    sicApiKey?: string;
+    syncInterval: number;
+    lastSync?: string;
+    active: boolean;
+}
+
+export interface SalesGoal {
+    id: string;
+    month: string;
+    userId: string;
+    userRole: UserRole;
+    tpv: number;
+    reactivation: number;
+    newSales: number;
+    efficiency: number;
+    visits?: number;
+    appointments?: number;
+    updatedAt: string;
+}
+
+export interface FinancialTerms {
+    debit: number;
+    credit1x: number;
+    credit2to6: number;
+    credit7to12: number;
+    credit13to18: number;
+}
+
+export interface KnowledgeBaseItem {
+    id: string;
+    errorPattern: string;
+    solution: string;
+    keywords: string[];
+}
+
+export interface SupportTicket {
+    id: string;
+    clientId: string;
+    clientName: string;
+    requesterName: string;
+    requesterRole: string;
+    status: string;
+    priority: string;
+    category: string;
+    messages: SupportMessage[];
+    createdAt: string;
+}
+
+export interface SupportMessage {
+    id: string;
+    sender: string;
+    text: string;
+    timestamp: string;
+    imageUrl?: string;
+}
+
+export interface SalesData {
+  name: string;
+  value: number;
+}
+
+export interface Vehicle {
+    plate: string;
+    make: string;
+    model: string;
+    year: string;
+    color: string;
+}
+
+export interface ClientNote {
+    id: string;
+    clientId: string;
+    authorName: string;
+    date: string;
+    content: string;
+}
+
+export type RegistrationStatus = 'PENDING_ANALYSIS' | 'APPROVED' | 'MISSING_DOCS' | 'REJECTED';
+
+export interface RegistrationRequest {
+    id: string;
+    clientName: string;
+    documentNumber: string;
+    planType: 'Full' | 'Simples';
+    requesterName: string;
+    requesterRole: string;
+    status: RegistrationStatus;
+    dateSubmitted: string;
+    address: string;
+    responsibleName: string;
+    email: string;
+    contactPhones: string[];
+    bankAccounts: BankAccount[];
+    docs: any;
+    razaoSocial?: string;
+    inscricaoEstadual?: string;
+    cnae?: string;
+    monthlyVehicleVolume?: number;
+    pricingDemandId?: string;
+    requestedEquipments?: PosRequestItem[];
+    finalClientId?: string;
+    approvalData?: {
+        date: string;
+        approvedBy: string;
+    };
+    notes?: string;
+}
+
+export interface BankAccount {
+    tempId?: string;
+    bankCode: string;
+    agency: string;
+    accountNumber: string;
+    holderName: string;
+    holderType: 'PF' | 'PJ';
+    accountType: 'Corrente' | 'Poupança';
+    isThirdParty: boolean;
+    proofFile: File | null;
+}
+
+export interface PosRequestItem {
+    id: string;
+    type: 'STOCK' | 'REQUEST';
+    model: string;
+    serialNumber?: string;
+    rcNumber?: string;
+    linkedAccountIndex?: number;
+}
+
+export interface ReimbursementPolicy {
+    kmRate: number;
+    foodLimitPerDay: number;
+    hotelLimitPerNight: number;
+    corporateCardLimit: number;
+    updatedAt?: string;
+    policyFileName?: string;
+}
+
+export interface FinanceConfig {
+    kmRate: number;
+    expenseCategories: string[];
+    policyText: string;
+    policy: ReimbursementPolicy;
+}
+
+export interface HistoryLog {
+    date: string;
+    user: string;
+    action: string;
+    details: string;
 }
 
 export interface LeadServiceItem {
     id: string;
-    date: string;
-    flow: 'SIN' | 'SIR' | 'CAM';
+    flow: string;
     serviceType: string;
+    date: string;
     licensePlate: string;
-    status: 'Realizado' | 'Agendado' | 'Cancelado';
     value: number;
+    status: string;
 }
 
 export interface LeadStats {
@@ -453,48 +433,13 @@ export interface LeadStats {
     };
 }
 
-// --- EXPENSES & REIMBURSEMENT TYPES ---
+export type DemandActionType = 'Troca de POS' | 'Desativação de POS' | 'Alteração Bancária' | 'Alteração Cadastral' | 'Envio de POS (Novo Cliente)' | 'Retirada de POS (Logística)' | 'Solicitação de Material';
+
+export interface MaterialRequestData {
+    posQuantity: number;
+    coils: boolean;
+    chargers: boolean;
+    gifts: boolean;
+}
+
 export type ExpenseCategory = 'Combustível' | 'Estacionamento' | 'Pedágio' | 'Uber/Táxi' | 'Hospedagem' | 'Alimentação' | 'Outros';
-export type ExpensePaymentMethod = 'CORPORATE_CARD' | 'OWN_MONEY';
-export type ExpenseStatus = 'OPEN' | 'WAITING_MANAGER' | 'WAITING_FINANCE' | 'APPROVED' | 'REJECTED' | 'PAID';
-
-export interface FinanceConfig {
-    kmRate: number;
-    expenseCategories: string[];
-    policyText: string;
-}
-
-export interface Expense {
-    id: string;
-    date: string;
-    category: ExpenseCategory;
-    amount: number;
-    establishment: string;
-    imageUrl?: string; // Base64 or URL
-    status: ExpenseStatus; // Updated status flow
-    requesterName: string;
-    paymentMethod: ExpensePaymentMethod; // New field
-    reimbursable: boolean; // Computed or explicit
-    reportId?: string; // Grouping ID
-    rejectionReason?: string;
-    // Fuel Specifics
-    fuelDetails?: {
-        fuelType: 'Gasolina' | 'Etanol' | 'Diesel' | 'GNV';
-        liters: number;
-        pricePerLiter: number;
-    };
-    notes?: string;
-}
-
-export interface ExpenseReport {
-    id: string;
-    requesterName: string;
-    period: string; // e.g. "2023-10"
-    createdDate: string;
-    status: 'SUBMITTED_GESTOR' | 'APPROVED_GESTOR' | 'APPROVED_FINANCEIRO' | 'PAID' | 'REJECTED';
-    totalAmount: number;
-    totalReimbursable: number;
-    itemCount: number;
-    history: { date: string; action: string; user: string }[];
-    validationToken?: string; // Generated by Finance on final approval
-}

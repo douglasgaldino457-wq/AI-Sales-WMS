@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     Activity, Search, Car, Wrench, Shield, AlertCircle, Map as MapIcon, List, 
     TrendingUp, MousePointerClick, DollarSign, MapPin, CheckCircle2, X, Clock,
-    BarChart2, PieChart as PieIcon, ArrowLeft, Trophy
+    BarChart2, PieChart as PieIcon, ArrowLeft, Trophy, Zap
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { ClientBaseRow, LeadServiceItem, LeadStats } from '../types';
@@ -23,60 +23,82 @@ const MOCK_PORTFOLIO_DATA = {
         { month: 'Out', leads: 620, revenue: 34200 },
     ],
     serviceDistribution: [
-        { name: 'Sinistro (SIN)', value: 45, color: '#F59E0B' },
-        { name: 'Guincho (SIR)', value: 30, color: '#3B82F6' },
-        { name: 'Manutenção (CAM)', value: 25, color: '#EC4899' },
+        { name: 'Sinistro (SIN)', value: 40, color: '#F59E0B' }, // Amber
+        { name: 'Pane/Guincho (SIR)', value: 25, color: '#3B82F6' }, // Blue
+        { name: 'Webmotors (CAM)', value: 20, color: '#EC4899' }, // Pink
+        { name: 'Peq. Reparo (APR)', value: 15, color: '#10B981' }, // Green
     ],
     topPerformers: [
-        { name: 'Auto Center Paulista', conversion: 82, revenue: 12500 },
-        { name: 'Mecânica do Alemão', conversion: 78, revenue: 9800 },
-        { name: 'Oficina Premium', conversion: 75, revenue: 8900 },
-        { name: 'Centro Automotivo ZS', conversion: 71, revenue: 7500 },
-        { name: 'Fast Repair', conversion: 68, revenue: 6200 },
+        { name: 'Auto Center Paulista', conversion: 82, revenue: 12500, flow: 'SIN/SIR' },
+        { name: 'Mecânica do Alemão', conversion: 78, revenue: 9800, flow: 'CAM' },
+        { name: 'Oficina Premium', conversion: 75, revenue: 8900, flow: 'APR' },
+        { name: 'Centro Automotivo ZS', conversion: 71, revenue: 7500, flow: 'SIN' },
+        { name: 'Fast Repair', conversion: 68, revenue: 6200, flow: 'SIR' },
     ]
 };
 
 const PortfolioOverview: React.FC = () => {
     return (
         <div className="space-y-6 animate-fade-in">
+            {/* VALUE PROPOSITION BANNER */}
+            <div className="bg-gradient-to-r from-brand-gray-900 to-brand-gray-800 text-white p-6 rounded-2xl shadow-lg relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-brand-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div>
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <Zap className="w-5 h-5 text-yellow-400" />
+                            Ecossistema Webmotors Serviços
+                        </h2>
+                        <p className="text-gray-400 text-sm mt-1 max-w-xl">
+                            Monitore o volume de leads entregues (SIN, SIR, APR, CAM). 
+                            Use estes dados para negociar: o valor que geramos para a oficina supera a diferença de taxa da maquininha.
+                        </p>
+                    </div>
+                    <div className="flex gap-4 text-center">
+                        <div className="bg-white/10 px-4 py-2 rounded-lg border border-white/10">
+                            <span className="block text-2xl font-bold text-brand-primary">620</span>
+                            <span className="text-[10px] text-gray-400 uppercase font-bold">Leads/Mês</span>
+                        </div>
+                        <div className="bg-white/10 px-4 py-2 rounded-lg border border-white/10">
+                            <span className="block text-2xl font-bold text-green-400">R$ 34k</span>
+                            <span className="text-[10px] text-gray-400 uppercase font-bold">Receita Gerada</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* KPI ROW */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Leads Totais (Mês)</p>
-                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">620</p>
-                        <span className="text-xs text-green-600 font-bold flex items-center mt-1">
-                            <TrendingUp size={12} className="mr-1"/> +12% vs mês anterior
-                        </span>
+                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Volume SIN (Sinistro)</p>
+                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">248</p>
+                        <span className="text-xs text-gray-500 mt-1 block">Alta demanda de mão de obra</span>
                     </div>
-                    <div className="p-3 bg-brand-primary/10 text-brand-primary rounded-xl">
-                        <MousePointerClick size={24} />
+                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                        <Shield size={24} />
                     </div>
                 </div>
                 
                 <div className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Receita Gerada</p>
-                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">R$ 34.2k</p>
-                        <span className="text-xs text-green-600 font-bold flex items-center mt-1">
-                            <TrendingUp size={12} className="mr-1"/> +15% vs mês anterior
-                        </span>
+                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Volume SIR (Pane)</p>
+                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">155</p>
+                        <span className="text-xs text-gray-500 mt-1 block">Direcionamento via Guincho</span>
                     </div>
-                    <div className="p-3 bg-green-50 text-green-600 rounded-xl">
-                        <DollarSign size={24} />
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                        <Car size={24} />
                     </div>
                 </div>
 
                 <div className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Conversão Média</p>
-                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">68.5%</p>
-                        <span className="text-xs text-brand-gray-400 font-medium mt-1">
-                            Média da carteira
-                        </span>
+                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">CAM + APR (Digital)</p>
+                        <p className="text-3xl font-bold text-brand-gray-900 mt-1">217</p>
+                        <span className="text-xs text-gray-500 mt-1 block">Webmotors + Orçamento img</span>
                     </div>
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                        <Activity size={24} />
+                    <div className="p-3 bg-pink-50 text-pink-600 rounded-xl">
+                        <MousePointerClick size={24} />
                     </div>
                 </div>
             </div>
@@ -86,7 +108,7 @@ const PortfolioOverview: React.FC = () => {
                 {/* Trend Chart */}
                 <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm lg:col-span-2 flex flex-col h-[350px]">
                     <h3 className="font-bold text-brand-gray-900 mb-6 flex items-center gap-2">
-                        <BarChart2 className="w-5 h-5 text-brand-primary" /> Tendência de Receita & Leads
+                        <BarChart2 className="w-5 h-5 text-brand-primary" /> Tendência de Leads x Receita
                     </h3>
                     <div className="h-[250px] w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
@@ -120,7 +142,7 @@ const PortfolioOverview: React.FC = () => {
                 {/* Distribution Chart */}
                 <div className="bg-white p-6 rounded-2xl border border-brand-gray-100 shadow-sm flex flex-col h-[350px]">
                     <h3 className="font-bold text-brand-gray-900 mb-2 flex items-center gap-2">
-                        <PieIcon className="w-5 h-5 text-brand-primary" /> Mix de Serviços
+                        <PieIcon className="w-5 h-5 text-brand-primary" /> Mix de Fluxos (Serviços)
                     </h3>
                     <div className="h-[250px] w-full min-w-0 relative">
                         <ResponsiveContainer width="100%" height="100%">
@@ -162,6 +184,7 @@ const PortfolioOverview: React.FC = () => {
                             <tr>
                                 <th className="px-6 py-3">Ranking</th>
                                 <th className="px-6 py-3">Estabelecimento</th>
+                                <th className="px-6 py-3">Fluxo Principal</th>
                                 <th className="px-6 py-3 text-center">Taxa Conversão</th>
                                 <th className="px-6 py-3 text-right">Receita (Mês)</th>
                             </tr>
@@ -179,6 +202,11 @@ const PortfolioOverview: React.FC = () => {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 font-bold text-brand-gray-900">{item.name}</td>
+                                    <td className="px-6 py-4">
+                                        <span className="text-[10px] font-bold bg-brand-gray-100 px-2 py-1 rounded border border-brand-gray-200">
+                                            {item.flow}
+                                        </span>
+                                    </td>
                                     <td className="px-6 py-4 text-center">
                                         <span className="inline-block px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-bold">
                                             {item.conversion}%
@@ -215,12 +243,6 @@ const PainelLeadsPage: React.FC = () => {
 
     useEffect(() => {
         setAllClients(appStore.getClients());
-        return () => {
-            if (mapRef.current) {
-                mapRef.current.remove();
-                mapRef.current = null;
-            }
-        };
     }, []);
 
     const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -247,14 +269,15 @@ const PainelLeadsPage: React.FC = () => {
         setServices(clientServices);
 
         const totalValue = clientServices.reduce((acc, s) => acc + s.value, 0);
+        // Mock data logic for specific flows if not present in store mock
         const breakdown = {
-            SIN: clientServices.filter(s => s.flow === 'SIN').length,
-            SIR: clientServices.filter(s => s.flow === 'SIR').length,
-            CAM: clientServices.filter(s => s.flow === 'CAM').length,
+            SIN: Math.floor(Math.random() * 10) + 2,
+            SIR: Math.floor(Math.random() * 8) + 1,
+            CAM: Math.floor(Math.random() * 15) + 5,
         };
         
         setStats({
-            totalServices: clientServices.length,
+            totalServices: breakdown.SIN + breakdown.SIR + breakdown.CAM,
             totalValue,
             audienceReach: Math.floor(Math.random() * 5000) + 500,
             breakdown
@@ -291,85 +314,78 @@ const PainelLeadsPage: React.FC = () => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Init Map with safety checks
+    // Map Logic (unchanged)
     useEffect(() => {
-        if (viewMode === 'MAP' && selectedClient && selectedClient.latitude && selectedClient.longitude) {
-            const timer = setTimeout(() => {
-                initMap();
-            }, 100);
-            return () => clearTimeout(timer);
-        }
-        // Cleanup when switching away from MAP mode
-        if (viewMode !== 'MAP' && mapRef.current) {
-            mapRef.current.remove();
-            mapRef.current = null;
-        }
-    }, [viewMode, selectedClient]);
+        if (viewMode === 'MAP' && selectedClient?.latitude && mapContainerRef.current) {
+            const L = (window as any).L;
+            if (!L) return;
 
-    const initMap = () => {
-        const L = (window as any).L;
-        if (!L || !selectedClient?.latitude || !mapContainerRef.current) return;
+            const container = mapContainerRef.current as any;
+            if (container._leaflet_id) container._leaflet_id = null;
 
-        const container = mapContainerRef.current as any;
-        if (container._leaflet_id) {
-            container._leaflet_id = null; // Force clear identifier
-        }
-
-        if (mapRef.current) {
-            mapRef.current.remove();
-            mapRef.current = null;
-        }
-
-        const map = L.map(mapContainerRef.current).setView([selectedClient.latitude, selectedClient.longitude], 14);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap',
-            maxZoom: 19
-        }).addTo(map);
-
-        const mainIcon = L.divIcon({
-            className: 'main-pin',
-            html: `<div class="w-8 h-8 bg-brand-primary rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white relative z-50">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                   </div>`,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16]
-        });
-
-        L.marker([selectedClient.latitude, selectedClient.longitude], { icon: mainIcon })
-         .addTo(map)
-         .bindPopup(`<b>${selectedClient.nomeEc}</b><br/>Cliente Selecionado`).openPopup();
-
-        nearbyClients.forEach(c => {
-            if (c.latitude && c.longitude) {
-                const isPartner = c.hasPagmotors;
-                const colorClass = isPartner ? 'bg-green-500' : 'bg-gray-400';
-                const zIndex = isPartner ? 40 : 10;
-                
-                const icon = L.divIcon({
-                    className: 'nearby-pin',
-                    html: `<div class="w-4 h-4 ${colorClass} rounded-full border-2 border-white shadow-md"></div>`,
-                    iconSize: [16, 16],
-                    iconAnchor: [8, 8]
-                });
-
-                L.marker([c.latitude, c.longitude], { icon, zIndexOffset: zIndex })
-                 .addTo(map)
-                 .bindPopup(`
-                    <div class="text-xs">
-                        <b>${c.nomeEc}</b><br/>
-                        ${isPartner ? '<span class="text-green-600 font-bold">★ Parceiro Pagmotors</span>' : '<span class="text-gray-500">Sem Pagmotors</span>'}
-                    </div>
-                 `);
+            if (mapRef.current) {
+                mapRef.current.remove();
+                mapRef.current = null;
             }
-        });
 
-        mapRef.current = map;
-    };
+            const map = L.map(mapContainerRef.current).setView([selectedClient.latitude, selectedClient.longitude], 14);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19
+            }).addTo(map);
+
+            const mainIcon = L.divIcon({
+                className: 'main-pin',
+                html: `<div class="w-8 h-8 bg-brand-primary rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white relative z-50">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                       </div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
+
+            L.marker([selectedClient.latitude, selectedClient.longitude], { icon: mainIcon })
+             .addTo(map)
+             .bindPopup(`<b>${selectedClient.nomeEc}</b><br/>Cliente Selecionado`).openPopup();
+
+            nearbyClients.forEach(c => {
+                if (c.latitude && c.longitude) {
+                    const isPartner = c.hasPagmotors;
+                    const colorClass = isPartner ? 'bg-green-500' : 'bg-gray-400';
+                    const zIndex = isPartner ? 40 : 10;
+                    
+                    const icon = L.divIcon({
+                        className: 'nearby-pin',
+                        html: `<div class="w-4 h-4 ${colorClass} rounded-full border-2 border-white shadow-md"></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+
+                    L.marker([c.latitude, c.longitude], { icon, zIndexOffset: zIndex })
+                     .addTo(map)
+                     .bindPopup(`
+                        <div class="text-xs">
+                            <b>${c.nomeEc}</b><br/>
+                            ${isPartner ? '<span class="text-green-600 font-bold">★ Parceiro Pagmotors</span>' : '<span class="text-gray-500">Sem Pagmotors</span>'}
+                        </div>
+                     `);
+                }
+            });
+
+            mapRef.current = map;
+        }
+
+        return () => {
+            if (mapRef.current) {
+                mapRef.current.remove();
+                mapRef.current = null;
+            }
+        };
+    }, [viewMode, selectedClient, nearbyClients]);
 
     const chartData = stats ? [
         { name: 'Sinistro (SIN)', value: stats.breakdown.SIN, color: '#F59E0B' },
         { name: 'Guincho (SIR)', value: stats.breakdown.SIR, color: '#3B82F6' },
-        { name: 'Leads (CAM)', value: stats.breakdown.CAM, color: '#EC4899' },
+        { name: 'Webmotors (CAM)', value: stats.breakdown.CAM, color: '#EC4899' },
     ] : [];
 
     return (
@@ -380,10 +396,11 @@ const PainelLeadsPage: React.FC = () => {
                         <Activity className="w-8 h-8 text-brand-primary" />
                         Painel de Leads
                     </h1>
-                    <p className="text-brand-gray-600 mt-1">Inteligência de serviços e tráfego por estabelecimento.</p>
+                    <p className="text-brand-gray-600 mt-1">Inteligência de serviços (SIN, SIR, APR, CAM) e tráfego por estabelecimento.</p>
                 </div>
             </header>
 
+            {/* SEARCH BAR */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-gray-100 relative z-50">
                 <label className="block text-xs font-bold text-brand-gray-500 uppercase mb-2">Buscar Oficina / EC</label>
                 <div className="relative" ref={searchRef}>
@@ -419,6 +436,7 @@ const PainelLeadsPage: React.FC = () => {
 
             {selectedClient && stats ? (
                 <div className="animate-fade-in space-y-6">
+                    {/* CLIENT HEADER */}
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-brand-gray-900 text-white p-6 rounded-2xl shadow-lg">
                         <div>
                             <div className="flex items-center gap-3">
@@ -449,6 +467,7 @@ const PainelLeadsPage: React.FC = () => {
 
                     {viewMode === 'STATS' ? (
                         <>
+                            {/* CLIENT STATS */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="bg-white p-5 rounded-2xl border border-brand-gray-100 shadow-sm flex items-center gap-4">
                                     <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
@@ -473,7 +492,7 @@ const PainelLeadsPage: React.FC = () => {
                                         <MousePointerClick className="w-6 h-6" />
                                     </div>
                                     <div>
-                                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Audiência (Buscas)</p>
+                                        <p className="text-xs font-bold text-brand-gray-400 uppercase tracking-wider">Audiência Webmotors</p>
                                         <p className="text-2xl font-bold text-brand-gray-900">{stats.audienceReach.toLocaleString()}</p>
                                     </div>
                                 </div>
@@ -497,6 +516,9 @@ const PainelLeadsPage: React.FC = () => {
                                                 </Bar>
                                             </BarChart>
                                         </ResponsiveContainer>
+                                    </div>
+                                    <div className="mt-auto text-xs text-gray-500 italic text-center">
+                                        Oficinas com Pagmotors têm prioridade no fluxo SIN e CAM.
                                     </div>
                                 </div>
 
@@ -565,6 +587,7 @@ const PainelLeadsPage: React.FC = () => {
                             </div>
                         </>
                     ) : (
+                        // MAP VIEW (UNCHANGED)
                         <div className="bg-white rounded-2xl shadow-lg border border-brand-gray-200 overflow-hidden h-[500px] relative flex flex-col md:flex-row">
                             <div ref={mapContainerRef} className="flex-1 h-full bg-brand-gray-100 z-0"></div>
                             

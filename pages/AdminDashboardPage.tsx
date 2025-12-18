@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-    Clock, CheckCircle2, AlertTriangle, FileText, Activity, Truck, ShieldCheck, UserPlus, Package, ChevronRight,
-    AlertCircle, Search, ExternalLink, RefreshCw, Users, ArrowRight
+    Clock, CheckCircle2, FileText, Activity, ShieldCheck, UserPlus, ChevronRight,
+    AlertCircle, ExternalLink, RefreshCw, Users, ArrowRight
 } from 'lucide-react';
 import { appStore } from '../services/store';
 import { useAppStore } from '../services/useAppStore';
@@ -155,8 +155,8 @@ const AdminDashboardPage: React.FC = () => {
                 </div>
             </header>
 
-            {/* TOP KPI CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {/* TOP KPI CARDS - Removed Logistics Card */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <KpiCard 
                     title="Validações Pendentes" 
                     value={stats.pendingRegistrations} 
@@ -172,14 +172,6 @@ const AdminDashboardPage: React.FC = () => {
                     colorClass={{ bg: 'bg-orange-100', text: 'text-orange-600' }}
                     linkPage={Page.ADMIN_DEMANDS}
                     subtext="Alterações / Backoffice"
-                />
-                <KpiCard 
-                    title="Fila Logística" 
-                    value={stats.logisticsPending} 
-                    icon={Truck} 
-                    colorClass={{ bg: 'bg-purple-100', text: 'text-purple-600' }}
-                    linkPage={Page.LOGISTICA_ATIVACOES}
-                    subtext="Envios & Ativações"
                 />
                 <KpiCard 
                     title="Time Ativo" 
@@ -288,7 +280,7 @@ const AdminDashboardPage: React.FC = () => {
                 {/* RIGHT: QUICK ACTIONS & INFO */}
                 <div className="space-y-6">
                     
-                    {/* Quick Actions */}
+                    {/* Quick Actions - Removed Consultar Estoque */}
                     <div className="bg-brand-gray-900 text-white p-6 rounded-2xl shadow-lg relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
                         <h3 className="font-bold text-lg mb-4 relative z-10">Acesso Rápido</h3>
@@ -316,19 +308,6 @@ const AdminDashboardPage: React.FC = () => {
                                 <div>
                                     <span className="block text-sm font-bold">Solicitação Avulsa</span>
                                     <span className="block text-[10px] text-gray-400">Criar demanda administrativa</span>
-                                </div>
-                            </button>
-
-                            <button 
-                                onClick={() => handleNavigate(Page.LOGISTICA_DASHBOARD)}
-                                className="w-full bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl p-3 flex items-center gap-3 transition-colors text-left group"
-                            >
-                                <div className="p-2 bg-purple-600 rounded-lg group-hover:scale-110 transition-transform">
-                                    <Package size={16} />
-                                </div>
-                                <div>
-                                    <span className="block text-sm font-bold">Consultar Estoque</span>
-                                    <span className="block text-[10px] text-gray-400">Verificar disponibilidade POS</span>
                                 </div>
                             </button>
                         </div>

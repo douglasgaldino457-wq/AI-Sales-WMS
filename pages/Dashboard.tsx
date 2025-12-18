@@ -1,10 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { UserRole, Appointment, SystemUser, Page } from '../types';
+import { UserRole, Appointment, SystemUser, Page, ExpenseReport, Expense } from '../types';
 import { 
-  PieChart, Pie, Cell, Legend, Tooltip, TooltipProps, ResponsiveContainer
+  PieChart, Pie, Cell, Legend, Tooltip, TooltipProps, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area
 } from 'recharts';
-import { MOCK_SALES_DATA, MOCK_STATUS_DATA } from '../constants';
 import { getDashboardInsights } from '../services/geminiService';
 import { appStore } from '../services/store';
 import { useAppStore } from '../services/useAppStore'; // Hook
@@ -12,7 +11,12 @@ import {
     Sparkles, TrendingUp, CalendarCheck, CheckCircle2, Clock, 
     Briefcase, UserPlus, FileText, MapPin, Layout, Search, Filter, ArrowUpDown,
     ChevronLeft, ChevronRight, Check, Calendar, Users, Target, Phone, X, Eye, ArrowRight,
-    BarChart2, Lightbulb, AlertTriangle
+    BarChart2, Lightbulb, AlertTriangle, DollarSign, CreditCard, Wallet, FileCheck,
+    PieChart as PieIcon,
+    ShieldCheck,
+    Truck,
+    Package,
+    Activity
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -21,6 +25,7 @@ interface DashboardProps {
 }
 
 const COLORS = ['#F3123C', '#2E2D37', '#FF3A64', '#696977', '#AEAEBA'];
+const FINANCE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6', '#6B7280'];
 
 type SortConfig = { key: keyof Appointment | 'clientName'; direction: 'asc' | 'desc' };
 
@@ -38,7 +43,7 @@ interface ConsultantStats {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
-  const { currentUser } = useAppStore(); // Get Current User Name
+  const { currentUser, navigate } = useAppStore(); // Get Current User Name and navigation
   
   const [insight, setInsight] = useState<string>('');
   const [loadingAI, setLoadingAI] = useState(false);
@@ -48,10 +53,22 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
   // Real-time data state
   const [appointments, setAppointments] = useState(appStore.getAppointments());
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]); // Dynamic Users
+  
+  // Financeiro Data State
+  const [expenseReports, setExpenseReports] = useState<ExpenseReport[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   // --- GESTOR STATE ---
   const [selectedMonth, setSelectedMonth] = useState<string>('all'); // 'YYYY-MM' or 'all'
   const [teamView, setTeamView] = useState<TeamView>('ALL');
+  
+  // SLA / Journey Data (Gestor)
+  const [journeyStats, setJourneyStats] = useState({
+      commercialPending: 0,
+      pricingPending: 0,
+      backofficePending: 0,
+      logisticsPending: 0
+  });
   
   // Filter States for Inside Sales (Legacy Logic preserved)
   const [cardFilter, setCardFilter] = useState<'ALL' | 'COMPLETED' | 'SCHEDULED' | 'CONVERTED'>('ALL');
@@ -61,18 +78,33 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
   const [detailedMetricView, setDetailedMetricView] = useState<'ALL' | 'COMPLETED' | 'SCHEDULED' | 'CONVERTED' | null>('ALL');
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
-  // Sorting State
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'date', direction: 'desc' });
-
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-
   useEffect(() => {
     // Refresh data on mount
     setAppointments(appStore.getAppointments());
     setSystemUsers(appStore.getUsers());
-  }, []);
+    
+    // Finance Data
+    setExpenseReports(appStore.getExpenseReports());
+    setExpenses(appStore.getExpenses());
+
+    // Journey Data Calculation (For Gestor)
+    if (role === UserRole.GESTOR || role === UserRole.ADMIN) {
+        const allDemands = appStore.getDemands();
+        const allRegs = appStore.getRegistrationRequests();
+        const allLogistics = appStore.getLogisticsTasks();
+
+        setJourneyStats({
+            // Commercial: Drafts + Pendente (not picked by pricing yet)
+            commercialPending: allDemands.filter(d => d.status === 'Pendente').length,
+            // Pricing: Em Análise and Type is Negotiation/Rate
+            pricingPending: allDemands.filter(d => d.status === 'Em Análise' && (d.type.includes('Taxa') || d.type.includes('Negociação'))).length,
+            // Backoffice: Registration PENDING_ANALYSIS or Demand 'Pendente ADM'
+            backofficePending: allRegs.filter(r => r.status === 'PENDING_ANALYSIS').length + allDemands.filter(d => d.adminStatus === 'Pendente ADM').length,
+            // Logistics: Pending Shipment
+            logisticsPending: allLogistics.filter(l => l.status === 'PENDING_SHIPMENT').length
+        });
+    }
+  }, [role]);
 
   // ... (Data processing logic remains identical to preserve functionality)
   const getAvailableMonths = () => {
@@ -96,7 +128,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
   const calculateConsultantStats = (): ConsultantStats[] => {
       const filteredData = getFilteredAppointmentsForGestor();
       
-      // Use dynamic systemUsers instead of MOCK_USERS
       const usersToAnalyze = systemUsers.filter(u => {
           if (teamView === 'FIELD') return u.role === UserRole.FIELD_SALES;
           if (teamView === 'INSIDE') return u.role === UserRole.INSIDE_SALES;
@@ -133,27 +164,41 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
     const fetchInsight = async () => {
       setLoadingAI(true);
       let summary = '';
-      if (role === UserRole.GESTOR) {
+      
+      if (role === UserRole.FINANCEIRO) {
+          const pendingValue = expenseReports.filter(r => r.status === 'APPROVED_GESTOR').reduce((acc, r) => acc + r.totalReimbursable, 0);
+          const topCategory = expenses.reduce((acc, curr) => {
+              acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+              return acc;
+          }, {} as Record<string, number>);
+          const topCatName = Object.keys(topCategory).sort((a,b) => topCategory[b] - topCategory[a])[0];
+          
+          summary = `Financeiro: Valor Pendente Aprovação: R$${pendingValue.toFixed(2)}. Maior categoria de gasto: ${topCatName}. Sugira otimizações de fluxo de caixa.`;
+      
+      } else if (role === UserRole.GESTOR) {
          const stats = calculateConsultantStats();
          const totalConv = stats.reduce((acc, s) => acc + s.converted, 0);
          const lowPerformers = stats.filter(s => s.totalAppointments > 5 && s.conversionRate < 10).map(s => `${s.name}`).join(', ');
          summary = `Total Conversões: ${totalConv}. Topo: ${stats.slice(0,2).map(s => s.name).join(', ')}. Atenção: ${lowPerformers}.`;
       } else {
-         // USE CURRENT USER NAME HERE
          const myName = currentUser?.name || (role === UserRole.FIELD_SALES ? 'Cleiton Freitas' : 'Cauana Sousa');
-         
          const myAppts = appointments.filter(a => role === UserRole.FIELD_SALES ? a.fieldSalesName === myName : a.insideSalesName === myName);
          const inNegotiation = myAppts.filter(a => a.visitReport?.outcome === 'Em negociação');
          const today = new Date().toISOString().split('T')[0];
          const overdue = myAppts.filter(a => a.status === 'Scheduled' && a.date && a.date <= today);
          summary = `Negociações: ${inNegotiation.length}. Atrasados: ${overdue.length}.`;
       }
+      
       const result = await getDashboardInsights(role, summary);
       setInsight(result);
       setLoadingAI(false);
     };
-    if (appointments.length > 0 && systemUsers.length > 0) fetchInsight();
-  }, [role, appointments, selectedMonth, teamView, systemUsers, currentUser]);
+    
+    // Trigger condition
+    if ((role === UserRole.FINANCEIRO && expenses.length > 0) || (role !== UserRole.FINANCEIRO && appointments.length > 0)) {
+        fetchInsight();
+    }
+  }, [role, appointments, selectedMonth, teamView, systemUsers, currentUser, expenses, expenseReports]);
 
   const handleExecutePlan = () => {
       setPlanExecuted(true);
@@ -184,11 +229,11 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                 </div>
                 <div>
                     <h3 className="text-white font-bold text-sm tracking-wide uppercase flex items-center gap-2">
-                        AI Opportunity Coach
+                        AI Financial Analyst
                         <span className="bg-brand-primary text-[9px] px-1.5 py-0.5 rounded text-white font-bold">BETA</span>
                     </h3>
                     <p className="text-gray-400 text-xs mt-0.5 group-hover:text-gray-200 transition-colors">
-                        {loadingAI ? 'Analisando padrões de venda...' : 'Identificamos 3 ações táticas para hoje. Toque para ver.'}
+                        {loadingAI ? 'Processando dados financeiros...' : 'Análise de custos e fluxo de caixa disponível.'}
                     </p>
                 </div>
             </div>
@@ -211,7 +256,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                            <Lightbulb className="w-6 h-6 text-yellow-400" />
                         </div>
                         <div>
-                           <h3 className="font-bold text-xl tracking-tight">Plano Tático IA</h3>
+                           <h3 className="font-bold text-xl tracking-tight">Insights Financeiros IA</h3>
                            <p className="text-gray-400 text-sm">Análise em tempo real</p>
                         </div>
                      </div>
@@ -243,7 +288,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                      className="px-8 py-3 bg-brand-gray-900 text-white rounded-xl font-bold hover:scale-105 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
                   >
                      {planExecuted ? <CheckCircle2 className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
-                     {planExecuted ? 'Agendado!' : 'Executar Plano'}
+                     {planExecuted ? 'Ação Registrada!' : 'Executar Ação'}
                   </button>
               </div>
            </div>
@@ -275,6 +320,230 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
         </div>
     </div>
   );
+
+  // --- JOURNEY STAGE CARD (GESTOR) ---
+  const JourneyStage = ({ title, count, sla, icon: Icon, colorClass, isLast }: any) => (
+      <div className="flex items-center flex-1">
+          <div className="relative flex-1 bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center text-center group hover:border-brand-primary/30 transition-all">
+              <div className={`p-2 rounded-lg ${colorClass.bg} ${colorClass.text} mb-2`}>
+                  <Icon size={20} />
+              </div>
+              <h4 className="text-xs font-bold text-gray-500 uppercase">{title}</h4>
+              <div className="mt-1">
+                  <span className={`text-2xl font-bold ${count > 5 ? 'text-red-500' : 'text-gray-900'}`}>{count}</span>
+                  <span className="text-[10px] text-gray-400 block">Itens</span>
+              </div>
+              <div className="mt-2 text-[10px] font-mono bg-gray-50 px-2 py-0.5 rounded text-gray-500">
+                  ~{sla}
+              </div>
+              
+              {/* Traffic Light */}
+              <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${count > 5 ? 'bg-red-500 animate-pulse' : count > 2 ? 'bg-yellow-400' : 'bg-green-500'}`}></div>
+          </div>
+          {!isLast && (
+              <div className="px-2 text-gray-300">
+                  <ArrowRight size={20} />
+              </div>
+          )}
+      </div>
+  );
+
+  // --- FINANCEIRO DASHBOARD ---
+  if (role === UserRole.FINANCEIRO) {
+      // 1. Calculate KPIs
+      const pendingApprovalReports = expenseReports.filter(r => r.status === 'APPROVED_GESTOR');
+      const pendingPaymentValue = pendingApprovalReports.reduce((acc, r) => acc + r.totalReimbursable, 0);
+      const paidThisMonth = expenseReports
+          .filter(r => r.status === 'APPROVED_FINANCEIRO' && new Date(r.createdDate).getMonth() === new Date().getMonth())
+          .reduce((acc, r) => acc + r.totalReimbursable, 0);
+      
+      // 2. Expenses Category Data for Chart
+      const categoryData = expenses.reduce((acc, curr) => {
+          const cat = curr.category;
+          acc[cat] = (acc[cat] || 0) + curr.amount;
+          return acc;
+      }, {} as Record<string, number>);
+      
+      const pieData = Object.keys(categoryData).map((key, idx) => ({
+          name: key,
+          value: categoryData[key],
+          color: FINANCE_COLORS[idx % FINANCE_COLORS.length]
+      })).sort((a,b) => b.value - a.value);
+
+      // 3. Monthly Trend (Mocked + Real mix)
+      const trendData = [
+          { name: 'Jan', valor: 4500 }, { name: 'Fev', valor: 5200 }, { name: 'Mar', valor: 4800 },
+          { name: 'Abr', valor: 6100 }, { name: 'Mai', valor: 5900 }, { name: 'Jun', valor: paidThisMonth + pendingPaymentValue }
+      ];
+
+      return (
+          <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
+              <InsightBanner />
+              <InsightModal />
+
+              <div className="flex flex-col md:flex-row justify-between items-end gap-6">
+                  <div>
+                      <h1 className="text-3xl font-bold text-brand-gray-900 tracking-tight">Financeiro</h1>
+                      <p className="text-brand-gray-600 mt-1">Gestão de reembolsos, conciliação e custos operacionais.</p>
+                  </div>
+                  <div className="flex gap-3">
+                      <button onClick={() => navigate(Page.CONCILIACAO)} className="px-4 py-2.5 bg-white border border-brand-gray-200 text-brand-gray-700 rounded-xl text-sm font-bold shadow-sm hover:bg-brand-gray-50 flex items-center gap-2 transition-colors">
+                          <CreditCard size={16} /> Conciliação
+                      </button>
+                      <button onClick={() => navigate(Page.DESPESAS)} className="px-4 py-2.5 bg-brand-primary text-white rounded-xl text-sm font-bold shadow-lg hover:bg-brand-dark flex items-center gap-2 transition-colors">
+                          <FileCheck size={16} /> Aprovar Relatórios
+                      </button>
+                  </div>
+              </div>
+
+              {/* KPIs Row */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <KpiCard 
+                      title="Aguardando Aprovação" 
+                      value={pendingApprovalReports.length} 
+                      subtext={`${pendingApprovalReports.length > 0 ? 'Ação necessária' : 'Tudo em dia'}`} 
+                      icon={AlertTriangle} 
+                      colorClass="bg-orange-100 text-orange-600" 
+                  />
+                  <KpiCard 
+                      title="Total a Pagar (Pend.)" 
+                      value={`R$ ${pendingPaymentValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
+                      icon={DollarSign} 
+                      colorClass="bg-blue-100 text-blue-600" 
+                  />
+                  <KpiCard 
+                      title="Pago no Mês" 
+                      value={`R$ ${paidThisMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
+                      icon={CheckCircle2} 
+                      colorClass="bg-green-100 text-green-600" 
+                  />
+                  <KpiCard 
+                      title="Custo Médio/Km" 
+                      value="R$ 0,58" 
+                      subtext="Baseado na frota" 
+                      icon={Briefcase} 
+                      colorClass="bg-brand-gray-100 text-brand-gray-600" 
+                  />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* CHART: Expenses Breakdown */}
+                  <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-brand-gray-100 flex flex-col h-[400px]">
+                      <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
+                          <PieIcon size={18} className="text-brand-primary"/> Breakdown de Custos
+                      </h3>
+                      <div className="flex-1 w-full min-w-0 relative">
+                          <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                  <Pie
+                                      data={pieData}
+                                      cx="50%"
+                                      cy="50%"
+                                      innerRadius={60}
+                                      outerRadius={80}
+                                      paddingAngle={5}
+                                      dataKey="value"
+                                  >
+                                      {pieData.map((entry, index) => (
+                                          <Cell key={`cell-${index}`} fill={entry.color} />
+                                      ))}
+                                  </Pie>
+                                  <Tooltip formatter={(value: number) => `R$ ${value.toLocaleString()}`} />
+                                  <Legend verticalAlign="bottom" height={36} iconType="circle" iconSize={8} wrapperStyle={{fontSize: '10px'}} />
+                              </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center -mt-6">
+                              <span className="block text-2xl font-bold text-brand-gray-900">
+                                  {pieData.length}
+                              </span>
+                              <span className="block text-[10px] text-gray-400 uppercase">Categorias</span>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* CHART: Trend */}
+                  <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-brand-gray-100 flex flex-col h-[400px]">
+                      <h3 className="font-bold text-brand-gray-900 mb-4 flex items-center gap-2">
+                          <TrendingUp size={18} className="text-green-600"/> Evolução de Custos (Semestre)
+                      </h3>
+                      <div className="flex-1 w-full min-w-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={trendData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                  <defs>
+                                      <linearGradient id="colorValor" x1="0" y1="0" x2="0" y2="1">
+                                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.1}/>
+                                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                                      </linearGradient>
+                                  </defs>
+                                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} />
+                                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} tickFormatter={(val) => `R$${val/1000}k`} />
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                                  <Tooltip 
+                                      contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
+                                      formatter={(value: number) => [`R$ ${value.toLocaleString()}`, 'Total']}
+                                  />
+                                  <Area type="monotone" dataKey="valor" stroke="#3B82F6" fillOpacity={1} fill="url(#colorValor)" strokeWidth={3} />
+                              </AreaChart>
+                          </ResponsiveContainer>
+                      </div>
+                  </div>
+              </div>
+
+              {/* PENDING APPROVAL LIST */}
+              <div className="bg-white rounded-2xl shadow-sm border border-brand-gray-100 overflow-hidden">
+                  <div className="p-6 border-b border-brand-gray-100 bg-brand-gray-50 flex justify-between items-center">
+                      <h3 className="font-bold text-brand-gray-900 flex items-center gap-2">
+                          <FileCheck size={18} className="text-orange-500" /> Relatórios Aguardando Aprovação Financeira
+                      </h3>
+                      <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">
+                          {pendingApprovalReports.length} Pendentes
+                      </span>
+                  </div>
+                  <div className="divide-y divide-brand-gray-100">
+                      {pendingApprovalReports.length === 0 ? (
+                          <div className="p-12 text-center text-gray-400">
+                              <CheckCircle2 size={40} className="mx-auto mb-3 text-green-200" />
+                              <p>Tudo certo! Nenhum relatório pendente de aprovação.</p>
+                          </div>
+                      ) : (
+                          pendingApprovalReports.map(report => (
+                              <div key={report.id} className="p-5 hover:bg-brand-gray-50 transition-colors flex flex-col md:flex-row items-center justify-between gap-4">
+                                  <div className="flex items-center gap-4">
+                                      <div className="w-10 h-10 rounded-full bg-brand-primary/10 flex items-center justify-center text-brand-primary font-bold text-xs">
+                                          {report.requesterName.charAt(0)}
+                                      </div>
+                                      <div>
+                                          <h4 className="font-bold text-brand-gray-900">{report.requesterName}</h4>
+                                          <p className="text-xs text-brand-gray-500 flex items-center gap-2">
+                                              <span>ID: {report.id}</span>
+                                              <span>•</span>
+                                              <span>{report.period}</span>
+                                              <span>•</span>
+                                              <span className="text-orange-600 font-bold">Aprovado por Gestor</span>
+                                          </p>
+                                      </div>
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
+                                      <div className="text-right">
+                                          <p className="text-[10px] font-bold text-brand-gray-400 uppercase">Reembolso</p>
+                                          <p className="text-lg font-bold text-brand-gray-900">R$ {report.totalReimbursable.toFixed(2)}</p>
+                                      </div>
+                                      <button 
+                                          onClick={() => navigate(Page.DESPESAS)}
+                                          className="px-4 py-2 border border-brand-gray-200 text-brand-gray-600 font-bold rounded-lg text-xs hover:bg-brand-gray-100 hover:text-brand-primary transition-colors flex items-center gap-2"
+                                      >
+                                          Revisar <ArrowRight size={14} />
+                                      </button>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+          </div>
+      );
+  }
 
   // --- FIELD SALES VIEW ---
   if (role === UserRole.FIELD_SALES) {
@@ -467,7 +736,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
       );
   }
 
-  // --- GESTOR VIEW (UNCHANGED) ---
+  // --- GESTOR VIEW (DEFAULT & GESTOR) ---
   const filteredGestorData = getFilteredAppointmentsForGestor();
   const consultantStats = calculateConsultantStats();
   const totalGestor = filteredGestorData.length;
@@ -495,6 +764,66 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
              <KpiCard title="Conversões" value={convertedGestor} icon={Sparkles} colorClass="bg-purple-500 text-purple-600" />
              <KpiCard title="Taxa Média" value={`${totalGestor > 0 ? ((convertedGestor/totalGestor)*100).toFixed(1) : 0}%`} icon={TrendingUp} colorClass="bg-green-500 text-green-600" />
              <KpiCard title="Carteira Ativa" value={142} icon={Users} colorClass="bg-blue-500 text-blue-600" />
+        </div>
+
+        {/* --- NEW: JORNADA OPERACIONAL (SLA FLOW) --- */}
+        <div className="bg-white rounded-2xl shadow-sm border border-brand-gray-100 overflow-hidden">
+            <div className="p-6 border-b border-brand-gray-100 bg-brand-gray-50/50">
+                <h3 className="font-bold text-lg text-brand-gray-900 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-brand-primary" /> Jornada Operacional & SLA
+                </h3>
+            </div>
+            
+            <div className="p-8 overflow-x-auto">
+                <div className="flex items-center gap-4 min-w-[800px]">
+                    <JourneyStage 
+                        title="Comercial (Entrada)" 
+                        count={journeyStats.commercialPending} 
+                        sla="4h Médio" 
+                        icon={Users} 
+                        colorClass={{ bg: 'bg-brand-gray-100', text: 'text-brand-gray-600' }} 
+                    />
+                    <JourneyStage 
+                        title="Pricing (Análise)" 
+                        count={journeyStats.pricingPending} 
+                        sla="2h Médio" 
+                        icon={DollarSign} 
+                        colorClass={{ bg: 'bg-purple-100', text: 'text-purple-600' }} 
+                    />
+                    <JourneyStage 
+                        title="Backoffice (Validação)" 
+                        count={journeyStats.backofficePending} 
+                        sla="24h Médio" 
+                        icon={ShieldCheck} 
+                        colorClass={{ bg: 'bg-blue-100', text: 'text-blue-600' }} 
+                    />
+                    <JourneyStage 
+                        title="Logística (Ativação)" 
+                        count={journeyStats.logisticsPending} 
+                        sla="48h Médio" 
+                        icon={Truck} 
+                        colorClass={{ bg: 'bg-orange-100', text: 'text-orange-600' }} 
+                        isLast={true}
+                    />
+                </div>
+            </div>
+
+            {/* Quick List of Stalled Items */}
+            {(journeyStats.pricingPending > 0 || journeyStats.backofficePending > 0) && (
+                <div className="bg-red-50 border-t border-red-100 p-4">
+                    <p className="text-xs font-bold text-red-800 flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4" /> Atenção: Itens Críticos na Fila
+                    </p>
+                    <div className="flex gap-4 overflow-x-auto pb-2">
+                        {appStore.getDemands().filter(d => d.status === 'Em Análise').slice(0, 5).map(d => (
+                            <div key={d.id} className="min-w-[200px] bg-white p-3 rounded-lg border border-red-200 shadow-sm text-xs">
+                                <span className="font-bold text-gray-800 block truncate">{d.clientName}</span>
+                                <span className="text-gray-500 block">Pricing - {new Date(d.date).toLocaleDateString()}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

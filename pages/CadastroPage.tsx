@@ -281,7 +281,6 @@ export const FichaCadastralView: React.FC<{ data: Partial<RegistrationRequest>, 
     );
 };
 
-// ... (Rest of modal components unchanged) ...
 // --- PREVIEW MODAL COMPONENT ---
 const PreviewModal: React.FC<{
     isOpen: boolean;
@@ -315,7 +314,6 @@ const PreviewModal: React.FC<{
     );
 };
 
-// ... (DocViewerModal and RatesModal unchanged) ...
 export const DocViewerModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
@@ -421,7 +419,7 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role, embed = false }) => {
         contactEmails: [],
         openingHours: { weekdays: { start: '08:00', end: '18:00' }, saturday: { start: '', end: '' } },
         bankAccounts: [], // Array of BankAccount
-        docs: { idCard: false, addressProof: false, contract: false }, // Contract legacy key handling
+        docs: { idCard: false, addressProof: false },
         planType: 'Full',
         requestedEquipments: []
     });
@@ -706,6 +704,7 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role, embed = false }) => {
 
     const handleConfirmSubmit = () => {
         setIsSubmitting(true);
+        // Correct RegistrationRequest object created
         const newRequest: RegistrationRequest = {
             id: `REG-${Math.floor(Math.random() * 10000)}`,
             ...formData as RegistrationRequest,
@@ -716,6 +715,7 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role, embed = false }) => {
             docs: formData.docs || {}
         };
         setTimeout(() => {
+            // Fix: correctly use addRegistrationRequest
             appStore.addRegistrationRequest(newRequest);
             setIsSubmitting(false);
             setIsPreviewOpen(false);
@@ -724,7 +724,7 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role, embed = false }) => {
             setFormData({ 
                 contactPhones: [''], openingHours: { weekdays: { start: '08:00', end: '18:00' } }, 
                 bankAccounts: [], 
-                docs: { idCard: false, addressProof: false, contract: false }, planType: 'Full', requestedEquipments: [] 
+                docs: { idCard: false, addressProof: false }, planType: 'Full', requestedEquipments: [] 
             }); 
             alert("Cadastro enviado com sucesso!");
         }, 1000);
@@ -1039,11 +1039,10 @@ const CadastroPage: React.FC<CadastroPageProps> = ({ role, embed = false }) => {
                             </div>
                         </section>
 
-                        {/* 6. GENERAL DOCUMENTATION (Contract, ID, etc) */}
+                        {/* 6. GENERAL DOCUMENTATION (ID, etc) */}
                         <section className="bg-white p-6 rounded-xl shadow-sm border border-brand-gray-100">
                             <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><FileCheck className="w-5 h-5 text-brand-primary" /> Documentação Geral</h3>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {/* Contract - REMOVED AS PER REQUEST */}
                                 
                                 {/* Identity */}
                                 <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center transition-colors cursor-pointer hover:bg-brand-gray-50 ${formData.docs?.idCard ? 'border-green-300 bg-green-50' : 'border-brand-gray-300'}`} onClick={() => triggerUpload('IDENTITY')}>
